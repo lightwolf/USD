@@ -31,11 +31,24 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
     : HgiTexture(desc)
+    , _descriptor(desc)
     , _textureId(0)
 {
 
+    // XXX OpenGL implementation of Hgi texture is missing a few features.
+    // These were not immediately needed for AOV support, but should be added
+    // once Hgi textures are used in more places.
     if (desc.dimensions[2] > 1) {
-        TF_CODING_ERROR("Missing implementation for texture layers");
+        TF_CODING_ERROR("XXX Missing implementation for volume textures");
+    }
+    if (desc.layerCount > 1) {
+        TF_CODING_ERROR("XXX Missing implementation for texture arrays");
+    }
+    if (desc.mipLevels > 1) {
+        TF_CODING_ERROR("XXX Missing implementation for texture mips");
+    }
+    if (desc.initialData != nullptr) {
+        TF_CODING_ERROR("XXX Missing implementation for pixel upload");
     }
 
     GLenum glInternalFormat = 0;
@@ -61,7 +74,9 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
         glCreateTextures(GL_TEXTURE_2D, 1, &_textureId);
     } else {
         glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &_textureId);
-    }    
+    }
+
+    glObjectLabel(GL_TEXTURE, _textureId, -1, _descriptor.debugName.c_str());
 
     if (desc.sampleCount == HgiSampleCount1) {
         // XXX sampler state etc should all be set via tex descriptor.
@@ -100,5 +115,10 @@ HgiGLTexture::~HgiGLTexture()
     HGIGL_POST_PENDING_GL_ERRORS();
 }
 
+HgiTextureDesc const&
+HgiGLTexture::GetDescriptor() const
+{
+    return _descriptor;
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE

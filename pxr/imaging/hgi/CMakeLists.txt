@@ -4,6 +4,7 @@ set(PXR_PACKAGE hgi)
 pxr_library(hgi
     LIBRARIES
         gf
+        plug
         tf
 
     PUBLIC_CLASSES
@@ -13,7 +14,10 @@ pxr_library(hgi
         graphicsEncoderDesc
         hgi
         immediateCommandBuffer
+        shaderFunction
+        shaderProgram
         texture
+        tokens
 
     PUBLIC_HEADERS
         api.h

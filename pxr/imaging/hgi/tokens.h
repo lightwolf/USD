@@ -21,31 +21,22 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/hd/tokens.h"
-#include "RixRiCtl.h"
-#include "hdPrman/resourceRegistry.h"
+#ifndef PXR_IMAGING_HGI_TOKENS_H
+#define PXR_IMAGING_HGI_TOKENS_H
 
+#include "pxr/pxr.h"
+#include "pxr/base/tf/staticTokens.h"
+
+#include "pxr/imaging/hgi/api.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-HdPrman_ResourceRegistry::HdPrman_ResourceRegistry(
-    std::shared_ptr<HdPrman_Context> const& context)
-    : _context(context)
-{
-}
+#define HGI_TOKENS    \
+    (taskDriver)      \
+    (renderDriver)
 
-HdPrman_ResourceRegistry::~HdPrman_ResourceRegistry()
-{
-}
-
-void
-HdPrman_ResourceRegistry::ReloadResource(
-    TfToken const& resourceType,
-    std::string const& path)
-{
-    if (resourceType == HdResourceTypeTokens->texture) {
-        _context->ri->InvalidateTexture(RtUString(path.c_str()));
-    }
-}
+TF_DECLARE_PUBLIC_TOKENS(HgiTokens, HGI_API, HGI_TOKENS);
 
 PXR_NAMESPACE_CLOSE_SCOPE
+
+#endif

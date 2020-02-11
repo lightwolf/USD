@@ -25,8 +25,12 @@
 #define PXR_IMAGING_HGI_HGI_H
 
 #include "pxr/pxr.h"
+#include "pxr/base/tf/type.h"
+
 #include "pxr/imaging/hgi/api.h"
 #include "pxr/imaging/hgi/buffer.h"
+#include "pxr/imaging/hgi/shaderFunction.h"
+#include "pxr/imaging/hgi/shaderProgram.h"
 #include "pxr/imaging/hgi/texture.h"
 #include "pxr/imaging/hgi/types.h"
 
@@ -63,6 +67,13 @@ public:
     HGI_API
     virtual ~Hgi();
 
+    // Helper function to return a Hgi object for the current platform.
+    // For example on Linux this may return HgiGL while on macOS HgiMetal.
+    // Caller, usually the application, owns the lifetime of the returned Hgi 
+    // pointer and must destroy it during shutdown.
+    HGI_API
+    static Hgi* GetPlatformDefaultHgi();
+
     //
     // Command Buffers
     //
@@ -91,10 +102,48 @@ public:
     HGI_API
     virtual void DestroyBuffer(HgiBufferHandle* bufHandle) = 0;
 
+    /// Create a new shader function
+    HGI_API
+    virtual HgiShaderFunctionHandle CreateShaderFunction(
+        HgiShaderFunctionDesc const& desc) = 0;
+
+    /// Destroy a shader function
+    HGI_API
+    virtual void DestroyShaderFunction(
+        HgiShaderFunctionHandle* shaderFunctionHandle) = 0;
+
+    /// Create a new shader program
+    HGI_API
+    virtual HgiShaderProgramHandle CreateShaderProgram(
+        HgiShaderProgramDesc const& desc) = 0;
+
+    /// Destroy a shader program
+    HGI_API
+    virtual void DestroyShaderProgram(
+        HgiShaderProgramHandle* shaderProgramHandle) = 0;
+
 private:
     Hgi & operator=(const Hgi&) = delete;
     Hgi(const Hgi&) = delete;
 };
+
+
+///
+/// Hgi factory for plugin system
+///
+class HgiFactoryBase : public TfType::FactoryBase {
+public:
+    virtual Hgi* New() const = 0;
+};
+
+template <class T>
+class HgiFactory : public HgiFactoryBase {
+public:
+    Hgi* New() const {
+        return new T;
+    }
+};
+
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

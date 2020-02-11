@@ -1,5 +1,5 @@
 //
-// Copyright 2016 Pixar
+// Copyright 2020 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,35 +21,37 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-/// \file package.cpp
+#ifndef EXT_RMANPKG_23_0_PLUGIN_RENDERMAN_PLUGIN_HDX_PRMAN_RESOURCE_REGISTRY_H
+#define EXT_RMANPKG_23_0_PLUGIN_RENDERMAN_PLUGIN_HDX_PRMAN_RESOURCE_REGISTRY_H
 
-#include "pxr/imaging/glf/package.h"
-
-#include "pxr/base/plug/plugin.h"
-#include "pxr/base/plug/thisPlugin.h"
-#include "pxr/base/tf/diagnostic.h"
-#include "pxr/base/tf/fileUtils.h"
-#include "pxr/base/tf/stringUtils.h"
+#include "pxr/pxr.h"
+#include "pxr/imaging/hd/resourceRegistry.h"
+#include "hdPrman/api.h"
+#include "context.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+/// HdxPrman's implementation of the hydra resource registry.
+/// Renderman manages its resources internally, but uses the HdResourceRegistry
+/// to respond to certain resource changes, such as texture reloading.
+class HdxPrman_ResourceRegistry final : public HdResourceRegistry {
+public:
+    HDPRMAN_API
+    HdxPrman_ResourceRegistry(
+        std::shared_ptr<HdxPrman_InteractiveContext> const& context);
 
-static TfToken
-_GetShaderPath(char const * shader)
-{
-    static PlugPluginPtr plugin = PLUG_THIS_PLUGIN;
-    const std::string path =
-        PlugFindPluginResource(plugin, TfStringCatPaths("shaders", shader));
-    TF_VERIFY(!path.empty(), "Could not find shader: %s\n", shader);
+    HDPRMAN_API
+    virtual ~HdxPrman_ResourceRegistry();
 
-    return TfToken(path);
-}
+    HDPRMAN_API
+    void ReloadResource(
+        TfToken const& resourceType,
+        std::string const& path) override;
 
-TfToken
-GlfPackageSimpleLightingShader()
-{
-    return _GetShaderPath("simpleLightingShader.glslfx");
-}
+private:
+    std::shared_ptr<HdxPrman_InteractiveContext> _context;
+};
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+#endif

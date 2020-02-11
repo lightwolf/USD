@@ -31,9 +31,13 @@ pxr_library(hgiGL
         graphicsEncoder
         hgi
         immediateCommandBuffer
+        shaderFunction
+        shaderProgram
         texture
 
     PUBLIC_HEADERS
         api.h
 
+    RESOURCE_FILES
+        plugInfo.json
 )
