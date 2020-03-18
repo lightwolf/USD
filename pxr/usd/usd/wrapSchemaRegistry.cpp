@@ -40,6 +40,13 @@ using namespace boost::python;
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+static UsdPrimDefinition *
+_WrapBuildComposedPrimDefinition(const UsdSchemaRegistry &self,
+    const TfToken &primType, const TfTokenVector &appliedAPISchemas) 
+{
+    return self.BuildComposedPrimDefinition(primType, appliedAPISchemas).release();
+}
+
 void wrapUsdSchemaRegistry()
 {
     typedef UsdSchemaRegistry This;
@@ -53,32 +60,10 @@ void wrapUsdSchemaRegistry()
                 &This::GetSchemaTypeName,
              arg("schemaType"))
 
-        .def("GetSchemaPrimSpec", (SdfPrimSpecHandle (*)(const TfToken &))
-             &This::GetSchemaPrimSpec,
-             arg("primType"))
-        .def("GetSchemaPrimSpec", (SdfPrimSpecHandle (*)(const TfType &))
-             &This::GetSchemaPrimSpec,
-             arg("primType"))
-        .staticmethod("GetSchemaPrimSpec")
-
-        .def("GetSchemaPropertySpec", &This::GetSchemaPropertySpec,
-             (arg("primType"), arg("propName")))
-        .staticmethod("GetSchemaPropertySpec")
-
-        .def("GetSchemaAttributeSpec",
-             &This::GetSchemaAttributeSpec,
-             (arg("primType"), arg("attrName")))
-        .staticmethod("GetSchemaAttributeSpec")
-
-        .def("GetSchemaRelationshipSpec",
-             &This::GetSchemaRelationshipSpec,
-             (arg("primType"), arg("relName")))
-        .staticmethod("GetSchemaRelationshipSpec")
-
-        .def("GetDisallowedFields",
-             &This::GetDisallowedFields,
-             return_value_policy<TfPySequenceToList>())
-        .staticmethod("GetDisallowedFields")
+        .def("IsDisallowedField",
+             &This::IsDisallowedField,
+             (arg("fieldName")))
+        .staticmethod("IsDisallowedField")
 
         .def("IsTyped",
              &This::IsTyped,
@@ -129,5 +114,9 @@ void wrapUsdSchemaRegistry()
         .def("GetEmptyPrimDefinition", 
              &This::GetEmptyPrimDefinition,
              return_internal_reference<>())
+
+        .def("BuildComposedPrimDefinition", 
+             &_WrapBuildComposedPrimDefinition,
+             return_value_policy<manage_new_object>())
         ;
 }

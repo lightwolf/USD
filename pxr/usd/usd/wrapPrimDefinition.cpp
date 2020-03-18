@@ -23,20 +23,31 @@
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/primDefinition.h"
+#include "pxr/usd/usd/pyConversions.h"
 
 #include "pxr/base/tf/pyResultConversions.h"
-
 #include <boost/python.hpp>
 
 using namespace boost::python;
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+static TfPyObjWrapper
+_WrapGetAttributeFallbackValue(const UsdPrimDefinition &self, 
+                               const TfToken &attrName)
+{
+    VtValue result;
+    self.GetAttributeFallbackValue(attrName, &result);
+    return UsdVtValueToPython(result);
+}
+
 void wrapUsdPrimDefinition()
 {
     typedef UsdPrimDefinition This;
     class_<This, boost::noncopyable>("PrimDefinition", no_init)
         .def("GetPropertyNames", &This::GetPropertyNames,
+             return_value_policy<TfPySequenceToList>())
+        .def("GetAppliedAPISchemas", &This::GetAppliedAPISchemas,
              return_value_policy<TfPySequenceToList>())
         .def("GetSchemaPrimSpec", &This::GetSchemaPrimSpec)
         .def("GetSchemaPropertySpec", &This::GetSchemaPropertySpec,
@@ -45,6 +56,8 @@ void wrapUsdPrimDefinition()
              (arg("attrName")))
         .def("GetSchemaRelationshipSpec", &This::GetSchemaRelationshipSpec,
              (arg("relName")))
+        .def("GetAttributeFallbackValue", &_WrapGetAttributeFallbackValue,
+             (arg("attrName"), arg("key")))
         .def("GetDocumentation", &This::GetDocumentation)
         ;
 }

@@ -1,5 +1,5 @@
 //
-// Copyright 2019 Pixar
+// Copyright 2020 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,32 +21,47 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-////////////////////////////////////////////////////////////////////////
+#ifndef PXR_IMAGING_HGIGL_RESOURCEBINDINGS_H
+#define PXR_IMAGING_HGIGL_RESOURCEBINDINGS_H
 
 #include "pxr/pxr.h"
-#include "pxr/base/tf/registryManager.h"
-#include "pxr/base/tf/scriptModuleLoader.h"
-#include "pxr/base/tf/token.h"
+#include "pxr/imaging/hgi/resourceBindings.h"
+#include "pxr/imaging/hgiGL/api.h"
 
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-TF_REGISTRY_FUNCTION(TfScriptModuleLoader) {
-    // List of direct dependencies for this library.
-    const std::vector<TfToken> reqs = {
-        TfToken("ar"),
-        TfToken("gf"),
-        TfToken("ndr"),
-        TfToken("sdr"),
-        TfToken("tf"),
-        TfToken("vt")
-    };
-    TfScriptModuleLoader::GetInstance().
-        RegisterLibrary(TfToken("rmanArgsParser"),
-        TfToken("pxr.RmanArgsParser"), reqs);
-}
+
+///
+/// \class HgiGLResourceBindings
+///
+/// OpenGL implementation of HgiResourceBindings.
+///
+///
+class HgiGLResourceBindings final : public HgiResourceBindings
+{
+public:
+    HGIGL_API
+    HgiGLResourceBindings(HgiResourceBindingsDesc const& desc);
+
+    HGIGL_API
+    virtual ~HgiGLResourceBindings();
+
+    /// Binds the resources to GPU.
+    HGIGL_API
+    void BindResources();
+
+private:
+    HgiGLResourceBindings() = delete;
+    HgiGLResourceBindings & operator=(const HgiGLResourceBindings&) = delete;
+    HgiGLResourceBindings(const HgiGLResourceBindings&) = delete;
+
+private:
+    uint32_t _vao;
+};
+
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-
+#endif

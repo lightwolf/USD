@@ -41,14 +41,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// registered in the schema registry. It provides access to the the builtin 
 /// properties of a prim whose type is defined by this definition. 
 /// 
-/// Instances of this class are managed by the schema registry and can only be 
-/// created by the UsdSchemaRegistry.
-/// 
-// XXX: Right now these prim definitions will only exist for single prim types
-// or applied API schema types and will be fully owned and managed by the 
-// schema registry. In an upcoming change, functionality will be add to build 
-// a fully composed new UsdPrimDefinition from a list of prim type and applied
-// API schema types on the fly for prim's that need it.
+/// Instances of this class can only be created by the UsdSchemaRegistry.
 class UsdPrimDefinition
 {
 public:
@@ -57,42 +50,10 @@ public:
     /// Return the list of names of builtin properties for this prim definition.
     const TfTokenVector &GetPropertyNames() const { return _properties; }
 
-    /// Return in \p value of the field \p fieldName for the property named 
-    /// \p propName under the prim type represented by this prim definition. 
-    /// Returns \c true if the value exists, \c false otherwise.
-    /// 
-    /// It is preferable to use this method to access property field values, as
-    /// opposed to getting a spec handle from GetSchemaPropertySpec, as this
-    /// method is faster.
-    template <class T>
-    bool HasField(const TfToken& propName, const TfToken& fieldName, T* value) const
-    {
-        if (const SdfPath *path = TfMapLookupPtr(_propPathMap, propName)) {
-            return _GetSchematics()->HasField(*path, fieldName, value);
-        }
-        return false;
-    }
-
-    /// Return in \p value at the key path \p keyPath of the dictionary held
-    /// in the field \p fieldName for the property named \p propName under the 
-    /// prim type represented by this prim definition. 
-    /// Returns \c true a dictionary value exists and holds a value at the key
-    /// path, \c false otherwise.
-    /// 
-    /// It is preferable to use this method to access property field values, as
-    /// opposed to getting a spec handle from GetSchemaPropertySpec, as this
-    /// method is faster.
-    template <class T>
-    bool HasFieldDictKey(const TfToken& propName,
-                         const TfToken& fieldName,
-                         const TfToken& keyPath,
-                         T* value) const
-    {
-        if (const SdfPath *path = TfMapLookupPtr(_propPathMap, propName)) {
-            return _GetSchematics()->HasFieldDictKey(
-                *path, fieldName, keyPath, value);
-        }
-        return false;
+    /// Return the list of names of the API schemas that have been applied to
+    /// this prim definition in order.
+    const TfTokenVector& GetAppliedAPISchemas() const { 
+        return _appliedAPISchemas; 
     }
 
     /// Return the SdfSpecType for \p propName if it is a builtin property of
@@ -144,6 +105,17 @@ public:
         return TfNullPtr;
     }
 
+    /// Retrieves the fallback value for the attribute named \p attrName and
+    /// stores it in \p value if possible. 
+    /// 
+    /// Returns true if the attribute exists in this prim definition and it has
+    /// a fallback value defined. Returns false otherwise. 
+    template <class T>
+    bool GetAttributeFallbackValue(const TfToken &attrName, T *value) const
+    {
+        return _HasField(attrName, SdfFieldKeys->Default, value);
+    }
+
     /// Returns the documentation for this prim definition
     /// This is based on the documentation metadata specified for this schema.
     std::string GetDocumentation() const {
@@ -153,6 +125,51 @@ public:
 private:
     // Only the UsdSchemaRegistry can construct prim definitions.
     friend class UsdSchemaRegistry;
+
+    // Friended private accessor for use by UsdStage when composing metadata 
+    // values for value resolution. The public GetMetadata functions perform
+    // the extra step of filtering out disallowed or private metadata fields
+    // from the SdfSpecs before retrieving metadata. Value resolution does not
+    // want to pay that extra cost so uses this function instead.
+    template <class T>
+    friend bool Usd_GetFallbackValue(const UsdPrimDefinition &primDef,
+                                     const TfToken &propName,
+                                     const TfToken &fieldName,
+                                     const TfToken &keyPath,
+                                     T *value)
+    {
+        // Try to read fallback value.
+        return keyPath.IsEmpty() ?
+            primDef._HasField(propName, fieldName, value) :
+            primDef._HasFieldDictKey(propName, fieldName, keyPath, value);
+    }
+
+    /// It is preferable to use the _HasField and _HasFieldDictKey methods to 
+    /// access property field values, as opposed to getting a spec handle from 
+    /// the GetSchemaXXXSpec functions, as these methods are faster.
+    template <class T>
+    bool _HasField(const TfToken& propName,
+                   const TfToken& fieldName,
+                   T* value) const
+    {
+        if (const SdfPath *path = TfMapLookupPtr(_propPathMap, propName)) {
+            return _GetSchematics()->HasField(*path, fieldName, value);
+        }
+        return false;
+    }
+
+    template <class T>
+    bool _HasFieldDictKey(const TfToken& propName,
+                          const TfToken& fieldName,
+                          const TfToken& keyPath,
+                          T* value) const
+    {
+        if (const SdfPath *path = TfMapLookupPtr(_propPathMap, propName)) {
+            return _GetSchematics()->HasFieldDictKey(
+                *path, fieldName, keyPath, value);
+        }
+        return false;
+    }
 
     UsdPrimDefinition() = default;
 
@@ -170,6 +187,7 @@ private:
     using _PrimTypePropNameToPathMap = 
         TfHashMap<TfToken, SdfPath, TfToken::HashFunctor>;
     _PrimTypePropNameToPathMap _propPathMap;
+    TfTokenVector _appliedAPISchemas;
 
     // Cached list of property names.
     TfTokenVector _properties;

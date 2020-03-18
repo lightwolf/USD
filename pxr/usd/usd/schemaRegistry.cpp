@@ -30,6 +30,7 @@
 #include "pxr/usd/usd/typed.h"
 #include "pxr/usd/usd/schemaBase.h"
 #include "pxr/usd/usd/apiSchemaBase.h"
+#include "pxr/usd/usd/tokens.h"
 
 #include "pxr/base/plug/plugin.h"
 #include "pxr/base/plug/registry.h"
@@ -77,22 +78,17 @@ TF_DEFINE_PRIVATE_TOKENS(
 
 template <class T>
 static void
-_CopySpec(const T &srcSpec, const T &dstSpec, 
-          const std::vector<TfToken> &disallowedFields)
+_CopySpec(const T &srcSpec, const T &dstSpec)
 {
     for (const TfToken& key : srcSpec->ListInfoKeys()) {
-        const bool isDisallowed = std::binary_search(
-            disallowedFields.begin(), disallowedFields.end(), key,
-            TfTokenFastArbitraryLessThan());
-        if (!isDisallowed) {
+        if (!UsdSchemaRegistry::IsDisallowedField(key)) {
             dstSpec->SetInfo(key, srcSpec->GetInfo(key));
         }
     }
 }
 
 static void
-_AddSchema(SdfLayerRefPtr const &source, SdfLayerRefPtr const &target,
-           std::vector<TfToken> const &disallowedFields)
+_AddSchema(SdfLayerRefPtr const &source, SdfLayerRefPtr const &target)
 {
     for (SdfPrimSpecHandle const &prim: source->GetRootPrims()) {
         if (!target->GetPrimAtPath(prim->GetPath())) {
@@ -100,14 +96,14 @@ _AddSchema(SdfLayerRefPtr const &source, SdfLayerRefPtr const &target,
             SdfPrimSpecHandle newPrim =
                 SdfPrimSpec::New(target, prim->GetName(), prim->GetSpecifier(),
                                  prim->GetTypeName());
-            _CopySpec(prim, newPrim, disallowedFields);
+            _CopySpec(prim, newPrim);
 
             for (SdfAttributeSpecHandle const &attr: prim->GetAttributes()) {
                 SdfAttributeSpecHandle newAttr =
                     SdfAttributeSpec::New(
                         newPrim, attr->GetName(), attr->GetTypeName(),
                         attr->GetVariability(), attr->IsCustom());
-                _CopySpec(attr, newAttr, disallowedFields);
+                _CopySpec(attr, newAttr);
             }
 
             for (SdfRelationshipSpecHandle const &rel:
@@ -115,7 +111,7 @@ _AddSchema(SdfLayerRefPtr const &source, SdfLayerRefPtr const &target,
                 SdfRelationshipSpecHandle newRel =
                     SdfRelationshipSpec::New(
                         newPrim, rel->GetName(), rel->IsCustom());
-                _CopySpec(rel, newRel, disallowedFields);
+                _CopySpec(rel, newRel);
             }
         }
     }
@@ -176,12 +172,6 @@ UsdSchemaRegistry::_FindAndAddPluginSchema()
             });
     }
 
-    // Get list of disallowed fields in schemas and sort them so that
-    // helper functions in _AddSchema can binary search through them.
-    std::vector<TfToken> disallowedFields = GetDisallowedFields();
-    std::sort(disallowedFields.begin(), disallowedFields.end(),
-              TfTokenFastArbitraryLessThan());
-
     SdfChangeBlock block;
     TfToken::HashSet appliedAPISchemaNames;
     for (const SdfLayerRefPtr& generatedSchema : generatedSchemas) {
@@ -225,9 +215,30 @@ UsdSchemaRegistry::_FindAndAddPluginSchema()
                 }
             }
 
-            _AddSchema(generatedSchema, _schematics, disallowedFields);
+            _AddSchema(generatedSchema, _schematics);
         }
     }
+
+    // Concrete typed prim schemas may contain a list of apiSchemas in their 
+    // schema prim definition which affect their set of fallback properties. 
+    // For these prim types, we'll need to defer the creation of their prim 
+    // definitions until all the API schema prim definitions have been created.
+    // So we'll store the necessary info about these prim types in this struct
+    // so we can create their definitions after the main loop.
+    struct _PrimDefInfo {
+        TfToken typeNameToken;
+        TfToken usdTypeNameToken;
+        SdfPrimSpecHandle primSpec;
+        TfTokenVector fallbackAPISchemas;
+
+        _PrimDefInfo(const TfToken &typeNameToken_,
+                     const TfToken &usdTypeNameToken_,
+                     const SdfPrimSpecHandle &primSpec_)
+        : typeNameToken(typeNameToken_)
+        , usdTypeNameToken(usdTypeNameToken_)
+        , primSpec(primSpec_) {}
+    };
+    std::vector<_PrimDefInfo> primTypesWithAPISchemas;
 
     // Add them to the type -> path and typeName -> path maps, and the prim type
     // & prop name -> path maps.
@@ -272,15 +283,40 @@ UsdSchemaRegistry::_FindAndAddPluginSchema()
                             new UsdPrimDefinition(primSpec);
                     }
                 } else {
-                    // Otherwise it's a concrete type. Add the new prim 
-                    // definition to the concrete typed schema map also using 
-                    // both the USD and TfType name.
-                    _concreteTypedPrimDefinitions[typeNameToken] = 
-                        _concreteTypedPrimDefinitions[usdTypeNameToken] = 
-                        new UsdPrimDefinition(primSpec);
+                    // Otherwise it's a concrete type. If it has no API schemas,
+                    // add the new prim definition to the concrete typed schema 
+                    // map also using both the USD and TfType name. Otherwise
+                    // collect the API schemas and defer.
+                    SdfTokenListOp fallbackAPISchemaListOp;
+                    if (_schematics->HasField(primPath, UsdTokens->apiSchemas, 
+                                              &fallbackAPISchemaListOp)) {
+                        primTypesWithAPISchemas.emplace_back(
+                            typeNameToken, usdTypeNameToken, primSpec);
+                        fallbackAPISchemaListOp.ApplyOperations(
+                            &primTypesWithAPISchemas.back().fallbackAPISchemas);
+                    } else {
+                        _concreteTypedPrimDefinitions[typeNameToken] = 
+                            _concreteTypedPrimDefinitions[usdTypeNameToken] = 
+                            new UsdPrimDefinition(primSpec);
+                    }
                 }
             }
         }
+    }
+
+    // All valid API schema prim definitions now exist so create the concrete
+    // typed prim definitions that require API schemas.
+    for (const auto &it : primTypesWithAPISchemas) {
+        // We create an empty prim definition, apply the API schemas and then
+        // add the typed prim spec. This is specifically because the authored
+        // opinions on the prim spec are stronger than the API schema fallbacks
+        // here.
+        UsdPrimDefinition *primDef =
+            _concreteTypedPrimDefinitions[it.typeNameToken] = 
+            _concreteTypedPrimDefinitions[it.usdTypeNameToken] = 
+            new UsdPrimDefinition();
+        _ApplyAPISchemasToPrimDefinition(primDef, it.fallbackAPISchemas);
+        _ApplyPrimSpecToPrimDefinition(primDef, it.primSpec);
     }
 }
 
@@ -299,88 +335,52 @@ UsdSchemaRegistry::UsdSchemaRegistry()
 }
 
 /*static*/
-SdfPrimSpecHandle
-UsdSchemaRegistry::GetSchemaPrimSpec(const TfToken &primType)
+bool 
+UsdSchemaRegistry::IsDisallowedField(const TfToken &fieldName)
 {
-    auto const &self = GetInstance();
-    const UsdPrimDefinition *primDef = 
-        self.FindConcretePrimDefinition(primType);
-    return primDef ? primDef->GetSchemaPrimSpec() : TfNullPtr;
-}
+    static TfHashSet<TfToken, TfToken::HashFunctor> disallowedFields;
 
-/*static*/
-SdfPrimSpecHandle
-UsdSchemaRegistry::GetSchemaPrimSpec(const TfType &primType)
-{
-    return GetSchemaPrimSpec(GetInstance().GetSchemaTypeName(primType));
-}
-
-/*static*/
-SdfPropertySpecHandle
-UsdSchemaRegistry::GetSchemaPropertySpec(const TfToken& primType, 
-                                         const TfToken& propName)
-{
-    auto const &self = GetInstance();
-    const UsdPrimDefinition *primDef = 
-        self.FindConcretePrimDefinition(primType);
-    return primDef ? primDef->GetSchemaPropertySpec(propName) : TfNullPtr;
-}
-
-/*static*/
-SdfAttributeSpecHandle
-UsdSchemaRegistry::GetSchemaAttributeSpec(const TfToken& primType, 
-                                          const TfToken& attrName)
-{
-    auto const &self = GetInstance();
-    const UsdPrimDefinition *primDef = 
-        self.FindConcretePrimDefinition(primType);
-    return primDef ? primDef->GetSchemaAttributeSpec(attrName) : TfNullPtr;
-}
-
-/*static*/
-SdfRelationshipSpecHandle
-UsdSchemaRegistry::GetSchemaRelationshipSpec(const TfToken& primType, 
-                                             const TfToken& relName)
-{
-    auto const &self = GetInstance();
-    const UsdPrimDefinition *primDef = 
-        self.FindConcretePrimDefinition(primType);
-    return primDef ? primDef->GetSchemaRelationshipSpec(relName) : TfNullPtr;
-}
-
-/*static*/
-std::vector<TfToken>
-UsdSchemaRegistry::GetDisallowedFields()
-{
-    std::vector<TfToken> result = {
+    // XXX -- Use this instead of an initializer list in case TfHashSet
+    //        doesn't support initializer lists.  Should ensure that
+    //        TfHashSet does support them.
+    static std::once_flag once;
+    std::call_once(once, [](){
         // Disallow fallback values for composition arc fields, since they
         // won't be used during composition.
-        SdfFieldKeys->InheritPaths,
-        SdfFieldKeys->Payload,
-        SdfFieldKeys->References,
-        SdfFieldKeys->Specializes,
-        SdfFieldKeys->VariantSelection,
-        SdfFieldKeys->VariantSetNames,
+        disallowedFields.insert(SdfFieldKeys->InheritPaths);
+        disallowedFields.insert(SdfFieldKeys->Payload);
+        disallowedFields.insert(SdfFieldKeys->References);
+        disallowedFields.insert(SdfFieldKeys->Specializes);
+        disallowedFields.insert(SdfFieldKeys->VariantSelection);
+        disallowedFields.insert(SdfFieldKeys->VariantSetNames);
 
         // Disallow customData, since it contains information used by
         // usdGenSchema that isn't relevant to other consumers.
-        SdfFieldKeys->CustomData,
+        disallowedFields.insert(SdfFieldKeys->CustomData);
 
         // Disallow fallback values for these fields, since they won't be
         // used during scenegraph population or value resolution.
-        SdfFieldKeys->Active,
-        SdfFieldKeys->Instanceable,
-        SdfFieldKeys->TimeSamples,
-        SdfFieldKeys->ConnectionPaths,
-        SdfFieldKeys->TargetPaths
-    };
+        disallowedFields.insert(SdfFieldKeys->Active);
+        disallowedFields.insert(SdfFieldKeys->Instanceable);
+        disallowedFields.insert(SdfFieldKeys->TimeSamples);
+        disallowedFields.insert(SdfFieldKeys->ConnectionPaths);
+        disallowedFields.insert(SdfFieldKeys->TargetPaths);
 
-    // Disallow fallback values for clip-related fields, since they won't
-    // be used during value resolution.
-    const std::vector<TfToken> clipFields = UsdGetClipRelatedFields();
-    result.insert(result.end(), clipFields.begin(), clipFields.end());
+        // Disallow fallback values for specifier. Even though it will always
+        // be present, it has no meaning as a fallback value.
+        disallowedFields.insert(SdfFieldKeys->Specifier);
 
-    return result;
+        // Disallow fallback values for children fields.
+        disallowedFields.insert(SdfChildrenKeys->allTokens.begin(),
+                                SdfChildrenKeys->allTokens.end());
+
+        // Disallow fallback values for clip-related fields, since they won't
+        // be used during value resolution.
+        const std::vector<TfToken> clipFields = UsdGetClipRelatedFields();
+        disallowedFields.insert(clipFields.begin(), clipFields.end());
+    });
+
+    return (disallowedFields.find(fieldName) != disallowedFields.end());
 }
 
 /*static*/
@@ -436,6 +436,148 @@ UsdSchemaRegistry::GetTypeFromName(const TfToken& typeName){
         *_schemaBaseType, typeName.GetString());
 }
 
+// The type name for an applied API schema will consist of a schema type name
+// and an instance name if the API schema is multiple apply. This function 
+// parses that for us.
+static std::pair<TfToken, TfToken> _GetTypeAndInstance(const TfToken &typeName)
+{
+    // Try to split the string at the first namespace delimiter. We always use
+    // the first as type names can not have embedded namespaces but instances 
+    // names can.
+    const char namespaceDelimiter =
+        SdfPathTokens->namespaceDelimiter.GetText()[0];
+    const std::string &typeString = typeName.GetString();
+    size_t delim = typeString.find(namespaceDelimiter);
+    // If the delimiter is not found, we have a single apply API schema and 
+    // no instance name.
+    if (delim == std::string::npos) {
+        return std::make_pair(typeName, TfToken());
+    } else {
+        return std::make_pair(TfToken(typeString.substr(0, delim)),
+                              TfToken(typeString.c_str() + delim + 1));
+    }
+}
+
+std::unique_ptr<UsdPrimDefinition>
+UsdSchemaRegistry::BuildComposedPrimDefinition(
+    const TfToken &primType, const TfTokenVector &appliedAPISchemas) const
+{
+    if (appliedAPISchemas.empty()) {
+        TF_CODING_ERROR("BuildComposedPrimDefinition without applied API "
+                        "schemas is not allowed. If you want a prim definition "
+                        "for a single prim type with no appied schemas, use "
+                        "FindConcretePrimDefinition instead.");
+        return std::unique_ptr<UsdPrimDefinition>();
+    }
+
+    // Start with a copy of the prim definition for the typed prim type. Note 
+    // that its perfectly valid for there to be no prim definition for the given
+    // type, in which case we start with an empty prim definition.
+    const UsdPrimDefinition *primDef = FindConcretePrimDefinition(primType);
+    std::unique_ptr<UsdPrimDefinition> composedPrimDef(
+        primDef ? new UsdPrimDefinition(*primDef) : new UsdPrimDefinition());
+
+    // Now we'll add in properties from each applied API schema in order. Note
+    // that in this loop, if we encounter a property name that already exists
+    // we overwrite it. This will be rare and discouraged in practice, but this
+    // is policy in property name conflicts from applied schemas.
+    _ApplyAPISchemasToPrimDefinition(composedPrimDef.get(), appliedAPISchemas);
+        
+    return composedPrimDef;
+}
+
+void UsdSchemaRegistry::_ApplyPrimSpecToPrimDefinition(
+    UsdPrimDefinition *primDef, const SdfPrimSpecHandle &primSpec) const
+{
+    primDef->_primSpec = primSpec;
+    // Adds the path for each property overwriting the property if one with
+    // that name already exists but without adding duplicates to the property
+    // names list.
+    for (SdfPropertySpecHandle prop: primSpec->GetProperties()) {
+        const TfToken &propName = prop->GetNameToken();
+        const SdfPath &propPath = prop->GetPath();
+        auto it = primDef->_propPathMap.insert(
+            std::make_pair(propName, propPath));
+        if (it.second) {
+            primDef->_properties.push_back(propName);
+        } else {
+            it.first->second = propPath;
+        }
+    }
+}
+
+void UsdSchemaRegistry::_ApplyAPISchemasToPrimDefinition(
+    UsdPrimDefinition *primDef, const TfTokenVector &appliedAPISchemas) const
+{
+    // Adds the property name with schema path to the prim def. This makes sure
+    // we overwrite the original property path with the new path if it already
+    // exists, but makes sure we don't end up with duplicate names in the 
+    // property names list.
+    auto _AddProperty = [&primDef](const std::pair<TfToken, SdfPath> &value)
+    {
+        auto it = primDef->_propPathMap.insert(value);
+        if (it.second) {
+            primDef->_properties.push_back(value.first);
+        } else {
+            it.first->second = value.second;
+        }
+    };
+
+    // Append the new applied schema names to the existing applied schemas for
+    // prim definition.
+    primDef->_appliedAPISchemas.insert(primDef->_appliedAPISchemas.end(), 
+        appliedAPISchemas.begin(), appliedAPISchemas.end());
+
+    // Now we'll add in properties from each new applied API schema in order. 
+    // Note that applied API schemas are ordered weakest to strongest so we 
+    // overwrite a property's path if we encounter a duplicate property name.
+    for (const TfToken &schema : appliedAPISchemas) {
+
+        // Applied schemas may be single or multiple apply so we have to parse
+        // the schema name into a type and possibly an instance name.
+        auto typeAndInstance = _GetTypeAndInstance(schema);
+
+        // From the type we should able to find an existing prim definition for
+        // the API schema type if it is valid.
+        const UsdPrimDefinition *apiSchemaTypeDef = 
+            FindAppliedAPIPrimDefinition(typeAndInstance.first);
+        if (!apiSchemaTypeDef) {
+            continue;
+        }
+
+        if (typeAndInstance.second.IsEmpty()) {
+            // An empty instance name indicates a single apply schema. Just 
+            // copy its properties into the new prim definition.
+            for (const auto &it : apiSchemaTypeDef->_propPathMap) {
+                _AddProperty(it);
+            }
+        } else {
+            // Otherwise we have a multiple apply schema. We need to use the 
+            // instance name and the property prefix to map and add the correct
+            // properties for this instance.
+            auto it = _multipleApplyAPISchemaNamespaces.find(
+                typeAndInstance.first);
+            if (it == _multipleApplyAPISchemaNamespaces.end()) {
+                // Warn that this not actually a multiple apply schema type?
+                continue;
+            }
+            const TfToken &prefix = it->second;
+            if (TF_VERIFY(!prefix.IsEmpty())) {
+                // The prim definition for a multiple apply schema will have its
+                // properties stored with no prefix. We generate the prefix for 
+                // the this instance and apply it to each property name and map
+                // the prefix name to the definition's property.
+                const std::string propPrefix = 
+                    SdfPath::JoinIdentifier(prefix, typeAndInstance.second);
+                for (const auto &it : apiSchemaTypeDef->_propPathMap) {
+                    const TfToken prefixedPropName(
+                        SdfPath::JoinIdentifier(propPrefix, it.first.GetString()));
+                    _AddProperty(std::make_pair(prefixedPropName, it.second));
+                }
+            }
+        }
+    }
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
