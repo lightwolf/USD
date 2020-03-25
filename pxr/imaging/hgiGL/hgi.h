@@ -28,6 +28,7 @@
 #include "pxr/imaging/hgiGL/api.h"
 #include "pxr/imaging/hgiGL/immediateCommandBuffer.h"
 #include "pxr/imaging/hgi/hgi.h"
+#include "pxr/imaging/hgi/tokens.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -97,6 +98,16 @@ public:
 
     HGIGL_API
     void DestroyPipeline(HgiPipelineHandle* pipeHandle) override;
+    
+    HGIGL_API
+    TfToken const& GetAPIName() const override;
+    
+    HGIGL_API
+    void StartFrame() override {};
+
+    HGIGL_API
+    void EndFrame() override {};
+
 
 private:
     HgiGL & operator=(const HgiGL&) = delete;

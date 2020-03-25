@@ -110,6 +110,8 @@ enum HgiAttachmentLoadOp
     HgiAttachmentLoadOpDontCare = 0,
     HgiAttachmentLoadOpClear,
     HgiAttachmentLoadOpLoad,
+    
+    HgiAttachmentLoadOpCount
 };
 
 /// \enum HgiAttachmentStoreOp
@@ -127,6 +129,8 @@ enum HgiAttachmentStoreOp
 {
     HgiAttachmentStoreOpDontCare = 0,
     HgiAttachmentStoreOpStore,
+    
+    HgiAttachmentStoreOpCount
 };
 
 /// \enum HgiBufferUsageBits
@@ -303,7 +307,7 @@ enum HgiWinding
 ///
 enum HgiBlendOp
 {
-    HgiBlendOpAdd,
+    HgiBlendOpAdd = 0,
     HgiBlendOpSubtract,
     HgiBlendOpReverseSubtract,
     HgiBlendOpMin,
@@ -318,7 +322,7 @@ enum HgiBlendOp
 ///
 enum HgiBlendFactor
 {
-    HgiBlendFactorZero,
+    HgiBlendFactorZero = 0,
     HgiBlendFactorOne,
     HgiBlendFactorSrcColor,
     HgiBlendFactorOneMinusSrcColor,
@@ -339,6 +343,25 @@ enum HgiBlendFactor
     HgiBlendFactorOneMinusSrc1Alpha,
 
     HgiBlendFactorCount
+};
+
+
+/// \enum HgiCompareFunction
+///
+/// Compare functions.
+///
+enum HgiCompareFunction
+{
+    HgiCompareFunctionNever = 0,
+    HgiCompareFunctionLess,
+    HgiCompareFunctionEqual,
+    HgiCompareFunctionLEqual,
+    HgiCompareFunctionGreater,
+    HgiCompareFunctionNotEqual,
+    HgiCompareFunctionGEqual,
+    HgiCompareFunctionAlways,
+
+    HgiCompareFunctionCount
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -25,6 +25,7 @@
 #define PXR_IMAGING_HGI_HGI_H
 
 #include "pxr/pxr.h"
+#include "pxr/base/tf/token.h"
 #include "pxr/base/tf/type.h"
 
 #include "pxr/imaging/hgi/api.h"
@@ -146,6 +147,18 @@ public:
     /// Destroy a pipeline state object
     HGI_API
     virtual void DestroyPipeline(HgiPipelineHandle* pipeHandle) = 0;
+    
+    /// Return the name of the api (e.g. "OpenGL")
+    HGI_API
+    virtual TfToken const& GetAPIName() const = 0;
+
+    /// Called at the start of a new rendering frame.
+    HGI_API
+    virtual void StartFrame() = 0;
+
+    /// Called at the end of a rendering frame.
+    HGI_API
+    virtual void EndFrame() = 0;
 
 protected:
     // Returns a unique id for handle creation.
