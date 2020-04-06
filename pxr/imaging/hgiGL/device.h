@@ -1,5 +1,5 @@
 //
-// Copyright 2019 Pixar
+// Copyright 2020 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,57 +21,58 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_IMAGING_HGI_GL_IMMEDIATE_COMMAND_BUFFER_H
-#define PXR_IMAGING_HGI_GL_IMMEDIATE_COMMAND_BUFFER_H
+#ifndef PXR_IMAGING_HGIGL_DEVICE_H
+#define PXR_IMAGING_HGIGL_DEVICE_H
 
 #include "pxr/pxr.h"
-#include "pxr/imaging/hgi/immediateCommandBuffer.h"
+#include "pxr/imaging/hgi/graphicsEncoderDesc.h"
 #include "pxr/imaging/hgiGL/api.h"
+#include "pxr/imaging/hgiGL/framebufferCache.h"
+
+#include <functional>
+#include <ostream>
+#include <fstream>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-typedef std::vector<struct HgiGLDescriptorCacheItem*> HgiGLDescriptorCacheVec;
+using HgiGLOpsFn = std::function<void(void)>;
+using HgiGLOpsVector = std::vector<HgiGLOpsFn>;
 
-/// \class HgiGLImmediateCommandBuffer
+
+/// \class HgiGlDevice
 ///
-/// OpenGL implementation of HgiImmediateCommandBuffer
+/// OpenGL implementation of GPU device.
+/// Note that there is only one global opengl context / device.
 ///
-class HgiGLImmediateCommandBuffer final : public HgiImmediateCommandBuffer
-{
+class HgiGLDevice final {
 public:
     HGIGL_API
-    virtual ~HgiGLImmediateCommandBuffer();
+    HgiGLDevice();
 
     HGIGL_API
-    HgiGraphicsEncoderUniquePtr CreateGraphicsEncoder(
-        HgiGraphicsEncoderDesc const& desc) override;
+    ~HgiGLDevice();
 
+    /// Get a framebuffer that matches the descriptor.
+    /// Do not hold onto the framebuffer Id. Instead re0acquire it every frame.
+    /// Framebuffer are internally managed in a framebuffer cache.
     HGIGL_API
-    HgiBlitEncoderUniquePtr CreateBlitEncoder() override;
+    uint32_t AcquireFramebuffer(HgiGraphicsEncoderDesc const& desc);
 
+    /// Helper function used by encoders to execute all their deferred
+    /// command functions ('ops') during the encoder commit phase.
     HGIGL_API
-    void BlockUntilCompleted() override;
-
-    HGIGL_API
-    void BlockUntilSubmitted() override;
-
-protected:
-    friend class HgiGL;
-
-    HGIGL_API
-    HgiGLImmediateCommandBuffer();
+    static void Commit(HgiGLOpsVector const& ops);
 
 private:
-    HgiGLImmediateCommandBuffer & operator=
-        (const HgiGLImmediateCommandBuffer&) = delete;
-    HgiGLImmediateCommandBuffer(const HgiGLImmediateCommandBuffer&) = delete;
+    HgiGLDevice & operator=(const HgiGLDevice&) = delete;
+    HgiGLDevice(const HgiGLDevice&) = delete;
 
-    friend std::ostream& operator<<(
-        std::ostream& out,
-        const HgiGLImmediateCommandBuffer& cmdBuf);
+    friend std::ofstream& operator<<(
+        std::ofstream& out,
+        const HgiGLDevice& dev);
 
-    HgiGLDescriptorCacheVec _descriptorCache;
+    HgiGLFramebufferCache _framebufferCache;
 };
 
 

@@ -79,7 +79,6 @@ pxr_library(hdSt
         renderPass
         renderPassShader
         renderPassState
-        resourceBinder
         resourceGL
         resourceRegistry
         rprimUtils
@@ -111,10 +110,12 @@ pxr_library(hdSt
         immediateDrawBatch
         indirectDrawBatch
         materialBufferSourceAndTextureHelper
+        materialParam
         meshShaderKey
         meshTopology 
         pointsShaderKey
         quadrangulate
+        resourceBinder
         shaderKey
         subdivision
         subdivision3

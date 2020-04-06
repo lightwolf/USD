@@ -25,6 +25,8 @@
 #include "pxr/imaging/hdSt/simpleLightingShader.h"
 #include "pxr/imaging/hdSt/textureResource.h"
 #include "pxr/imaging/hdSt/package.h"
+#include "pxr/imaging/hdSt/materialParam.h"
+#include "pxr/imaging/hdSt/resourceBinder.h"
 
 #include "pxr/imaging/hd/binding.h"
 #include "pxr/imaging/hd/perfLog.h"
@@ -58,16 +60,14 @@ HdStSimpleLightingShader::HdStSimpleLightingShader()
     : _lightingContext(GlfSimpleLightingContext::New())
     , _bindingMap(TfCreateRefPtr(new GlfBindingMap()))
     , _useLighting(true)
+    , _glslfx(new HioGlslfx(HdStPackageSimpleLightingShader()))
 {
     _lightingContext->InitUniformBlockBindings(_bindingMap);
     _lightingContext->InitSamplerUnitBindings(_bindingMap);
 
-    _glslfx.reset(new HioGlslfx(HdStPackageSimpleLightingShader()));
 }
 
-HdStSimpleLightingShader::~HdStSimpleLightingShader()
-{
-}
+HdStSimpleLightingShader::~HdStSimpleLightingShader() = default;
 
 /* virtual */
 HdStSimpleLightingShader::ID
@@ -242,7 +242,7 @@ HdStSimpleLightingShader::AddBindings(HdBindingRequestVector *customBindings)
 
             // irradiance map
             _lightTextureParams.push_back(
-                    HdMaterialParam(HdMaterialParam::ParamTypeTexture,
+                    HdSt_MaterialParam(HdSt_MaterialParam::ParamTypeTexture,
                     _tokens->domeLightIrradiance,
                     VtValue(GfVec4f(0.0)),
                     SdfPath(),
@@ -250,7 +250,7 @@ HdStSimpleLightingShader::AddBindings(HdBindingRequestVector *customBindings)
                     HdTextureType::Uv));
             // prefilter map
             _lightTextureParams.push_back(
-                    HdMaterialParam(HdMaterialParam::ParamTypeTexture,
+                    HdSt_MaterialParam(HdSt_MaterialParam::ParamTypeTexture,
                     _tokens->domeLightPrefilter,
                     VtValue(GfVec4f(0.0)),
                     SdfPath(),
@@ -258,7 +258,7 @@ HdStSimpleLightingShader::AddBindings(HdBindingRequestVector *customBindings)
                     HdTextureType::Uv));
             // BRDF texture
             _lightTextureParams.push_back(
-                    HdMaterialParam(HdMaterialParam::ParamTypeTexture,
+                    HdSt_MaterialParam(HdSt_MaterialParam::ParamTypeTexture,
                     _tokens->domeLightBRDF,
                     VtValue(GfVec4f(0.0)),
                     SdfPath(),
@@ -268,7 +268,7 @@ HdStSimpleLightingShader::AddBindings(HdBindingRequestVector *customBindings)
     }
 }
 
-HdMaterialParamVector const& 
+HdSt_MaterialParamVector const& 
 HdStSimpleLightingShader::GetParams() const 
 {
     return _lightTextureParams;
