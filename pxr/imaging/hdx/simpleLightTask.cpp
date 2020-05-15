@@ -42,8 +42,6 @@
 
 #include "pxr/base/gf/frustum.h"
 
-#include <boost/bind.hpp>
-
 PXR_NAMESPACE_OPEN_SCOPE
 
 
@@ -85,7 +83,7 @@ HdxSimpleLightTask::Sync(HdSceneDelegate* delegate,
     // so later on other tasks can use this information 
     // draw shadows or other purposes
     (*ctx)[HdxTokens->lightingShader] =
-        boost::dynamic_pointer_cast<HdStLightingShader>(_lightingShader);
+        std::dynamic_pointer_cast<HdStLightingShader>(_lightingShader);
 
 
     HdRenderIndex &renderIndex = delegate->GetRenderIndex();

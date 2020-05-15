@@ -873,6 +873,13 @@ class StageView(QtOpenGL.QGLWidget):
         }
 
         self._renderParams = UsdImagingGL.RenderParams()
+
+        # Optionally override OCIO lut size. Similar env var available for
+        # other apps: ***_OCIO_LUT3D_EDGE_SIZE
+        ocioLutSize = os.getenv("USDVIEW_OCIO_LUT3D_EDGE_SIZE", 0)
+        if ocioLutSize > 0:
+            self._renderParams.lut3dSizeOCIO = ocioLutSize
+
         self._dist = 50 
         self._bbox = Gf.BBox3d()
         self._selectionBBox = Gf.BBox3d()
@@ -911,9 +918,10 @@ class StageView(QtOpenGL.QGLWidget):
         # before attempts to use the renderer (e.g. pick()), so we must
         # create the renderer lazily, when we try to do real work with it.
         if not self._renderer:
-            if self.isValid():
-                self._renderer = UsdImagingGL.Engine()
-                self._handleRendererChanged(self.GetCurrentRendererId())
+            if self.context().isValid():
+                if self.context().initialized():
+                    self._renderer = UsdImagingGL.Engine()
+                    self._handleRendererChanged(self.GetCurrentRendererId())
             elif not self._reportedContextError:
                 self._reportedContextError = True
                 raise RuntimeError("StageView could not initialize renderer without a valid GL context")
@@ -1389,8 +1397,6 @@ class StageView(QtOpenGL.QGLWidget):
         self._renderParams.enableSceneMaterials = self._dataModel.viewSettings.enableSceneMaterials
         self._renderParams.colorCorrectionMode = self._dataModel.viewSettings.colorCorrectionMode
         self._renderParams.clearColor = Gf.ConvertDisplayToLinear(Gf.Vec4f(self._dataModel.viewSettings.clearColor))
-        self._renderParams.renderResolution[0] = self.width()
-        self._renderParams.renderResolution[1] = self.height()
 
         pseudoRoot = self._dataModel.stage.GetPseudoRoot()
 
@@ -1960,7 +1966,8 @@ class StageView(QtOpenGL.QGLWidget):
         if (event.modifiers() & (QtCore.Qt.AltModifier | QtCore.Qt.MetaModifier)):
             if event.button() == QtCore.Qt.LeftButton:
                 self.switchToFreeCamera()
-                self._cameraMode = "tumble"
+                ctrlModifier = event.modifiers() & QtCore.Qt.ControlModifier
+                self._cameraMode = "truck" if ctrlModifier else "tumble"
             if event.button() == QtCore.Qt.MidButton:
                 self.switchToFreeCamera()
                 self._cameraMode = "truck"

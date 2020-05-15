@@ -1,9 +1,9 @@
 set(PXR_PREFIX pxr/usdImaging)
 set(PXR_PACKAGE usdImagingGL)
 
-if (NOT ${PXR_ENABLE_GL_SUPPORT})
+if (NOT ${PXR_BUILD_GPU_SUPPORT})
     message(STATUS
-        "Skipping ${PXR_PACKAGE} because PXR_ENABLE_GL_SUPPORT is OFF")
+        "Skipping ${PXR_PACKAGE} because PXR_BUILD_GPU_SUPPORT is OFF")
     return()
 endif()
 
@@ -31,7 +31,7 @@ pxr_library(usdImagingGL
         usdImaging
         ar
         ${Boost_PYTHON_LIBRARY}
-        ${PYTHON_LIBRARY}
+        ${PYTHON_LIBRARIES}
         ${OPENGL_gl_LIBRARY}
         ${OPENGL_glu_LIBRARY}
         ${GLEW_LIBRARY}

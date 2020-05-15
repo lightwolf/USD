@@ -277,7 +277,8 @@ public:
         GfVec3d *outHitPoint,
         SdfPath *outHitPrimPath = NULL,
         SdfPath *outHitInstancerPath = NULL,
-        int *outHitInstanceIndex = NULL);
+        int *outHitInstanceIndex = NULL,
+        HdInstancerContext *outInstancerContext = NULL);
 
     /// Decodes a pick result given hydra prim ID/instance ID (like you'd get
     /// from an ID render).
@@ -287,7 +288,8 @@ public:
         unsigned char const instanceIdColor[4],
         SdfPath *outHitPrimPath = NULL,
         SdfPath *outHitInstancerPath = NULL,
-        int *outHitInstanceIndex = NULL);
+        int *outHitInstanceIndex = NULL,
+        HdInstancerContext *outInstancerContext = NULL);
 
     /// @}
     
@@ -388,13 +390,9 @@ public:
     // ---------------------------------------------------------------------
 
     /// Set \p id to one of the HdxColorCorrectionTokens.
-    /// \p framebufferResolution should be the size of the bound framebuffer
-    /// that will be color corrected. It is recommended that a 16F or higher
-    /// AOV is bound for color correction.
     USDIMAGINGGL_API
     void SetColorCorrectionSettings(
-        TfToken const& id, 
-        GfVec2i const& framebufferResolution);
+        TfToken const& id);
 
     /// @}
 
