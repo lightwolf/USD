@@ -49,6 +49,7 @@ pxr_library(hdSt
         drawTargetAttachmentDesc
         drawTargetAttachmentDescArray
         drawTargetRenderPassState
+        dynamicUvTextureObject
         extComputation
         extCompGpuComputation
         extCompGpuComputationBufferSource
@@ -80,7 +81,6 @@ pxr_library(hdSt
         renderPass
         renderPassShader
         renderPassState
-        resourceGL
         resourceRegistry
         rprimUtils
         samplerObject

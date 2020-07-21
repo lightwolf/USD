@@ -47,7 +47,7 @@ public:
         HgiFormat inFormat,
         GLenum *outFormat,
         GLenum *outType,
-        GLenum *outInternalFormat);
+        GLenum *outInternalFormat = nullptr);
 
     HGIGL_API
     static GLenum GetFormatType(HgiFormat inFormat);
@@ -72,6 +72,17 @@ public:
 
     HGIGL_API
     static GLenum GetTextureType(HgiTextureType tt);
+
+    HGIGL_API
+    static GLenum GetSamplerAddressMode(HgiSamplerAddressMode am);
+
+    HGIGL_API
+    static GLenum GetMagFilter(HgiSamplerFilter mf);
+
+    HGIGL_API
+    static GLenum GetMinFilter(
+        HgiSamplerFilter minFilter, 
+        HgiMipFilter mipFilter);
 };
 
 

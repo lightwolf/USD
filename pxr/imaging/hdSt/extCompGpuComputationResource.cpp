@@ -110,7 +110,7 @@ HdStExtCompGpuComputationResource::Resolve()
 
             if (programInstance.IsFirstInstance()) {
                 HdStGLSLProgramSharedPtr glslProgram =
-                                                codeGen.CompileComputeProgram();
+                    codeGen.CompileComputeProgram(_registry.get());
                 if (!TF_VERIFY(glslProgram)) {
                     return false;
                 }
@@ -118,7 +118,7 @@ HdStExtCompGpuComputationResource::Resolve()
                 if (!glslProgram->Link()) {
                     std::string logString;
                     HdStGLUtils::GetProgramLinkStatus(
-                        glslProgram->GetProgram().GetId(),
+                        glslProgram->GetProgram()->GetRawResource(),
                         &logString);
                     TF_WARN("Failed to link compute shader: %s",
                             logString.c_str());

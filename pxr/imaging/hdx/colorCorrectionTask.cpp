@@ -97,7 +97,7 @@ HdxColorCorrectionTask::~HdxColorCorrectionTask()
     }
 
     if (_pipeline) {
-        _GetHgi()->DestroyPipeline(&_pipeline);
+        _GetHgi()->DestroyGraphicsPipeline(&_pipeline);
     }
 }
 
@@ -212,34 +212,38 @@ HdxColorCorrectionTask::_CreateShaderResources()
     HioGlslfx glslfx(HdxPackageColorCorrectionShader(), technique);
 
     // Setup the vertex shader
+    std::string vsCode;
     HgiShaderFunctionDesc vertDesc;
     vertDesc.debugName = _tokens->colorCorrectionVertex.GetString();
     vertDesc.shaderStage = HgiShaderStageVertex;
     if (technique != HgiTokens->Metal) {
-        vertDesc.shaderCode = "#version 450 \n";
+        vsCode = "#version 450 \n";
     }
-    vertDesc.shaderCode += glslfx.GetSource(_tokens->colorCorrectionVertex);
+    vsCode += glslfx.GetSource(_tokens->colorCorrectionVertex);
+    vertDesc.shaderCode = vsCode.c_str();;
     HgiShaderFunctionHandle vertFn = _GetHgi()->CreateShaderFunction(vertDesc);
 
     // Setup the fragment shader
+    std::string fsCode;
     HgiShaderFunctionDesc fragDesc;
     fragDesc.debugName = _tokens->colorCorrectionFragment.GetString();
     fragDesc.shaderStage = HgiShaderStageFragment;
     if (technique != HgiTokens->Metal) {
-        fragDesc.shaderCode = "#version 450 \n";
+        fsCode = "#version 450 \n";
     }
 
     if (useOCIO) {
-        fragDesc.shaderCode += "#define GLSLFX_USE_OCIO\n";
+        fsCode += "#define GLSLFX_USE_OCIO\n";
         // Our current version of OCIO outputs 130 glsl and texture3D is
         // removed from glsl in 140.
-        fragDesc.shaderCode += "#define texture3D texture\n";
+        fsCode += "#define texture3D texture\n";
     }
-    fragDesc.shaderCode += glslfx.GetSource(_tokens->colorCorrectionFragment);
+    fsCode += glslfx.GetSource(_tokens->colorCorrectionFragment);
     if (useOCIO) {
         std::string ocioGpuShaderText = _CreateOpenColorIOResources();
-        fragDesc.shaderCode += ocioGpuShaderText;
+        fsCode += ocioGpuShaderText;
     }
+    fragDesc.shaderCode = fsCode.c_str();
     HgiShaderFunctionHandle fragFn = _GetHgi()->CreateShaderFunction(fragDesc);
 
     // Setup the shader program
@@ -345,12 +349,11 @@ HdxColorCorrectionTask::_CreatePipeline(HgiTextureHandle const& aovTexture)
             return true;
         }
         
-        _GetHgi()->DestroyPipeline(&_pipeline);
+        _GetHgi()->DestroyGraphicsPipeline(&_pipeline);
     }
 
-    HgiPipelineDesc desc;
+    HgiGraphicsPipelineDesc desc;
     desc.debugName = "ColorCorrection Pipeline";
-    desc.pipelineType = HgiPipelineTypeGraphics;
     desc.resourceBindings = _resourceBindings;
     desc.shaderProgram = _shaderProgram;
     
@@ -391,7 +394,7 @@ HdxColorCorrectionTask::_CreatePipeline(HgiTextureHandle const& aovTexture)
     _attachment0.format = aovTexture->GetDescriptor().format;
     desc.colorAttachmentDescs.emplace_back(_attachment0);
 
-    _pipeline = _GetHgi()->CreatePipeline(desc);
+    _pipeline = _GetHgi()->CreateGraphicsPipeline(desc);
 
     return true;
 }
@@ -421,7 +424,7 @@ HdxColorCorrectionTask::_ApplyColorCorrection(
     gfxCmds->PopDebugGroup();
 
     // Done recording commands, submit work.
-    _GetHgi()->SubmitCmds(gfxCmds.get(), 1);
+    _GetHgi()->SubmitCmds(gfxCmds.get());
 }
 
 void
@@ -455,7 +458,7 @@ HdxColorCorrectionTask::_Sync(HdSceneDelegate* delegate,
                 _GetHgi()->DestroyResourceBindings(&_resourceBindings);
             }
             if (_pipeline) {
-                _GetHgi()->DestroyPipeline(&_pipeline);
+                _GetHgi()->DestroyGraphicsPipeline(&_pipeline);
             }
         }
     }
@@ -480,13 +483,18 @@ HdxColorCorrectionTask::Execute(HdTaskContext* ctx)
         return;
     }
 
-    // The color aov has the rendered results and we wish to color correct it.
-    if (!_HasTaskContextData(ctx, HdAovTokens->color)) {
+    // The color aov has the rendered results and we wish to
+    // color correct it into colorIntermediate aov to ensure we do not
+    // read from the same color target that we write into.
+    if (!_HasTaskContextData(ctx, HdAovTokens->color) ||
+        !_HasTaskContextData(ctx, HdxAovTokens->colorIntermediate)) {
         return;
     }
 
-    HgiTextureHandle aovTexture;
+    HgiTextureHandle aovTexture, aovTextureIntermediate;
     _GetTaskContextData(ctx, HdAovTokens->color, &aovTexture);
+    _GetTaskContextData(
+        ctx, HdxAovTokens->colorIntermediate, &aovTextureIntermediate);
 
     if (!TF_VERIFY(_CreateBufferResources())) {
         return;
@@ -497,11 +505,14 @@ HdxColorCorrectionTask::Execute(HdTaskContext* ctx)
     if (!TF_VERIFY(_CreateResourceBindings(aovTexture))) {
         return;
     }
-    if (!TF_VERIFY(_CreatePipeline(aovTexture))) {
+    if (!TF_VERIFY(_CreatePipeline(aovTextureIntermediate))) {
         return;
     }
 
-    _ApplyColorCorrection(aovTexture);
+    _ApplyColorCorrection(aovTextureIntermediate);
+    
+    // Toggle color and colorIntermediate
+    _ToggleRenderTarget(ctx);
 }
 
 void

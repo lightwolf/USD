@@ -23,10 +23,10 @@
 //
 #include <Metal/Metal.h>
 
-#include "pxr/imaging/hgiMetal/hgi.h"
-#include "pxr/imaging/hgiMetal/diagnostic.h"
 #include "pxr/imaging/hgiMetal/capabilities.h"
 #include "pxr/imaging/hgiMetal/conversions.h"
+#include "pxr/imaging/hgiMetal/diagnostic.h"
+#include "pxr/imaging/hgiMetal/hgi.h"
 #include "pxr/imaging/hgiMetal/texture.h"
 
 
@@ -36,24 +36,34 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
     : HgiTexture(desc)
     , _textureId(nil)
 {
-    MTLPixelFormat mtlFormat;
+    if (desc.type != HgiTextureType2D && desc.type != HgiTextureType3D) {
+        TF_CODING_ERROR("Unsupported HgiTextureType enum value");
+    }
+
     MTLResourceOptions resourceOptions = MTLResourceStorageModePrivate;
     MTLTextureUsage usage = MTLTextureUsageUnknown;
-    
+
     if (desc.initialData && desc.pixelsByteSize > 0) {
         resourceOptions = hgi->GetCapabilities().defaultStorageMode;
     }
 
-    mtlFormat = HgiMetalConversions::GetPixelFormat(desc.format);
+    MTLPixelFormat mtlFormat = HgiMetalConversions::GetPixelFormat(desc.format);
 
     if (desc.usage & HgiTextureUsageBitsColorTarget) {
         usage = MTLTextureUsageRenderTarget;
     } else if (desc.usage & HgiTextureUsageBitsDepthTarget) {
-        TF_VERIFY(desc.format == HgiFormatFloat32);
-        mtlFormat = MTLPixelFormatDepth32Float;
+        TF_VERIFY(desc.format == HgiFormatFloat32 ||
+                  desc.format == HgiFormatFloat32UInt8);
+        
+        // XXX: MTLPixelFormatDepth32Float isn't in the conversions table..
+        if (desc.usage & HgiTextureUsageBitsStencilTarget) {
+            mtlFormat = MTLPixelFormatDepth32Float_Stencil8;
+        } else {
+            mtlFormat = MTLPixelFormatDepth32Float;
+        }
         usage = MTLTextureUsageRenderTarget;
     }
-    
+
 //    if (desc.usage & HgiTextureUsageBitsShaderRead) {
         usage |= MTLTextureUsageShaderRead;
 //    }
@@ -64,9 +74,9 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
     const size_t width = desc.dimensions[0];
     const size_t height = desc.dimensions[1];
     const size_t depth = desc.dimensions[2];
-    
+
     MTLTextureDescriptor* texDesc;
-    
+
     texDesc =
         [MTLTextureDescriptor
          texture2DDescriptorWithPixelFormat:mtlFormat
@@ -80,7 +90,22 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
     texDesc.resourceOptions = resourceOptions;
     texDesc.usage = usage;
 
-    if (depth > 1) {
+#if (defined(__MAC_10_15) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_10_15) \
+    || __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+        if (@available(macOS 10.15, ios 13.0, *)) {
+            size_t numChannels = HgiGetComponentCount(desc.format);
+
+            if (usage == MTLTextureUsageShaderRead && numChannels == 1) {
+                texDesc.swizzle = MTLTextureSwizzleChannelsMake(
+                    MTLTextureSwizzleRed,
+                    MTLTextureSwizzleRed,
+                    MTLTextureSwizzleRed,
+                    MTLTextureSwizzleOne);
+            }
+        }
+#endif
+
+    if (desc.type == HgiTextureType3D) {
         texDesc.depth = depth;
         texDesc.textureType = MTLTextureType3D;
     }
@@ -91,7 +116,7 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
     }
 
     _textureId = [hgi->GetPrimaryDevice() newTextureWithDescriptor:texDesc];
-    
+
     if (desc.initialData && desc.pixelsByteSize > 0) {
         TF_VERIFY(desc.mipLevels == 1, "Mipmap upload not implemented");
         if(depth <= 1) {
@@ -107,7 +132,7 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
                         bytesPerImage:desc.pixelsByteSize / depth];
         }
     }
-    
+
     HGIMETAL_DEBUG_LABEL(_textureId, _descriptor.debugName.c_str());
 }
 
@@ -119,5 +144,24 @@ HgiMetalTexture::~HgiMetalTexture()
     }
 }
 
+size_t
+HgiMetalTexture::GetByteSizeOfResource() const
+{
+    GfVec3i const& s = _descriptor.dimensions;
+    return HgiDataSizeOfFormat(_descriptor.format) * 
+        s[0] * s[1] * std::max(s[2], 1);
+}
+
+uint64_t
+HgiMetalTexture::GetRawResource() const
+{
+    return (uint64_t) _textureId;
+}
+
+id<MTLTexture>
+HgiMetalTexture::GetTextureId() const
+{
+    return _textureId;
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -28,6 +28,7 @@
 #include "pxr/usd/usd/attributeQuery.h"
 #include "pxr/usd/usd/clip.h"
 #include "pxr/usd/usd/clipCache.h"
+#include "pxr/usd/usd/clipSet.h"
 #include "pxr/usd/usd/common.h"
 #include "pxr/usd/usd/debugCodes.h"
 #include "pxr/usd/usd/instanceCache.h"
@@ -623,13 +624,12 @@ UsdStage::_InstantiateStage(const SdfLayerRefPtr &rootLayer,
     }
 
     // Debug timing info
-    boost::optional<TfStopwatch> stopwatch;
+    TfStopwatch stopwatch;
     const bool usdInstantiationTimeDebugCodeActive = 
         TfDebug::IsEnabled(USD_STAGE_INSTANTIATION_TIME);
 
     if (usdInstantiationTimeDebugCodeActive) {
-        stopwatch = TfStopwatch();
-        stopwatch->Start();
+        stopwatch.Start();
     }
 
     if (!rootLayer)
@@ -684,10 +684,10 @@ UsdStage::_InstantiateStage(const SdfLayerRefPtr &rootLayer,
 
     // Debug timing info
     if (usdInstantiationTimeDebugCodeActive) {
-        stopwatch->Stop();
+        stopwatch.Stop();
         TF_DEBUG(USD_STAGE_INSTANTIATION_TIME)
             .Msg("UsdStage::_InstantiateStage: Time elapsed (s): %f\n",
-                 stopwatch->GetSeconds());
+                 stopwatch.GetSeconds());
     }
     
     return stage;
@@ -1767,7 +1767,7 @@ _IsPrivateFieldKey(const TfToken& fieldKey)
         ignoredKeys.insert(SdfFieldKeys->TimeSamples);
     });
 
-    // First look-up the field in the black-list table.
+    // First look-up the field in the exclude/ignore table.
     if (ignoredKeys.find(fieldKey) != ignoredKeys.end())
         return true;
 
@@ -3046,9 +3046,10 @@ UsdStage::_DestroyPrimsInParallel(const vector<SdfPath>& paths)
 
     for (const auto& path : paths) {
         Usd_PrimDataPtr prim = _GetPrimDataAtPath(path);
-        // XXX: This should be converted to a TF_VERIFY once
-        // bug 141575 is fixed.
-        if (prim) {
+        // We *expect* every prim in paths to be valid as we iterate, but at
+        // one time had issues with deactivated master prims, so we preserve
+        // a guard for resiliency.  See testUsdBug141491.py
+        if (TF_VERIFY(prim)) {
             _dispatcher->Run(&UsdStage::_DestroyPrim, this, prim);
         }
     }
@@ -3111,13 +3112,12 @@ UsdStage::Reload()
 
     ArResolverScopedCache resolverCache;
 
+    // Reload layers that are reached via composition.
     PcpChanges changes;
     _cache->Reload(&changes);
 
-    // XXX: Usd should ideally be doing the reloads for both clip layers
-    // as well as any that need to be reloaded as noticed by Pcp.
-    // See bug/140498 for more info.
-    SdfLayer::ReloadLayers(_clipCache->GetUsedLayers()); 
+    // Reload all clip layers that are opened.
+    _clipCache->Reload();
 
     // Process changes.  This won't be invoked automatically if we didn't
     // reload any layers but only loaded layers that we failed to load
@@ -4132,9 +4132,9 @@ UsdStage::_RecomposePrims(const PcpChanges &changes,
     // Invalidate the clip cache, but keep the clips alive for the duration
     // of recomposition in the (likely) case that clip data hasn't changed
     // and the underlying clip layer can be reused.
-    Usd_ClipCache::Lifeboat clipLifeboat;
+    Usd_ClipCache::Lifeboat clipLifeboat(*_clipCache);
     for (const auto& entry : *pathsToRecompose) {
-        _clipCache->InvalidateClipsForPrim(entry.first, &clipLifeboat);
+        _clipCache->InvalidateClipsForPrim(entry.first);
     }
 
     // Ask Pcp to compute all the prim indexes in parallel, stopping at
@@ -5135,13 +5135,6 @@ void _UncheckedSwap(VtValue *value, T& val) {
     value->UncheckedSwap(val);
 }
 
-template <class T>
-static void
-_Set(SdfAbstractDataValue *dv, T const &val) { dv->StoreValue(val); }
-template <class T>
-static void _Set(VtValue *value, T const &val) { *value = val; }
-
-
 namespace {
 
 // Helper for lazily computing and caching the layer to stage offset for the 
@@ -5347,7 +5340,7 @@ struct ValueComposerBase
     template <class ValueType>
     void ConsumeExplicitValue(ValueType type) 
     {
-        _Set(_value, type);
+        Usd_SetValue(_value, type);
         _done = true;
     }
 
@@ -5912,6 +5905,45 @@ _ComposeGeneralMetadataImpl(Usd_PrimDataConstPtr primData,
     return gotOpinion || composer->IsDone();
 }
 
+// Special composing for just the pseudoroot. The pseudoroot only composes
+// metadata opinions on the absolute root path from the session and root layers.
+// Note that the pseudoroot itself doesn't provide fallbacks.
+// Returns true if an opinion was found.
+template <class Composer>
+static bool
+_ComposePseudoRootMetadataImpl(Usd_PrimDataConstPtr primData,
+                               const TfToken& fieldName,
+                               const TfToken& keyPath,
+                               const SdfLayerRefPtr &rootLayer,
+                               const SdfLayerRefPtr &sessionLayer,
+                               Composer *composer)
+{
+    const SdfPath &specPath = SdfPath::AbsoluteRootPath();
+    bool gotOpinion = false;
+
+    PcpNodeRef node = primData->GetPrimIndex().GetRootNode();
+
+    // If we a have a session layer and it isn't muted, we try to consume its
+    // opinion first. The session layer will be the first layer in the 
+    // layer stack unless it is muted.
+    if (sessionLayer && 
+        node.GetLayerStack()->GetLayers().front() == sessionLayer) {
+        // Consume an authored opinion here, if one exists.
+        gotOpinion = composer->ConsumeAuthored(
+            node, sessionLayer, specPath, fieldName, keyPath);
+        if (composer->IsDone()) {
+            return true;
+        }
+    }
+
+    // Consume an authored opinion from the root layer (which cannot be muted).
+    gotOpinion |= composer->ConsumeAuthored(
+        node, rootLayer, specPath, fieldName, keyPath);
+
+    // Return whether we got an opinion from either layer.
+    return gotOpinion;
+}
+
 // --------------------------------------------------------------------- //
 // Specialized Metadata Resolution
 // --------------------------------------------------------------------- //
@@ -6233,12 +6265,12 @@ UsdStage::_GetPropCustomImpl(const UsdProperty &prop, bool useFallbacks,
 }
 
 template <class Composer>
-void
-UsdStage::_GetPrimTypeNameImpl(const UsdPrim &prim, bool useFallbacks,
-                               Composer *composer) const
+static void
+_GetPrimTypeNameImpl(Usd_PrimDataConstPtr primData, 
+                     bool useFallbacks, Composer *composer)
 {
     TRACE_FUNCTION();
-    for (Usd_Resolver res(&prim.GetPrimIndex());
+    for (Usd_Resolver res(&primData->GetPrimIndex());
          res.IsValid(); res.NextLayer()) {
         TfToken tok;
         if (res.GetLayer()->HasField(
@@ -6435,53 +6467,60 @@ _GetListOpMetadataImpl(Usd_PrimDataConstPtr primData,
 
 template <class Composer>
 bool
-UsdStage::_GetSpecialMetadataImpl(const UsdObject &obj,
-                                  const TfToken &fieldName,
-                                  const TfToken &keyPath,
-                                  bool useFallbacks,
-                                  Composer *composer) const
+UsdStage::_GetSpecialPropMetadataImpl(const UsdObject &obj,
+                                      const TfToken &fieldName,
+                                      const TfToken &keyPath,
+                                      bool useFallbacks,
+                                      Composer *composer) const
 {
     // Dispatch to special-case composition rules based on type and field.
     // Return true if the given field was handled, false otherwise.
-    if (obj.Is<UsdProperty>()) {
-        if (obj.Is<UsdAttribute>()) {
-            if (fieldName == SdfFieldKeys->TypeName) {
-                _GetAttrTypeImpl(
-                    obj.As<UsdAttribute>(), fieldName, useFallbacks, composer);
-                return true;
-            } else if (fieldName == SdfFieldKeys->Variability) {
-                _GetAttrVariabilityImpl(
-                    obj.As<UsdAttribute>(), useFallbacks, composer);
-                return true;
-            }
-        }
-        if (fieldName == SdfFieldKeys->Custom) {
-            _GetPropCustomImpl(obj.As<UsdProperty>(), useFallbacks, composer);
-            return true;
-        }
-    } else if (obj.Is<UsdPrim>()) {
+    if (obj.Is<UsdAttribute>()) {
         if (fieldName == SdfFieldKeys->TypeName) {
-            _GetPrimTypeNameImpl(obj.As<UsdPrim>(), useFallbacks, composer);
+            _GetAttrTypeImpl(
+                obj.As<UsdAttribute>(), fieldName, useFallbacks, composer);
             return true;
-        } else if (fieldName == SdfFieldKeys->Specifier) {
-            _GetPrimSpecifierImpl(
-                get_pointer(obj._Prim()), useFallbacks, composer);
-            return true;
-        } else if (fieldName == SdfFieldKeys->Kind) {
-            // XXX: We do not not respect fallback kind values during
-            // Usd_PrimData composition (see _GetKind), but we do allow
-            // fallback values here to maintain existing behavior. However,
-            // we may want to force the useFallbacks flag to false here for
-            // consistency.
-            _GetPrimKindImpl(
-                get_pointer(obj._Prim()), useFallbacks, composer);
-            return true;
-        } else if (fieldName == SdfFieldKeys->Active) {
-            // XXX: See comment in the handling of 'kind' re: fallback values.
-            _GetPrimActiveImpl(
-                get_pointer(obj._Prim()), useFallbacks, composer);
+        } else if (fieldName == SdfFieldKeys->Variability) {
+            _GetAttrVariabilityImpl(
+                obj.As<UsdAttribute>(), useFallbacks, composer);
             return true;
         }
+    }
+    if (fieldName == SdfFieldKeys->Custom) {
+        _GetPropCustomImpl(obj.As<UsdProperty>(), useFallbacks, composer);
+        return true;
+    }
+    return false;
+}
+
+template <class Composer>
+static bool
+_GetSpecialPrimMetadataImpl(Usd_PrimDataConstPtr primData,
+                            const TfToken &fieldName,
+                            const TfToken &keyPath,
+                            bool useFallbacks,
+                            Composer *composer)
+{
+    // Dispatch to special-case composition rules based on type and field.
+    // Return true if the given field was handled, false otherwise.
+    if (fieldName == SdfFieldKeys->TypeName) {
+        _GetPrimTypeNameImpl(primData, useFallbacks, composer);
+        return true;
+    } else if (fieldName == SdfFieldKeys->Specifier) {
+        _GetPrimSpecifierImpl(primData, useFallbacks, composer);
+        return true;
+    } else if (fieldName == SdfFieldKeys->Kind) {
+        // XXX: We do not not respect fallback kind values during
+        // Usd_PrimData composition (see _GetKind), but we do allow
+        // fallback values here to maintain existing behavior. However,
+        // we may want to force the useFallbacks flag to false here for
+        // consistency.
+        _GetPrimKindImpl(primData, useFallbacks, composer);
+        return true;
+    } else if (fieldName == SdfFieldKeys->Active) {
+        // XXX: See comment in the handling of 'kind' re: fallback values.
+        _GetPrimActiveImpl(primData, useFallbacks, composer);
+        return true;
     }
 
     return false;
@@ -6500,9 +6539,28 @@ UsdStage::_GetMetadataImpl(
     TfErrorMark m;
 
     // Handle special cases.
-    if (_GetSpecialMetadataImpl(
-            obj, fieldName, keyPath, useFallbacks, composer)) {
-        return composer->IsDone() && m.IsClean();
+    if (obj.Is<UsdProperty>()) {
+        if (_GetSpecialPropMetadataImpl(
+                obj, fieldName, keyPath, useFallbacks, composer)) {
+            return composer->IsDone() && m.IsClean();
+        }
+    } else if (obj.Is<UsdPrim>()) {
+        // If the prim is the pseudo root, we have a special metadata 
+        // composition to perform as the pseudoroot only composes metadata
+        // opinions from the session layer and root layer.
+        if (obj._Prim()->IsPseudoRoot()) {
+            // Note that this function returns true if an opinion was found so
+            // we don't need to check composer->IsDone(). IsDone will always
+            // return false for dictionary metadata on the pseudo root since
+            // we don't have fallbacks.
+            return _ComposePseudoRootMetadataImpl(
+                get_pointer(obj._Prim()), fieldName, keyPath,
+                _rootLayer, _sessionLayer, composer) && m.IsClean();
+        } else if (_GetSpecialPrimMetadataImpl(
+            get_pointer(obj._Prim()), fieldName, keyPath, useFallbacks, 
+            composer)) {
+            return composer->IsDone() && m.IsClean();
+        }
     }
 
     return _GetGeneralMetadataImpl(
@@ -6580,25 +6638,24 @@ UsdStage::_HasMetadata(const UsdObject &obj, const TfToken& fieldName,
     return composer.IsDone();
 }
 
-TfTokenVector
-UsdStage::_ListMetadataFields(const UsdObject &obj, bool useFallbacks) const
+static
+SdfSpecType
+_ListMetadataFieldsImpl(Usd_PrimDataConstPtr primData,
+                        const TfToken &propName,
+                        bool useFallbacks,
+                        TfTokenVector *result)
 {
     TRACE_FUNCTION();
 
-    TfTokenVector result;
-
-    static TfToken empty;
-    const TfToken &propName = obj.Is<UsdProperty>() ? obj.GetName() : empty;
-
-    Usd_Resolver res(&obj.GetPrim().GetPrimIndex());
+    Usd_Resolver res(&primData->GetPrimIndex());
     SdfPath specPath = res.GetLocalPath(propName);
     PcpNodeRef lastNode = res.GetNode();
     SdfSpecType specType = SdfSpecTypeUnknown;
 
-    const UsdPrimDefinition &primDef = obj.GetPrim().GetPrimDefinition();
+    const UsdPrimDefinition &primDef = primData->GetPrimDefinition();
 
     // If this is a builtin property, determine specType from the definition.
-    if (obj.Is<UsdProperty>()) {
+    if (!propName.IsEmpty()) {
         specType = primDef.GetSpecType(propName);
     }
 
@@ -6614,8 +6671,79 @@ UsdStage::_ListMetadataFields(const UsdObject &obj, bool useFallbacks) const
 
         for (const auto& fieldName : layer->ListFields(specPath)) {
             if (!_IsPrivateFieldKey(fieldName))
-                result.push_back(fieldName);
+                result->push_back(fieldName);
         }
+    }
+
+    // If including fallbacks, add any defined metadata fields from the prim
+    // definition for the property (or the prim if the prop name is empty). 
+    if (useFallbacks) {
+        const TfTokenVector fallbackFields = propName.IsEmpty() ?
+            primDef.ListMetadataFields() : 
+            primDef.ListPropertyMetadataFields(propName);
+        result->insert(result->end(), 
+                       fallbackFields.begin(), fallbackFields.end());
+    }
+
+    return specType;
+}
+
+static
+SdfSpecType
+_ListPseudoRootMetadataFieldsImpl(Usd_PrimDataConstPtr primData, 
+                                  const SdfLayerRefPtr &rootLayer,
+                                  const SdfLayerRefPtr &sessionLayer,
+                                  TfTokenVector *result)
+{
+    TRACE_FUNCTION();
+
+    const SdfPath &specPath = SdfPath::AbsoluteRootPath();
+    PcpNodeRef node = primData->GetPrimIndex().GetRootNode();
+
+    // If we a have a session layer and it isn't muted, get its authored layer
+    // metadata fields. The session layer will be the first layer in the 
+    // layer stack unless it is muted.
+    if (sessionLayer && 
+        node.GetLayerStack()->GetLayers().front() == sessionLayer) {
+        for (const auto& fieldName : sessionLayer->ListFields(specPath)) {
+            if (!_IsPrivateFieldKey(fieldName)) {
+                result->push_back(fieldName);
+            }
+        }
+    }
+
+    // Get all authored layer metadata fields from the root layer (which can't
+    // be muted).
+    for (const auto& fieldName : rootLayer->ListFields(specPath)) {
+        if (!_IsPrivateFieldKey(fieldName)) {
+            result->push_back(fieldName);
+        }
+    }
+
+    return SdfSpecTypePseudoRoot;
+}
+
+TfTokenVector
+UsdStage::_ListMetadataFields(const UsdObject &obj, bool useFallbacks) const
+{
+    TRACE_FUNCTION();
+
+    TfTokenVector result;
+
+    SdfSpecType specType = SdfSpecTypeUnknown;
+    Usd_PrimDataConstPtr primData = get_pointer(obj._Prim());
+    if (obj.Is<UsdProperty>()) {
+        // List metadata fields for property
+        specType = _ListMetadataFieldsImpl(
+            primData, obj.GetName(), useFallbacks, &result);
+    } else if (obj._Prim()->IsPseudoRoot()) {
+        // Custom implementation for listing metadata for the pseudo root.
+        specType = _ListPseudoRootMetadataFieldsImpl(
+            primData, _rootLayer, _sessionLayer, &result);
+    } else {
+        // List metadata fields for non pseudo root prims.
+        specType = _ListMetadataFieldsImpl(
+            primData, TfToken(), useFallbacks, &result);
     }
 
     // Insert required fields for spec type.
@@ -6626,15 +6754,6 @@ UsdStage::_ListMetadataFields(const UsdObject &obj, bool useFallbacks) const
             if (!_IsPrivateFieldKey(fieldName))
                 result.push_back(fieldName);
         }
-    }
-
-    // If including fallbacks, add any defined metadata fields from the prim
-    // definition for the property (or the prim if the prop name is empty). 
-    if (useFallbacks) {
-        const TfTokenVector fallbackFields = propName.IsEmpty() ?
-            primDef.ListMetadataFields() : 
-            primDef.ListPropertyMetadataFields(propName);
-        result.insert(result.end(), fallbackFields.begin(), fallbackFields.end());
     }
 
     // Sort & remove duplicate fields.
@@ -6668,60 +6787,107 @@ UsdStage::_GetAllMetadata(const UsdObject &obj,
 // --------------------------------------------------------------------- //
 
 static bool
-_ClipAppliesToLayerStackSite(
-    const Usd_ClipRefPtr& clip,
+_ClipsApplyToLayerStackSite(
+    const Usd_ClipSetRefPtr& clips,
     const PcpLayerStackPtr& layerStack, const SdfPath& primPathInLayerStack)
 {
-    return (layerStack == clip->sourceLayerStack
-        && primPathInLayerStack.HasPrefix(clip->sourcePrimPath));
+    return (layerStack == clips->sourceLayerStack
+            && primPathInLayerStack.HasPrefix(clips->sourcePrimPath));
 }
 
 static bool
 _ClipsApplyToNode(
-    const Usd_ClipCache::Clips& clips, 
+    const Usd_ClipSetRefPtr& clips, 
     const PcpNodeRef& node)
 {
-    return (node.GetLayerStack() == clips.sourceLayerStack
-            && node.GetPath().HasPrefix(clips.sourcePrimPath));
+    return (node.GetLayerStack() == clips->sourceLayerStack
+            && node.GetPath().HasPrefix(clips->sourcePrimPath));
+}
+
+static bool
+_ClipsContainValueForAttribute(
+    const Usd_ClipSetRefPtr& clips,
+    const SdfPath& attrSpecPath)
+{
+    // Only look for samples in clips for attributes that are
+    // marked as varying in the clip manifest (if one is present).
+    // This gives users a way to indicate that an attribute will
+    // never have samples in a clip, which can help performance.
+    // 
+    // We normally do not consider variability during value 
+    // resolution to avoid the cost of composing variability on 
+    // each value fetch. We can use it here because we're only 
+    // fetching it from a single layer, which should be cheap. 
+    // This is also convenient for users, since it allows them 
+    // to reuse assets that may have both uniform and varying 
+    // attributes as manifests.
+    if (clips->manifestClip) {
+        SdfVariability attrVariability = SdfVariabilityUniform;
+        if (clips->manifestClip->HasField(
+                attrSpecPath, SdfFieldKeys->Variability, &attrVariability)
+            && attrVariability == SdfVariabilityVarying) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static
-const std::vector<const Usd_ClipCache::Clips*>
+const std::vector<Usd_ClipSetRefPtr>
 _GetClipsThatApplyToNode(
-    const std::vector<Usd_ClipCache::Clips>& clipsAffectingPrim,
+    const std::vector<Usd_ClipSetRefPtr>& clipsAffectingPrim,
     const PcpNodeRef& node,
     const SdfPath& specPath)
 {
-    std::vector<const Usd_ClipCache::Clips*> relevantClips;
+    std::vector<Usd_ClipSetRefPtr> relevantClips;
 
     for (const auto& localClips : clipsAffectingPrim) {
-        if (_ClipsApplyToNode(localClips, node)) {
-            // Only look for samples in clips for attributes that are
-            // marked as varying in the clip manifest (if one is present).
-            // This gives users a way to indicate that an attribute will
-            // never have samples in a clip, which can help performance.
-            // 
-            // We normally do not consider variability during value 
-            // resolution to avoid the cost of composing variability on 
-            // each value fetch. We can use it here because we're only 
-            // fetching it from a single layer, which should be cheap. 
-            // This is also convenient for users, since it allows them 
-            // to reuse assets that may have both uniform and varying 
-            // attributes as manifests.
-            if (localClips.manifestClip) {
-                SdfVariability attrVariability = SdfVariabilityUniform;
-                if (!localClips.manifestClip->HasField(
-                        specPath, SdfFieldKeys->Variability, &attrVariability)
-                    || attrVariability != SdfVariabilityVarying) {
-                    continue;
-                }
-            }
-
-            relevantClips.push_back(&localClips);
+        if (_ClipsApplyToNode(localClips, node)
+            && _ClipsContainValueForAttribute(localClips, specPath)) {
+            relevantClips.push_back(localClips);
         }
     }
 
     return relevantClips;
+}
+
+static bool
+_HasTimeSamples(const SdfLayerRefPtr& source, 
+                const SdfPath& specPath, 
+                const double* time = nullptr, 
+                double* lower = nullptr, double* upper = nullptr)
+{
+    if (time) {
+        // If caller wants bracketing time samples as well, we can just use
+        // GetBracketingTimeSamplesForPath. If no samples exist, this should
+        // return false.
+        return source->GetBracketingTimeSamplesForPath(
+            specPath, *time, lower, upper);
+    }
+
+    return source->GetNumTimeSamplesForPath(specPath) > 0;
+}
+
+static bool
+_HasTimeSamples(const Usd_ClipSetRefPtr& sourceClips, 
+                const SdfPath& specPath, 
+                const double* time = nullptr, 
+                double* lower = nullptr, double* upper = nullptr)
+{
+    // Bail out immediately if this clip set does not contain values
+    // for this attribute.
+    if (!_ClipsContainValueForAttribute(sourceClips, specPath)) {
+        return false;
+    }
+
+    if (time) {
+        return sourceClips->GetBracketingTimeSamplesForPath(
+            specPath, *time, lower, upper);
+    }
+
+    // Since this clip set has declared it contains values for this
+    // attribute, we always return true.
+    return true;
 }
 
 // Helper for getting the fully resolved value from an attribute generically
@@ -6912,11 +7078,12 @@ class UsdStage_ResolveInfoAccess
 {
 public:
     template <class T>
-    static bool _GetTimeSampleValue(UsdTimeCode time, const UsdAttribute& attr,
-                             const UsdResolveInfo &info,
-                             const double *lowerHint, const double *upperHint,
-                             Usd_InterpolatorBase *interpolator,
-                             T *result)
+    static bool _GetTimeSampleValue(
+        UsdTimeCode time, const UsdAttribute& attr,
+        const UsdResolveInfo &info,
+        const double *lowerHint, const double *upperHint,
+        Usd_InterpolatorBase *interpolator,
+        T *result)
     {
         const SdfPath specPath =
             info._primPathInLayerStack.AppendProperty(attr.GetName());
@@ -6960,45 +7127,70 @@ public:
     } 
 
     template <class T>
-    static bool _GetClipValue(UsdTimeCode time, const UsdAttribute& attr,
-                              const UsdResolveInfo &info,
-                              const Usd_ClipRefPtr &clip,
-                              double lower, double upper,
-                              Usd_InterpolatorBase *interpolator,
-                              T *result)
+    static bool _GetClipValue(
+        UsdTimeCode time, const UsdAttribute& attr,
+        const UsdResolveInfo &info,
+        const Usd_ClipSetRefPtr &clipSet, 
+        const double *lowerHint, const double *upperHint,
+        Usd_InterpolatorBase *interpolator,
+        T *result)
     {
         const SdfPath specPath =
             info._primPathInLayerStack.AppendProperty(attr.GetName());
+
+        // Note that we do not apply layer offsets to the time.
+        // Because clip metadata may be authored in different 
+        // layers in the LayerStack, each with their own 
+        // layer offsets, it is simpler to bake the effects of 
+        // those offsets into Usd_Clip.
         const double localTime = time.GetValue();
+        double upper = 0.0;
+        double lower = 0.0;
+
+        if (lowerHint && upperHint) {
+            lower = *lowerHint;
+            upper = *upperHint;
+        }
+        else {
+            _HasTimeSamples(clipSet, specPath, &localTime, &lower, &upper);
+        }
 
         TF_DEBUG(USD_VALUE_RESOLUTION).Msg(
-            "RESOLVE: reading field %s:%s from clip %s, "
+            "RESOLVE: reading field %s:%s from clip set %s, "
             "with requested time = %.3f "
             "reading from sample %.3f \n",
             specPath.GetText(),
             SdfFieldKeys->TimeSamples.GetText(),
-            TfStringify(clip->assetPath).c_str(),
+            clipSet->name.c_str(),
             localTime,
             lower);
 
         return Usd_GetOrInterpolateValue(
-            clip, specPath, localTime, lower, upper, interpolator, result);
+            clipSet, specPath, localTime, lower, upper, interpolator, result);
     }
 };
 
+// Helper structure populated by _GetResolveInfo and _ResolveInfoResolver
+// with extra information accumulated in the process. This allows clients to
+// avoid redoing work.
 template <class T>
 struct UsdStage::_ExtraResolveInfo
 {
-    _ExtraResolveInfo()
-        : lowerSample(0), upperSample(0), defaultOrFallbackValue(nullptr)
-    { }
+    // If the resolve info source is UsdResolveInfoSourceTimeSamples or
+    // UsdResolveInfoSourceValueClips and an explicit time is given to
+    // _GetResolveInfo, this will be the lower and upper bracketing time
+    // samples for that time.
+    double lowerSample = 0;
+    double upperSample = 0;
 
-    double lowerSample;
-    double upperSample;
- 
-    T* defaultOrFallbackValue;
+    // If the resolve info source is UsdResolveInfoSourceDefault or
+    // UsdResolveInfoSourceFallback and this is non-null, the default
+    // or fallback value will be copied to the object this pointer refers to.
+    T* defaultOrFallbackValue = nullptr;
 
-    Usd_ClipRefPtr clip;
+    // If the resolve info source is UsdResolveInfoSourceValueClips this will 
+    // be the Usd_ClipSet containing values for the attribute.
+    Usd_ClipSetRefPtr clipSet;
 };
 
 SdfLayerRefPtr
@@ -7022,7 +7214,17 @@ UsdStage::_GetLayerWithStrongestValue(
                 resolveInfo._layerStack->GetLayers()[resolveInfo._layerIndex];
         }
         else if (resolveInfo._source == UsdResolveInfoSourceValueClips) {
-            resultLayer = extraResolveInfo.clip->_GetLayerForClip();
+            const Usd_ClipSetRefPtr& clipSet = extraResolveInfo.clipSet;
+            const Usd_ClipRefPtr& activeClip = 
+                clipSet->GetActiveClip(time.GetValue());
+            const SdfPath specPath =
+                resolveInfo._primPathInLayerStack.AppendProperty(attr.GetName());
+
+            // If the active clip has authored time samples, the value will
+            // come from it (or at least be interpolated from it) so use that
+            // clip's layer. Otherwise the value will come from the manifest.
+            resultLayer = activeClip->HasAuthoredTimeSamples(specPath) ? 
+                activeClip->GetLayer() : clipSet->manifestClip->GetLayer();
         }
     }
     return resultLayer;
@@ -7049,8 +7251,9 @@ UsdStage::_GetValueImpl(UsdTimeCode time, const UsdAttribute &attr,
     }
     else if (resolveInfo._source == UsdResolveInfoSourceValueClips) {
         return UsdStage_ResolveInfoAccess::_GetClipValue(
-            time, attr, resolveInfo, extraResolveInfo.clip,
-            extraResolveInfo.lowerSample, extraResolveInfo.upperSample,
+            time, attr, resolveInfo, 
+            extraResolveInfo.clipSet,
+            &extraResolveInfo.lowerSample, &extraResolveInfo.upperSample,
             interpolator, result);
     }
     else if (resolveInfo._source == UsdResolveInfoSourceDefault ||
@@ -7060,76 +7263,8 @@ UsdStage::_GetValueImpl(UsdTimeCode time, const UsdAttribute &attr,
         return m.IsClean();
     }
 
-    // _GetResolveInfo should never return UsdResolveInfoSourceIsTimeDependent
-    // since we always pass it an exact time in this function.
-    TF_VERIFY(resolveInfo._source != UsdResolveInfoSourceIsTimeDependent);
-
     return false;
 }
-
-namespace 
-{
-bool
-_HasTimeSamples(const SdfLayerRefPtr& source, 
-                const SdfPath& specPath, 
-                const double* time = nullptr, 
-                double* lower = nullptr, double* upper = nullptr)
-{
-    if (time) {
-        // If caller wants bracketing time samples as well, we can just use
-        // GetBracketingTimeSamplesForPath. If no samples exist, this should
-        // return false.
-        return source->GetBracketingTimeSamplesForPath(
-            specPath, *time, lower, upper);
-    }
-
-    return source->GetNumTimeSamplesForPath(specPath) > 0;
-}
-
-bool
-_HasTimeSamples(const Usd_ClipRefPtr& source, 
-                const SdfPath& specPath, 
-                const double* time = nullptr, 
-                double* lower = nullptr, double* upper = nullptr)
-{
-    if (time) {
-        return source->GetBracketingTimeSamplesForPath(
-                    specPath, *time, lower, upper) && 
-               source->_GetNumTimeSamplesForPathInLayerForClip(specPath) != 0;
-    }
-
-    // Use this method to directly access authored time samples,
-    // disregarding 'fake' samples used by clips.
-    return source->_GetNumTimeSamplesForPathInLayerForClip(specPath) > 0;
-}
-
-enum _DefaultValueResult {
-    _DefaultValueNone = 0,
-    _DefaultValueFound,
-    _DefaultValueBlocked,
-};
-
-template <class T>    
-_DefaultValueResult 
-_HasDefault(const SdfLayerRefPtr& layer, const SdfPath& specPath, T* value)
-{
-    // We need to actually examine the default value in all cases to see
-    // if a block was authored. So, if no value to fill in was specified,
-    // we need to create a dummy one.
-    if (!value) {
-        VtValue dummy;
-        return _HasDefault(layer, specPath, &dummy);
-    }
-
-    if (layer->HasField(specPath, SdfFieldKeys->Default, value)) {
-        if (Usd_ClearValueIfBlocked(value)) {
-            return _DefaultValueBlocked;
-        }
-        return _DefaultValueFound;
-    }
-    return _DefaultValueNone;
-}
-} // end anonymous namespace
 
 // Our property stack resolver never indicates for resolution to stop
 // as we need to gather all relevant property specs in the LayerStack
@@ -7155,18 +7290,35 @@ struct UsdStage::_PropertyStackResolver {
     }
 
     bool
-    ProcessClip(const Usd_ClipRefPtr& clip,
-                const SdfPath& specPath,
-                const PcpNodeRef& node,
-                const double* time) 
+    ProcessClips(const Usd_ClipSetRefPtr& clipSet,
+                 const SdfPath& specPath,
+                 const PcpNodeRef& node,
+                 const double* time) 
     {
-        // If given a time, do a range check on the clip first.
-        if (time && (*time < clip->startTime || *time >= clip->endTime)) 
-            return false;
-
+        // Look through clips to see if they have a time sample for
+        // this attribute. If a time is given, examine just the clips
+        // that are active at that time.
         double lowerSample = 0.0, upperSample = 0.0;
-        if (_HasTimeSamples(clip, specPath, time, &lowerSample, &upperSample)) {
-            if (const auto propertySpec = clip->GetPropertyAtPath(specPath)) {
+
+        if (_HasTimeSamples(
+                clipSet, specPath, time, &lowerSample, &upperSample)) {
+
+            const Usd_ClipRefPtr& activeClip = clipSet->GetActiveClip(*time);
+
+            // If the active clip has authored time samples, the value will
+            // come from it (or at least be interpolated from it) so use the
+            // property spec from that clip. Otherwise the value will come
+            // from the manifest.
+            const Usd_ClipRefPtr& sourceClip = 
+                activeClip->HasAuthoredTimeSamples(specPath) ?
+                activeClip : clipSet->manifestClip;
+
+            if (!TF_VERIFY(sourceClip)) {
+                return false;
+            }
+
+            if (const auto propertySpec = 
+                    sourceClip->GetPropertyAtPath(specPath)) {
                 propertyStack.push_back(propertySpec);
             }
         }
@@ -7234,12 +7386,12 @@ struct UsdStage::_ResolveInfoResolver
             _resolveInfo->_source = UsdResolveInfoSourceTimeSamples;
         }
         else { 
-            _DefaultValueResult defValue = _HasDefault(
+            Usd_DefaultValueResult defValue = Usd_HasDefault(
                 layer, specPath, _extraInfo->defaultOrFallbackValue);
-            if (defValue == _DefaultValueFound) {
+            if (defValue == Usd_DefaultValueResult::Found) {
                 _resolveInfo->_source = UsdResolveInfoSourceDefault;
             }
-            else if (defValue == _DefaultValueBlocked) {
+            else if (defValue == Usd_DefaultValueResult::Blocked) {
                 _resolveInfo->_valueIsBlocked = true;
                 return ProcessFallback();
             }
@@ -7258,34 +7410,25 @@ struct UsdStage::_ResolveInfoResolver
     }
 
     bool
-    ProcessClip(const Usd_ClipRefPtr& clip,
-                const SdfPath& specPath,
-                const PcpNodeRef& node,
-                const double* time)
+    ProcessClips(const Usd_ClipSetRefPtr& clipSet,
+                 const SdfPath& specPath,
+                 const PcpNodeRef& node,
+                 const double* time)
     {
-        // If given a time, do a range check on the clip first.
-        if (time && (*time < clip->startTime || *time >= clip->endTime))
+        if (!_HasTimeSamples(
+                clipSet, specPath, time,
+                &_extraInfo->lowerSample, &_extraInfo->upperSample)) {
             return false;
-
-        if (_HasTimeSamples(clip, specPath, time,
-                            &_extraInfo->lowerSample, 
-                            &_extraInfo->upperSample)){
-    
-            _extraInfo->clip = clip;
-            // If we're querying at a particular time, we know the value comes
-            // from this clip at this time.  If we're not given a time, then we
-            // cannot be sure, and we must say that the value source may be time
-            // dependent.
-            _resolveInfo->_source = time ?
-                UsdResolveInfoSourceValueClips :
-                UsdResolveInfoSourceIsTimeDependent;
-            _resolveInfo->_layerStack = node.GetLayerStack();
-            _resolveInfo->_primPathInLayerStack = node.GetPath();
-            _resolveInfo->_node = node;
-            return true;
         }
 
-        return false;
+        _extraInfo->clipSet = clipSet;
+
+        _resolveInfo->_source = UsdResolveInfoSourceValueClips;
+        _resolveInfo->_layerStack = node.GetLayerStack();
+        _resolveInfo->_primPathInLayerStack = node.GetPath();
+        _resolveInfo->_node = node;
+        
+        return true;
     }
 
 private:
@@ -7294,12 +7437,6 @@ private:
     UsdStage::_ExtraResolveInfo<T>* _extraInfo;
 };
 
-// NOTE:
-// When dealing with value clips, this function may return different 
-// results for the same attribute depending on whether the optional 
-// UsdTimeCode is passed in.  This may be a little surprising because the
-// resolve info is the same across all time for all other sources of
-// values (e.g., time samples, defaults).  
 template <class T>
 void
 UsdStage::_GetResolveInfo(const UsdAttribute &attr, 
@@ -7317,8 +7454,7 @@ UsdStage::_GetResolveInfo(const UsdAttribute &attr,
     
     if (TfDebug::IsEnabled(USD_VALIDATE_VARIABILITY) &&
         (resolveInfo->_source == UsdResolveInfoSourceTimeSamples ||
-         resolveInfo->_source == UsdResolveInfoSourceValueClips ||
-         resolveInfo->_source == UsdResolveInfoSourceIsTimeDependent) &&
+         resolveInfo->_source == UsdResolveInfoSourceValueClips) &&
         _GetVariability(attr) == SdfVariabilityUniform) {
 
         TF_DEBUG(USD_VALIDATE_VARIABILITY)
@@ -7332,7 +7468,7 @@ UsdStage::_GetResolveInfo(const UsdAttribute &attr,
 // in strength order. Resolvers must implement three functions: 
 //       
 //       ProcessLayer()
-//       ProcessClip()
+//       ProcessClips()
 //       ProcessFallback()
 //
 // Each of these functions is required to return true, to indicate that 
@@ -7352,7 +7488,7 @@ UsdStage::_GetResolvedValueImpl(const UsdProperty &prop,
     // Retrieve all clips that may contribute time samples for this
     // attribute at the given time. Clips never contribute default
     // values.
-    const std::vector<Usd_ClipCache::Clips>* clipsAffectingPrim = nullptr;
+    const std::vector<Usd_ClipSetRefPtr>* clipsAffectingPrim = nullptr;
     if (primHandle->MayHaveOpinionsInClips()
         && (!time || !time->IsDefault())) {
         clipsAffectingPrim =
@@ -7376,7 +7512,7 @@ UsdStage::_GetResolvedValueImpl(const UsdProperty &prop,
         const SdfPath specPath = node.GetPath().AppendProperty(prop.GetName());
         const SdfLayerRefPtrVector& layerStack 
             = node.GetLayerStack()->GetLayers();
-        boost::optional<std::vector<const Usd_ClipCache::Clips*>> clips;
+        boost::optional<std::vector<Usd_ClipSetRefPtr>> clips;
         for (size_t i = 0, e = layerStack.size(); i < e; ++i) {
             if (nodeHasSpecs) { 
                 if (resolver->ProcessLayer(i, specPath, node, 
@@ -7401,7 +7537,7 @@ UsdStage::_GetResolvedValueImpl(const UsdProperty &prop,
                 ARCH_PRAGMA_PUSH
                 ARCH_PRAGMA_MAYBE_UNINITIALIZED
 
-                for (const Usd_ClipCache::Clips* clipSet : *clips) {
+                for (const Usd_ClipSetRefPtr& clipSet : *clips) {
                     // We only care about clips that were introduced at this
                     // position within the LayerStack.
                     if (clipSet->sourceLayerIndex != i) {
@@ -7411,11 +7547,9 @@ UsdStage::_GetResolvedValueImpl(const UsdProperty &prop,
                     // Look through clips to see if they have a time sample for
                     // this attribute. If a time is given, examine just the clips
                     // that are active at that time.
-                    for (const Usd_ClipRefPtr& clip : clipSet->valueClips) {
-                        if (resolver->ProcessClip(clip, specPath, node,
-                                                  localTime.get_ptr())) {
-                            return;
-                        }
+                    if (resolver->ProcessClips(
+                            clipSet, specPath, node, localTime.get_ptr())) {
+                        return;
                     }
                 }
 
@@ -7468,43 +7602,20 @@ UsdStage::_GetValueFromResolveInfoImpl(const UsdResolveInfo &info,
             info._primPathInLayerStack.AppendProperty(attr.GetName());
 
         const UsdPrim prim = attr.GetPrim();
-        const std::vector<Usd_ClipCache::Clips>& clipsAffectingPrim =
+        const std::vector<Usd_ClipSetRefPtr>& clipsAffectingPrim =
             _clipCache->GetClipsForPrim(prim.GetPath());
 
-        for (const auto& clipAffectingPrim : clipsAffectingPrim) {
-            const Usd_ClipRefPtrVector& clips = clipAffectingPrim.valueClips;
-            for (size_t i = 0, numClips = clips.size(); i < numClips; ++i) {
-                // Note that we do not apply layer offsets to the time.
-                // Because clip metadata may be authored in different 
-                // layers in the LayerStack, each with their own 
-                // layer offsets, it is simpler to bake the effects of 
-                // those offsets into Usd_Clip.
-                const Usd_ClipRefPtr& clip = clips[i];
-                const double localTime = time.GetValue();
-                
-                if (!_ClipAppliesToLayerStackSite(
-                        clip, info._layerStack, info._primPathInLayerStack) 
-                    || localTime < clip->startTime
-                    || localTime >= clip->endTime) {
-                    continue;
-                }
-
-                double upper = 0.0;
-                double lower = 0.0;
-                if (clip->GetBracketingTimeSamplesForPath(
-                        specPath, localTime, &lower, &upper)) {
-                    return UsdStage_ResolveInfoAccess::_GetClipValue(
-                        time, attr, info, clip, lower, upper, interpolator, 
-                        result);
-                }
+        for (const auto& clipSet : clipsAffectingPrim) {
+            if (!_ClipsApplyToLayerStackSite(
+                    clipSet, info._layerStack, info._primPathInLayerStack)
+                || !_ClipsContainValueForAttribute(clipSet, specPath)) {
+                continue;
             }
+
+            return UsdStage_ResolveInfoAccess::_GetClipValue(
+                time, attr, info, clipSet, nullptr, nullptr,
+                interpolator, result);
         }
-    }
-    else if (info._source == UsdResolveInfoSourceIsTimeDependent) {
-        // In this case, we obtained a resolve info for an attribute value whose
-        // value source may vary over time.  So we must fall back on invoking
-        // the normal Get() machinery now that we actually have a specific time.
-        return _GetValueImpl(time, attr, interpolator, result);
     }
     else if (info._source == UsdResolveInfoSourceFallback) {
         // Get the fallback value.
@@ -7641,72 +7752,31 @@ UsdStage::_GetTimeSamplesInIntervalFromResolveInfo(
 
         return true;
     }
-    else if (info._source == UsdResolveInfoSourceValueClips ||
-             info._source == UsdResolveInfoSourceIsTimeDependent) {
+    else if (info._source == UsdResolveInfoSourceValueClips) {
         const UsdPrim prim = attr.GetPrim();
 
         // See comments in _GetValueImpl regarding clips.
-        const std::vector<Usd_ClipCache::Clips>& clipsAffectingPrim =
+        const std::vector<Usd_ClipSetRefPtr>& clipsAffectingPrim =
             _clipCache->GetClipsForPrim(prim.GetPath());
 
         const SdfPath specPath =
             info._primPathInLayerStack.AppendProperty(attr.GetName());
 
-        std::vector<double> timesFromAllClips;
-
         // Loop through all the clips that apply to this node and
         // combine all the time samples that are provided.
-        for (const auto& clipAffectingPrim : clipsAffectingPrim) {
-            for (const auto& clip : clipAffectingPrim.valueClips) {
-                if (!_ClipAppliesToLayerStackSite(
-                        clip, info._layerStack, info._primPathInLayerStack)) {
-                    continue;
-                }
-
-                const auto clipInterval 
-                    = GfInterval(clip->startTime, clip->endTime);
-                
-                // if we are constraining our range, and none of our range
-                // intersects with the specified clip range, we can ignore
-                // and move on to the next clip.
-                if (!interval.Intersects(clipInterval)) {
-                    continue;
-                }
-                
-                // See comments in _GetValueImpl regarding layer
-                // offsets and why they're not applied here.
-                const auto samples = clip->ListTimeSamplesForPath(specPath);
-                if (!samples.empty()) {
-                    copySamplesInInterval(samples, &timesFromAllClips, interval);
-                }
-
-                // Clips introduce time samples at their boundaries to
-                // isolate them from surrounding clips, even if time samples
-                // don't actually exist. 
-                //
-                // See _GetBracketingTimeSamplesFromResolveInfo for more
-                // details.
-                if (interval.Contains(clipInterval.GetMin())
-                    && clipInterval.GetMin() != Usd_ClipTimesEarliest) {
-                    timesFromAllClips.push_back(clip->startTime);
-                }
-
-                if (interval.Contains(clipInterval.GetMax())
-                    && clipInterval.GetMax() != Usd_ClipTimesLatest){
-                    timesFromAllClips.push_back(clip->endTime);
-                }
+        for (const auto& clipSet : clipsAffectingPrim) {
+            if (!_ClipsApplyToLayerStackSite(
+                    clipSet, info._layerStack, info._primPathInLayerStack)
+                || !_ClipsContainValueForAttribute(clipSet, specPath)) {
+                continue;
             }
 
-            if (!timesFromAllClips.empty()) {
-                std::sort(
-                    timesFromAllClips.begin(), timesFromAllClips.end());
-                timesFromAllClips.erase(
-                    std::unique(
-                        timesFromAllClips.begin(), timesFromAllClips.end()),
-                    timesFromAllClips.end());
-                times->swap(timesFromAllClips);
-                return true;
-            }
+            // See comments in _GetValueImpl regarding layer
+            // offsets and why they're not applied here.
+            const std::set<double> samples =
+                clipSet->ListTimeSamplesForPath(specPath);
+            copySamplesInInterval(samples, times, interval);;
+            return true;
         }
     }
 
@@ -7734,8 +7804,7 @@ UsdStage::_GetNumTimeSamplesFromResolveInfo(const UsdResolveInfo &info,
 
         return layer->GetNumTimeSamplesForPath(specPath);
     } 
-    else if (info._source == UsdResolveInfoSourceValueClips ||
-             info._source == UsdResolveInfoSourceIsTimeDependent) {
+    else if (info._source == UsdResolveInfoSourceValueClips) {
         // XXX: optimization
         // 
         // We don't have an efficient way of getting the number of time
@@ -7762,24 +7831,6 @@ UsdStage::_GetBracketingTimeSamples(const UsdAttribute &attr,
                                     double* upper,
                                     bool* hasSamples) const
 {
-    // If value clips might apply to this attribute, the bracketing time
-    // samples will depend on whether any of those clips contain samples
-    // or not. For instance, if none of the clips contain samples, the
-    // correct answer is *hasSamples == false.
-    //
-    // This means we have to scan all clips, not just the one at the 
-    // specified time. We do this by calling _GetResolveInfo without a 
-    // time -- see comment above that function for details. Unfortunately,
-    // this skips the optimization below, meaning we may ask layers for
-    // bracketing time samples more than once.
-    if (attr._Prim()->MayHaveOpinionsInClips()) {
-        UsdResolveInfo resolveInfo;
-        _GetResolveInfo<SdfAbstractDataValue>(attr, &resolveInfo);
-        return _GetBracketingTimeSamplesFromResolveInfo(
-            resolveInfo, attr, desiredTime, requireAuthored, lower, upper, 
-            hasSamples);
-    }
-
     const UsdTimeCode time(desiredTime);
 
     UsdResolveInfo resolveInfo;
@@ -7802,6 +7853,12 @@ UsdStage::_GetBracketingTimeSamples(const UsdAttribute &attr,
             *upper = offset * (*upper);
         }
 
+        *hasSamples = true;
+        return true;
+    }
+    else if (resolveInfo._source == UsdResolveInfoSourceValueClips) {
+        *lower = extraInfo.lowerSample;
+        *upper = extraInfo.upperSample;
         *hasSamples = true;
         return true;
     }
@@ -7844,84 +7901,27 @@ UsdStage::_GetBracketingTimeSamplesFromResolveInfo(const UsdResolveInfo &info,
         *hasSamples = false;
         return true;
     }
-    else if (info._source == UsdResolveInfoSourceValueClips ||
-             info._source == UsdResolveInfoSourceIsTimeDependent) {
+    else if (info._source == UsdResolveInfoSourceValueClips) {
         const SdfPath specPath =
             info._primPathInLayerStack.AppendProperty(attr.GetName());
 
         const UsdPrim prim = attr.GetPrim();
 
         // See comments in _GetValueImpl regarding clips.
-        const std::vector<Usd_ClipCache::Clips>& clipsAffectingPrim =
+        const std::vector<Usd_ClipSetRefPtr>& clipsAffectingPrim =
             _clipCache->GetClipsForPrim(prim.GetPath());
 
-        for (const auto& clipAffectingPrim : clipsAffectingPrim) {
-            for (const auto& clip : clipAffectingPrim.valueClips) {
-                if (!_ClipAppliesToLayerStackSite(
-                        clip, info._layerStack, info._primPathInLayerStack)
-                    || desiredTime < clip->startTime
-                    || desiredTime >= clip->endTime) {
-                    continue;
-                }
-                
-                // Clips introduce time samples at their boundaries even 
-                // if time samples don't actually exist. This isolates each
-                // clip from its neighbors and means that value resolution
-                // never has to look at more than one clip to answer a
-                // time sample query.
-                //
-                // We have to accommodate these 'fake' time samples here.
-                bool foundLower = false, foundUpper = false;
+        for (const auto& clipSet : clipsAffectingPrim) {
+            if (!_ClipsApplyToLayerStackSite(
+                    clipSet, info._layerStack, info._primPathInLayerStack)
+                || !_ClipsContainValueForAttribute(clipSet, specPath)) {
+                continue;
+            }
 
-                if (desiredTime == clip->startTime) {
-                    *lower = *upper = clip->startTime;
-                    foundLower = foundUpper = true;
-                }
-                else if (desiredTime == clip->endTime) {
-                    *lower = *upper = clip->endTime;
-                    foundLower = foundUpper = true;
-                }
-                else if (clip->GetBracketingTimeSamplesForPath(
-                         specPath, desiredTime, lower, upper)) {
-                    foundLower = foundUpper = true;
-                    if (*lower == *upper) {
-                        if (desiredTime < *lower) {
-                            foundLower = false;
-                        }
-                        else if (desiredTime > *upper) {
-                            foundUpper = false;
-                        }
-                    }
-                }
-
-                if (!foundLower && 
-                    clip->startTime != Usd_ClipTimesEarliest) {
-                    *lower = clip->startTime;
-                    foundLower = true;
-                }
-
-                if (!foundUpper && 
-                    clip->endTime != Usd_ClipTimesLatest) {
-                    *upper = clip->endTime;
-                    foundUpper = true;
-                }
-
-                if (foundLower && !foundUpper) {
-                    *upper = *lower;
-                }
-                else if (!foundLower && foundUpper) {
-                    *lower = *upper;
-                }
-                
-                // '||' is correct here. Consider the case where we only
-                // have a single clip and desiredTime is earlier than the
-                // first time sample -- foundLower will be false, but we
-                // want to return the bracketing samples from the sole
-                // clip anyway.
-                if (foundLower || foundUpper) {
-                    *hasSamples = true;
-                    return true;
-                }
+            if (clipSet->GetBracketingTimeSamplesForPath(
+                    specPath, desiredTime, lower, upper)) {
+                *hasSamples = true;
+                return true;
             }
         }
     }
@@ -7946,22 +7946,22 @@ UsdStage::_GetBracketingTimeSamplesFromResolveInfo(const UsdResolveInfo &info,
 }
 
 static bool
-_ValueFromClipsMightBeTimeVarying(const Usd_ClipRefPtr &firstClipWithSamples,
+_ValueFromClipsMightBeTimeVarying(const Usd_ClipSetRefPtr &clipSet,
                                   const SdfPath &attrSpecPath)
 {
-    // If the first clip is active over all time (i.e., it is the only 
-    // clip that affects this attribute) and it has more than one time
-    // sample, then it might be time varying. If it only has one sample,
-    // its value must be constant over all time.
-    if (firstClipWithSamples->startTime == Usd_ClipTimesEarliest
-        && firstClipWithSamples->endTime == Usd_ClipTimesLatest) {
-        return firstClipWithSamples->GetNumTimeSamplesForPath(attrSpecPath) > 1;
+    // If there is only one clip active over all time and it has more than one
+    // time sample for the attribute, it might be time varying. Otherwise the
+    // attribute's value must be constant over all time.
+    if (clipSet->valueClips.size() == 1) {
+        const size_t numTimeSamples = 
+            clipSet->valueClips.front()->GetNumTimeSamplesForPath(attrSpecPath);
+        return numTimeSamples > 1;
     }
 
-    // Since this clip isn't active over all time, we must have more clips.
-    // Because Usd doesn't hold values across clip boundaries, we can't
-    // say for certain that the value will be constant across all time.
-    // So, we have to report that the value might be time varying.
+    // Since there are multiple clips active across all time, we can't say
+    // for certain whether there are multiple time samples without 
+    // potentially opening every clip. So, we have to report that the value
+    // might be time varying.
     return true;
 }
 
@@ -7972,14 +7972,11 @@ UsdStage::_ValueMightBeTimeVarying(const UsdAttribute &attr) const
     _ExtraResolveInfo<SdfAbstractDataValue> extraInfo;
     _GetResolveInfo(attr, &info, nullptr, &extraInfo);
 
-    if (info._source == UsdResolveInfoSourceValueClips ||
-        info._source == UsdResolveInfoSourceIsTimeDependent) {
+    if (info._source == UsdResolveInfoSourceValueClips) {
         // See comment in _ValueMightBeTimeVaryingFromResolveInfo.
-        // We can short-cut the work in that function because _GetResolveInfo
-        // gives us the first clip that has time samples for this attribute.
         const SdfPath specPath = 
             info._primPathInLayerStack.AppendProperty(attr.GetName());
-        return _ValueFromClipsMightBeTimeVarying(extraInfo.clip, specPath);
+        return _ValueFromClipsMightBeTimeVarying(extraInfo.clipSet, specPath);
     }
 
     return _ValueMightBeTimeVaryingFromResolveInfo(info, attr);
@@ -7989,28 +7986,23 @@ bool
 UsdStage::_ValueMightBeTimeVaryingFromResolveInfo(const UsdResolveInfo &info,
                                                   const UsdAttribute &attr) const
 {
-    if (info._source == UsdResolveInfoSourceValueClips ||
-        info._source == UsdResolveInfoSourceIsTimeDependent) {
-        // In the case that the attribute value comes from a value clip, we
-        // need to find the first clip that has samples for attr to see if the
-        // clip values may be time varying. This is potentially much more 
-        // efficient than the _GetNumTimeSamples check below, since that 
-        // requires us to open every clip to get the time sample count.
-        //
-        // Note that we still wind up checking every clip if none of them
-        // have samples for this attribute.
+    if (info._source == UsdResolveInfoSourceValueClips) {
+        // Do a specialized check for value clips instead of falling through
+        // to calling _GetNumTimeSamplesFromResolveInfo, which requires opening
+        // every clip to get the total time sample count.
         const SdfPath specPath =
             info._primPathInLayerStack.AppendProperty(attr.GetName());
 
-        const std::vector<Usd_ClipCache::Clips>& clipsAffectingPrim =
+        const std::vector<Usd_ClipSetRefPtr>& clipsAffectingPrim =
             _clipCache->GetClipsForPrim(attr.GetPrim().GetPath());
-        for (const auto& clipAffectingPrim : clipsAffectingPrim) {
-            for (const auto& clip : clipAffectingPrim.valueClips) {
-                if (_ClipAppliesToLayerStackSite(
-                        clip, info._layerStack, info._primPathInLayerStack)
-                    && _HasTimeSamples(clip, specPath)) {
-                    return _ValueFromClipsMightBeTimeVarying(clip, specPath);
-                }
+        for (const auto& clipSet : clipsAffectingPrim) {
+            if (!_ClipsApplyToLayerStackSite(
+                    clipSet, info._layerStack, info._primPathInLayerStack)) {
+                continue;
+            }
+
+            if (_HasTimeSamples(clipSet, specPath)) {
+                return _ValueFromClipsMightBeTimeVarying(clipSet, specPath);
             }
         }
         
@@ -8018,62 +8010,6 @@ UsdStage::_ValueMightBeTimeVaryingFromResolveInfo(const UsdResolveInfo &info,
     }
 
     return _GetNumTimeSamplesFromResolveInfo(info, attr) > 1;
-}
-
-static
-bool 
-_HasLayerFieldOrDictKey(const SdfLayerHandle &layer, 
-                        const ArResolverContext &context,
-                        const TfToken &key, const TfToken &keyPath, VtValue *val)
-{
-    bool hasVal =  keyPath.IsEmpty() ?
-        layer->HasField(SdfPath::AbsoluteRootPath(), key, val) :
-        layer->HasFieldDictKey(SdfPath::AbsoluteRootPath(), key, keyPath, val);
-
-    if (hasVal && val){
-        // Resolve asset paths. Note that we don't need to resolve time 
-        // codes as this function is only used to get layer level metadata
-        // on the stage's root or session layer. There is no mapping that
-        // applies to time codes in this context.
-        _TryResolveValuesInDictionary(val, layer, context, 
-            /* layerOffsetGetter = */ nullptr, 
-            /* anchorAssetPathsOnly = */ false) ||
-        _TryResolveAssetPaths(val, context, layer,
-                              /* anchorAssetPathsOnly = */ false);
-    }
-
-    return hasVal;
-}
-
-static
-bool
-_HasStageMetadataOrDictKey(const UsdStage &stage, 
-                           const TfToken &key, const TfToken &keyPath,
-                           VtValue *value)
-{
-    SdfLayerHandle sessionLayer = stage.GetSessionLayer();
-    const ArResolverContext &context = stage.GetPathResolverContext();
-    
-    if (sessionLayer && 
-        _HasLayerFieldOrDictKey(sessionLayer, context, key, keyPath, value)){
-        VtValue rootValue;
-        if (value && 
-            value->IsHolding<VtDictionary>() &&
-            _HasLayerFieldOrDictKey(stage.GetRootLayer(), context, key, keyPath, 
-                                    &rootValue) && 
-            rootValue.IsHolding<VtDictionary>() ){
-            const VtDictionary &rootDict = rootValue.UncheckedGet<VtDictionary>();
-            VtDictionary dict;
-            value->UncheckedSwap<VtDictionary>(dict);
-            VtDictionaryOverRecursive(&dict, rootDict);
-            value->UncheckedSwap<VtDictionary>(dict);
-        }
-
-        return true;
-    }
-     
-    return _HasLayerFieldOrDictKey(stage.GetRootLayer(), context, 
-                                   key, keyPath, value);
 }
 
 bool
@@ -8092,10 +8028,9 @@ UsdStage::GetMetadata(const TfToken &key, VtValue *value) const
         return false;
     }
     
-    if (!_HasStageMetadataOrDictKey(*this, key, TfToken(), value)){
+    if (!GetPseudoRoot().GetMetadata(key, value)) {
         *value = SdfSchema::GetInstance().GetFallback(key);
-    } 
-    else if (value->IsHolding<VtDictionary>()){
+    } else if (value->IsHolding<VtDictionary>()){
         const VtDictionary &fallback = SdfSchema::GetInstance().GetFallback(key).Get<VtDictionary>();
         
         VtDictionary dict;
@@ -8114,7 +8049,7 @@ UsdStage::HasMetadata(const TfToken &key) const
     if (!schema.IsValidFieldForSpec(key, SdfSpecTypePseudoRoot))
         return false;
 
-    return (HasAuthoredMetadata(key) ||
+    return (GetPseudoRoot().HasAuthoredMetadata(key) ||
             !schema.GetFallback(key).IsEmpty());
 }
 
@@ -8126,7 +8061,7 @@ UsdStage::HasAuthoredMetadata(const TfToken& key) const
     if (!schema.IsValidFieldForSpec(key, SdfSpecTypePseudoRoot))
         return false;
 
-    return _HasStageMetadataOrDictKey(*this, key, TfToken(), nullptr);
+    return GetPseudoRoot().HasAuthoredMetadata(key);
 }
 
 static
@@ -8254,7 +8189,7 @@ UsdStage::GetMetadataByDictKey(const TfToken& key, const TfToken &keyPath,
     if (!schema.IsValidFieldForSpec(key, SdfSpecTypePseudoRoot))
         return false;
 
-    if (!_HasStageMetadataOrDictKey(*this, key, keyPath, value)){
+    if (!GetPseudoRoot().GetMetadataByDictKey(key, keyPath, value)) {
         const VtValue &fallback =  SdfSchema::GetInstance().GetFallback(key);
         if (!fallback.IsEmpty()){
             const VtValue *elt = fallback.Get<VtDictionary>().
@@ -8289,8 +8224,9 @@ UsdStage::HasMetadataDictKey(const TfToken& key, const TfToken &keyPath) const
         !schema.IsValidFieldForSpec(key, SdfSpecTypePseudoRoot))
         return false;
 
-    if (HasAuthoredMetadataDictKey(key, keyPath))
+    if (GetPseudoRoot().HasAuthoredMetadataDictKey(key, keyPath)) {
         return true;
+    }
 
     const VtValue &fallback =  schema.GetFallback(key);
     
@@ -8305,7 +8241,7 @@ UsdStage::HasAuthoredMetadataDictKey(
     if (keyPath.IsEmpty())
         return false;
 
-    return _HasStageMetadataOrDictKey(*this, key, keyPath, nullptr);
+    return GetPseudoRoot().HasAuthoredMetadataDictKey(key, keyPath);
 }
 
 bool
@@ -8437,17 +8373,12 @@ UsdStage::HasAuthoredTimeCodeRange() const
 double 
 UsdStage::GetTimeCodesPerSecond() const
 {
-    // Imitate what SdfLayer does: prefer TCPS, but if it isn't set, fall back
-    // dynamically to FPS.  Adapt that rule to include the session layer.  In
-    // order of priority, use: session TCPS, root layer TCPS, session FPS, root
-    // layer FPS.
-    if (HasAuthoredMetadata(SdfFieldKeys->TimeCodesPerSecond)) {
-        double result = 0;
-        GetMetadata(SdfFieldKeys->TimeCodesPerSecond, &result);
-        return result;
-    }
-
-    return GetFramesPerSecond();
+    // PcpLayerStack computes timeCodesPerSecond for its map function layer 
+    // offsets. The root layer stack will always have the stage's fully
+    // computed timeCodesPerSecond value accounting for the unique interaction
+    // between the root and session layer.
+    const PcpLayerStackPtr localLayerStack = _GetPcpCache()->GetLayerStack();
+    return localLayerStack->GetTimeCodesPerSecond();
 }
 
 void 

@@ -56,6 +56,12 @@ public:
     HgiShaderFunctionHandleVector const& GetShaderFunctions() const override;
 
     HGIMETAL_API
+    size_t GetByteSizeOfResource() const override;
+
+    HGIMETAL_API
+    uint64_t GetRawResource() const override;
+
+    HGIMETAL_API
     id<MTLFunction> GetVertexFunction() const {
         return _vertexFunction;
     }

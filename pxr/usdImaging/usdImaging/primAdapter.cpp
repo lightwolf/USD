@@ -26,7 +26,7 @@
 #include "pxr/usdImaging/usdImaging/debugCodes.h"
 #include "pxr/usdImaging/usdImaging/delegate.h"
 #include "pxr/usdImaging/usdImaging/indexProxy.h"
-#include "pxr/usdImaging/usdImaging/inheritedCache.h"
+#include "pxr/usdImaging/usdImaging/resolvedAttributeCache.h"
 #include "pxr/usdImaging/usdImaging/instancerContext.h"
 
 #include "pxr/usd/sdf/schema.h"
@@ -43,11 +43,6 @@
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
-
-TF_DEFINE_PRIVATE_TOKENS(
-    _tokens,
-    ((primvarsPrefix, "primvars:"))
-);
 
 TF_REGISTRY_FUNCTION(TfType)
 {
@@ -82,6 +77,12 @@ static bool _IsEnabledPurposeCache() {
     return _v;
 }
 
+TF_DEFINE_ENV_SETTING(USDIMAGING_ENABLE_POINT_INSTANCER_INDICES_CACHE, 1,
+                      "Enable a cache for point instancer indices.");
+static bool _IsEnabledPointInstancerIndicesCache() {
+    static bool _v = TfGetEnvSetting(USDIMAGING_ENABLE_POINT_INSTANCER_INDICES_CACHE) == 1;
+    return _v;
+}
 
 UsdImagingPrimAdapter::~UsdImagingPrimAdapter() 
 {
@@ -702,23 +703,6 @@ UsdImagingPrimAdapter::_ComputeAndMergePrimvar(
     }
 }
 
-/*static*/
-bool
-UsdImagingPrimAdapter::_HasPrimvarsPrefix(TfToken const& propertyName)
-{
-    return TfStringStartsWith(propertyName.GetString(),
-                              _tokens->primvarsPrefix);
-}
-
-/*static*/
-TfToken
-UsdImagingPrimAdapter::_GetStrippedPrimvarName(TfToken const& propertyName)
-{
-    // Strip prefix
-    return TfToken(propertyName.GetString().substr(
-                _tokens->primvarsPrefix.GetString().size()));
-}
-
 namespace {
 
 // The types of primvar changes expected
@@ -855,27 +839,31 @@ UsdImagingPrimAdapter::_ProcessPrefixedPrimvarPropertyChange(
     bool primvarOnPrim = false;
     UsdAttribute attr;
     TfToken interpOnPrim;
+    HdInterpolation hdInterpOnPrim = HdInterpolationConstant;
     UsdGeomPrimvarsAPI api(prim);
     if (inherited) {
         UsdGeomPrimvar pv = api.FindPrimvarWithInheritance(propertyName);
         attr = pv;
-        interpOnPrim = pv.GetInterpolation();
+        if (pv)
+            interpOnPrim = pv.GetInterpolation();
     } else {
         UsdGeomPrimvar localPv = api.GetPrimvar(propertyName);
         attr = localPv;
-        interpOnPrim = localPv.GetInterpolation();
+        if (localPv)
+            interpOnPrim = localPv.GetInterpolation();
     }
     if (attr && attr.HasValue()) {
         primvarOnPrim = true;
+        hdInterpOnPrim = _UsdToHdInterpolation(interpOnPrim);
     }
 
     // Determine if primvar is in the value cache.
-    TfToken primvarName = _GetStrippedPrimvarName(propertyName);
+    TfToken primvarName = UsdGeomPrimvar::StripPrimvarsName(propertyName);
     HdPrimvarDescriptorVector& primvarDescs =
         _GetValueCache()->GetPrimvars(cachePath);  
     
     PrimvarChange changeType = _ProcessPrimvarChange(primvarOnPrim,
-                                 _UsdToHdInterpolation(interpOnPrim),
+                                 hdInterpOnPrim,
                                  primvarName, &primvarDescs, cachePath);
 
     return _GetDirtyBitsForPrimvarChange(changeType, valueChangeDirtyBit);          
@@ -1190,6 +1178,24 @@ TfToken
 UsdImagingPrimAdapter::GetModelDrawMode(UsdPrim const& prim)
 {
     return _delegate->_GetModelDrawMode(prim);
+}
+
+VtArray<VtIntArray>
+UsdImagingPrimAdapter::GetPerPrototypeIndices(UsdPrim const& prim,
+                                              UsdTimeCode time) const
+{
+    TRACE_FUNCTION();
+
+    UsdImaging_PointInstancerIndicesCache &indicesCache =
+        _delegate->_pointInstancerIndicesCache;
+
+    if (_IsEnabledPointInstancerIndicesCache() &&
+        indicesCache.GetTime() == time) {
+        return indicesCache.GetValue(prim);
+    } else {
+        return UsdImaging_PointInstancerIndicesStrategy::
+            ComputePerPrototypeIndices(prim, time);
+    }
 }
 
 /*virtual*/

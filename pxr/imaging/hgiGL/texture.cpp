@@ -175,10 +175,17 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
     const bool isCompressed = HgiIsCompressed(desc.format);
 
     if (desc.usage & HgiTextureUsageBitsDepthTarget) {
-        TF_VERIFY(desc.format == HgiFormatFloat32);
-        glFormat = GL_DEPTH_COMPONENT;
+        TF_VERIFY(desc.format == HgiFormatFloat32 ||
+                  desc.format == HgiFormatFloat32UInt8);
+        
+        if (desc.format == HgiFormatFloat32UInt8) {
+            glFormat = GL_DEPTH_STENCIL;
+            glInternalFormat = GL_DEPTH32F_STENCIL8;
+        } else {
+            glFormat = GL_DEPTH_COMPONENT;
+            glInternalFormat = GL_DEPTH_COMPONENT32F;
+        }
         glPixelType = GL_FLOAT;
-        glInternalFormat = GL_DEPTH_COMPONENT32F;
     } else {
         HgiGLConversions::GetFormat(
             desc.format, 
@@ -203,7 +210,9 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
         glCreateTextures(GL_TEXTURE_2D_MULTISAMPLE, 1, &_textureId);
     }
 
-    glObjectLabel(GL_TEXTURE, _textureId, -1, _descriptor.debugName.c_str());
+    if (!_descriptor.debugName.empty()) {
+        glObjectLabel(GL_TEXTURE, _textureId,-1, _descriptor.debugName.c_str());
+    }
 
     if (desc.sampleCount == HgiSampleCount1) {
         // XXX sampler state etc should all be set via tex descriptor.
@@ -275,6 +284,20 @@ HgiGLTexture::~HgiGLTexture()
     }
 
     HGIGL_POST_PENDING_GL_ERRORS();
+}
+
+size_t
+HgiGLTexture::GetByteSizeOfResource() const
+{
+    GfVec3i const& s = _descriptor.dimensions;
+    return HgiDataSizeOfFormat(_descriptor.format) * 
+        s[0] * s[1] * std::max(s[2], 1);
+}
+
+uint64_t
+HgiGLTexture::GetRawResource() const
+{
+    return (uint64_t) _textureId;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

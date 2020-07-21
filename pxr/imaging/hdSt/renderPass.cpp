@@ -129,7 +129,8 @@ HdSt_RenderPass::_Execute(HdRenderPassStateSharedPtr const &renderPassState,
     TF_VERIFY(resourceRegistry);
 
     // Create graphics work to render into aovs.
-    HgiGraphicsCmdsDesc desc = stRenderPassState->MakeGraphicsCmdsDesc();
+    const HgiGraphicsCmdsDesc desc =
+        stRenderPassState->MakeGraphicsCmdsDesc(GetRenderIndex());
     HgiGraphicsCmdsUniquePtr gfxCmds = _hgi->CreateGraphicsCmds(desc);
 
     // XXX When there are no aovBindings we get a null work object.
@@ -162,7 +163,7 @@ HdSt_RenderPass::_Execute(HdRenderPassStateSharedPtr const &renderPassState,
 
     if (gfxCmds) {
         gfxCmds->PopDebugGroup();
-        _hgi->SubmitCmds(gfxCmds.get(), 1);
+        _hgi->SubmitCmds(gfxCmds.get());
     }
 }
 

@@ -29,7 +29,6 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hdx/aovInputTask.h"
 #include "pxr/imaging/hdx/colorizeSelectionTask.h"
-#include "pxr/imaging/hdx/colorizeTask.h"
 #include "pxr/imaging/hdx/colorChannelTask.h"
 #include "pxr/imaging/hdx/colorCorrectionTask.h"
 #include "pxr/imaging/hdx/oitRenderTask.h"
@@ -64,7 +63,6 @@ TF_DEFINE_PRIVATE_TOKENS(
     (shadowTask)
     (aovInputTask)
     (selectionTask)
-    (colorizeTask)
     (colorizeSelectionTask)
     (oitResolveTask)
     (colorCorrectionTask)
@@ -286,7 +284,6 @@ HdxTaskController::_CreateRenderGraph()
             _CreateOitResolveTask();
             _CreateSelectionTask();
             _CreateColorCorrectionTask();
-            _CreateColorChannelTask();
             _CreatePresentTask();
         }
 
@@ -306,7 +303,6 @@ HdxTaskController::_CreateRenderGraph()
             _CreateColorizeSelectionTask();
             _CreatePickFromRenderBufferTask();
             _CreateColorCorrectionTask();
-            _CreateColorChannelTask();
             _CreatePresentTask();
             // Initialize the AOV system to render color. Note:
             // SetRenderOutputs special-cases color to include support for
@@ -779,9 +775,9 @@ HdxTaskController::GetPickingTasks() const
 SdfPath
 HdxTaskController::_GetAovPath(TfToken const& aov) const
 {
-    std::string str = TfStringPrintf("aov_%s", aov.GetText());
-    std::replace(str.begin(), str.end(), ':', '_');
-    return GetControllerId().AppendChild(TfToken(str));
+    std::string identifier = std::string("aov_") +
+        TfMakeValidIdentifier(aov.GetString());
+    return GetControllerId().AppendChild(TfToken(identifier));
 }
 
 void
@@ -819,6 +815,11 @@ HdxTaskController::_SetParameters(SdfPath const& pathName,
     if (light.IsDomeLight()) {
         _delegate.SetParameter(pathName, HdLightTokens->textureResource, 
             _defaultDomeLightTextureResource);
+        _delegate.SetParameter(pathName, HdLightTokens->textureFile,
+                               SdfAssetPath(
+                                   HdxPackageDefaultDomeLightTexture(),
+                                   HdxPackageDefaultDomeLightTexture()));
+        
     }
 }
 
@@ -1595,6 +1596,11 @@ HdxTaskController::SetLightingState(GlfSimpleLightingContextPtr const& src)
                 _delegate.SetParameter(_lightIds[i], 
                                     HdLightTokens->textureResource, 
                                     _defaultDomeLightTextureResource);
+                _delegate.SetParameter(
+                    _lightIds[i], HdLightTokens->textureFile,
+                    SdfAssetPath(
+                        HdxPackageDefaultDomeLightTexture(),
+                        HdxPackageDefaultDomeLightTexture()));
             }
             GetRenderIndex()->GetChangeTracker().MarkSprimDirty(
                 _lightIds[i], HdLight::DirtyParams);

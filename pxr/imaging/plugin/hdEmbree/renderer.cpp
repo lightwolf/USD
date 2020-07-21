@@ -297,7 +297,7 @@ HdEmbreeRenderer::_GetClearColor(VtValue const& clearValue)
         {
             GfVec4f f =
                 *(static_cast<const GfVec4f*>(HdGetValueData(clearValue)));
-            return GfVec4f(f[0], f[1], f[2], 1.0f);
+            return f;
         }
         case HdTypeDoubleVec3:
         {
@@ -309,7 +309,7 @@ HdEmbreeRenderer::_GetClearColor(VtValue const& clearValue)
         {
             GfVec4d f =
                 *(static_cast<const GfVec4d*>(HdGetValueData(clearValue)));
-            return GfVec4f(f[0], f[1], f[2], 1.0f);
+            return GfVec4f(f);
         }
         default:
             return GfVec4f(0.0f, 0.0f, 0.0f, 1.0f);
@@ -608,12 +608,20 @@ HdEmbreeRenderer::_TraceRay(unsigned int x, unsigned int y,
       RTCIntersectContext context;
       rtcInitIntersectContext(&context);
       rtcIntersect1(_scene, &context, &rayHit);
-      // EMBREE_FIXME: only correct for triangles,quads, and subdivision surfaces
-      // rayHit.hit.Ng_x = -rayHit.hit.Ng_x;
-      // rayHit.hit.Ng_y = -rayHit.hit.Ng_y;
-      // rayHit.hit.Ng_z = -rayHit.hit.Ng_z;
-      // The normal was alredy reversed, and I think this is "user geometry"
-      // technically ?
+      //
+      // there is something odd about how this is used in Embree. Is it reversed
+      // here and then when it it used in
+      //      _ComputeNormal
+      //      _ComputeColor
+      // but not when it is used in
+      //      _EmbreeCullFacess
+      // this should probably all made to be consistent. What would make most
+      // sense would be to remove this reversal, and then just change the test
+      // in _EmbreeCullFaces. this would be the most performant solution.
+      //
+      rayHit.hit.Ng_x = -rayHit.hit.Ng_x;
+      rayHit.hit.Ng_y = -rayHit.hit.Ng_y;
+      rayHit.hit.Ng_z = -rayHit.hit.Ng_z;
     }
 
     // Write AOVs to attachments that aren't converged.

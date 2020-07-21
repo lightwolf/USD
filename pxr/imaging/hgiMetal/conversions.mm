@@ -64,6 +64,10 @@ static const MTLPixelFormat _PIXEL_FORMAT_DESC[] =
 
     MTLPixelFormatBC6H_RGBFloat,  // HgiFormatBC6FloatVec3
     MTLPixelFormatBC6H_RGBUfloat, // HgiFormatBC6UFloatVec3
+
+    MTLPixelFormatDepth32Float_Stencil8, // HgiFormatFloat32UInt8
+    
+    // Note: Update _VERTEX_FORMAT_DESC as well.
 };
 
 // A few random format validations to make sure out GL table stays aligned
@@ -115,6 +119,8 @@ static const MTLVertexFormat _VERTEX_FORMAT_DESC[] =
 
     MTLVertexFormatInvalid,             // HgiFormatBC6FloatVec3
     MTLVertexFormatInvalid,             // HgiFormatBC6UFloatVec3
+
+    MTLVertexFormatInvalid,             // HgiFormatFloat32UInt8
 };
 
 constexpr bool _CompileTimeValidateHgiVertexFormatTable() {
@@ -291,6 +297,37 @@ struct {
 static_assert(TfArraySize(_compareFnTable) == HgiCompareFunctionCount,
               "_compareFnTable array out of sync with HgiFormat enum");
 
+struct {
+    HgiSamplerAddressMode hgiAddressMode;
+    MTLSamplerAddressMode metalAM;
+} static const _samplerAddressModeTable[HgiSamplerAddressModeCount] =
+{
+    {HgiSamplerAddressModeClampToEdge,        MTLSamplerAddressModeClampToEdge},
+    {HgiSamplerAddressModeMirrorClampToEdge,  MTLSamplerAddressModeMirrorClampToEdge},
+    {HgiSamplerAddressModeRepeat,             MTLSamplerAddressModeRepeat},
+    {HgiSamplerAddressModeMirrorRepeat,       MTLSamplerAddressModeMirrorRepeat},
+    {HgiSamplerAddressModeClampToBorderColor, MTLSamplerAddressModeClampToBorderColor}
+};
+
+struct {
+    HgiSamplerFilter hgiSamplerFilter;
+    MTLSamplerMinMagFilter metalSF;
+} static const _samplerFilterTable[HgiSamplerFilterCount] =
+{
+    {HgiSamplerFilterNearest, MTLSamplerMinMagFilterNearest},
+    {HgiSamplerFilterLinear,  MTLSamplerMinMagFilterLinear}
+};
+
+struct {
+    HgiMipFilter hgiMipFilter;
+    MTLSamplerMipFilter metalMF;
+} static const _mipFilterTable[HgiMipFilterCount] =
+{
+    {HgiMipFilterNotMipmapped, MTLSamplerMipFilterNotMipmapped},
+    {HgiMipFilterNearest,      MTLSamplerMipFilterNearest},
+    {HgiMipFilterLinear,       MTLSamplerMipFilterLinear}
+};
+
 MTLPixelFormat
 HgiMetalConversions::GetPixelFormat(HgiFormat inFormat)
 {
@@ -385,5 +422,22 @@ HgiMetalConversions::GetTextureType(HgiTextureType tt)
     return _textureTypeTable[tt].metalTT;
 }
 
+MTLSamplerAddressMode
+HgiMetalConversions::GetSamplerAddressMode(HgiSamplerAddressMode a)
+{
+    return _samplerAddressModeTable[a].metalAM;
+}
+
+MTLSamplerMinMagFilter
+HgiMetalConversions::GetMinMagFilter(HgiSamplerFilter mf)
+{
+    return _samplerFilterTable[mf].metalSF;
+}
+
+MTLSamplerMipFilter
+HgiMetalConversions::GetMipFilter(HgiMipFilter mf)
+{
+    return _mipFilterTable[mf].metalMF;
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE

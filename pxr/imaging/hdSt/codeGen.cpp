@@ -33,6 +33,7 @@
 #include "pxr/imaging/hdSt/package.h"
 #include "pxr/imaging/hdSt/resourceBinder.h"
 #include "pxr/imaging/hdSt/shaderCode.h"
+#include "pxr/imaging/hdSt/tokens.h"
 
 #include "pxr/imaging/hd/binding.h"
 #include "pxr/imaging/hd/instanceRegistry.h"
@@ -461,7 +462,7 @@ namespace {
 }
 
 HdStGLSLProgramSharedPtr
-HdSt_CodeGen::Compile()
+HdSt_CodeGen::Compile(HdStResourceRegistry*const registry)
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
@@ -487,7 +488,7 @@ HdSt_CodeGen::Compile()
 
     // create GLSL program.
     HdStGLSLProgramSharedPtr glslProgram(
-        new HdStGLSLProgram(HdTokens->drawingShader));
+        new HdStGLSLProgram(HdTokens->drawingShader, registry));
 
     // initialize autogen source buckets
     _genCommon.str(""); _genVS.str(""); _genTCS.str(""); _genTES.str("");
@@ -826,21 +827,22 @@ HdSt_CodeGen::Compile()
     // note: _vsSource, _fsSource etc are used for diagnostics (see header)
     if (hasVS) {
         _vsSource = _genCommon.str() + _genVS.str();
-        if (!glslProgram->CompileShader(GL_VERTEX_SHADER, _vsSource)) {
+        if (!glslProgram->CompileShader(HgiShaderStageVertex, _vsSource)) {
             return HdStGLSLProgramSharedPtr();
         }
         shaderCompiled = true;
     }
     if (hasFS) {
         _fsSource = _genCommon.str() + _genFS.str();
-        if (!glslProgram->CompileShader(GL_FRAGMENT_SHADER, _fsSource)) {
+        if (!glslProgram->CompileShader(HgiShaderStageFragment, _fsSource)) {
             return HdStGLSLProgramSharedPtr();
         }
         shaderCompiled = true;
     }
     if (hasTCS) {
         _tcsSource = _genCommon.str() + _genTCS.str();
-        if (!glslProgram->CompileShader(GL_TESS_CONTROL_SHADER, _tcsSource)) {
+        if (!glslProgram->CompileShader(
+                HgiShaderStageTessellationControl, _tcsSource)) {
             return HdStGLSLProgramSharedPtr();
         }
         shaderCompiled = true;
@@ -848,14 +850,14 @@ HdSt_CodeGen::Compile()
     if (hasTES) {
         _tesSource = _genCommon.str() + _genTES.str();
         if (!glslProgram->CompileShader(
-                    GL_TESS_EVALUATION_SHADER, _tesSource)) {
+                HgiShaderStageTessellationEval, _tesSource)) {
             return HdStGLSLProgramSharedPtr();
         }
         shaderCompiled = true;
     }
     if (hasGS) {
         _gsSource = _genCommon.str() + _genGS.str();
-        if (!glslProgram->CompileShader(GL_GEOMETRY_SHADER, _gsSource)) {
+        if (!glslProgram->CompileShader(HgiShaderStageGeometry, _gsSource)) {
             return HdStGLSLProgramSharedPtr();
         }
         shaderCompiled = true;
@@ -869,7 +871,7 @@ HdSt_CodeGen::Compile()
 }
 
 HdStGLSLProgramSharedPtr
-HdSt_CodeGen::CompileComputeProgram()
+HdSt_CodeGen::CompileComputeProgram(HdStResourceRegistry*const registry)
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
@@ -999,12 +1001,12 @@ HdSt_CodeGen::CompileComputeProgram()
     
     // create GLSL program.
     HdStGLSLProgramSharedPtr glslProgram(
-        new HdStGLSLProgram(HdTokens->computeShader));
+        new HdStGLSLProgram(HdTokens->computeShader, registry));
     
     // compile shaders
     {
         _csSource = _genCommon.str() + _genCS.str();
-        if (!glslProgram->CompileShader(GL_COMPUTE_SHADER, _csSource)) {
+        if (!glslProgram->CompileShader(HgiShaderStageCompute, _csSource)) {
             const char *shaderSources[1];
             shaderSources[0] = _csSource.c_str();
             GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
@@ -1364,11 +1366,23 @@ static void _EmitTextureAccessors(
     std::string const &swizzle,
     int const dim,
     bool const hasTextureTransform,
+    bool const hasTextureScaleAndBias,
     bool const isBindless)
 {
     GlfContextCaps const &caps = GlfContextCaps::GetInstance();
 
     TfToken const &name = acc.name;
+
+    // Forward declare texture scale and bias
+    if (hasTextureScaleAndBias) {
+        accessors 
+            << "#ifdef HD_HAS_" << name << "_" << HdStTokens->scale << "\n"
+            << "vec4 HdGet_" << name << "_" << HdStTokens->scale  << "();\n"
+            << "#endif\n"
+            << "#ifdef HD_HAS_" << name << "_" << HdStTokens->bias  << "\n"
+            << "vec4 HdGet_" << name << "_" << HdStTokens->bias  << "();\n"
+            << "#endif\n";
+    }
 
     if (!isBindless) {
         // a function returning sampler requires bindless_texture
@@ -1411,15 +1425,30 @@ static void _EmitTextureAccessors(
             << "   vec3 sampleCoord = c.xyz / c.w;\n";
     } else {
         accessors
-            << "   vec" << dim << " sampleCoord = coord;\n";
+            << "  vec" << dim << " sampleCoord = coord;\n";
     }
 
-    accessors
-        << "  " << _GetUnpackedType(dataType, false)
-        << " result = "
-        << _GetPackedTypeAccessor(dataType, false)
-        << "(texture(HdGetSampler_" << name << "(), sampleCoord)"
-        << swizzle << ");\n";
+    if (hasTextureScaleAndBias) {
+        accessors
+            << "  " << _GetUnpackedType(dataType, false)
+            << " result = "
+            << _GetPackedTypeAccessor(dataType, false)
+            << "((texture(HdGetSampler_" << name << "(), sampleCoord)\n"
+            << "#ifdef HD_HAS_" << name << "_" << HdStTokens->scale << "\n"
+            << "    * HdGet_" << name << "_" << HdStTokens->scale << "()\n"
+            << "#endif\n" 
+            << "#ifdef HD_HAS_" << name << "_" << HdStTokens->bias << "\n"
+            << "    + HdGet_" << name << "_" << HdStTokens->bias  << "()\n"
+            << "#endif\n"
+            << ")" << swizzle << ");\n";
+    } else {
+        accessors
+            << "  " << _GetUnpackedType(dataType, false)
+            << " result = "
+            << _GetPackedTypeAccessor(dataType, false)
+            << "(texture(HdGetSampler_" << name << "(), sampleCoord)"
+            << swizzle << ");\n";
+    }
 
     if (acc.processTextureFallbackValue) {
         // Check whether texture is valid (using NAME_valid)
@@ -1442,15 +1471,36 @@ static void _EmitTextureAccessors(
                 << ") {\n";
         }
 
-        accessors
-            << "    return result;\n"
-            << "  } else {\n"
-            << "    return "
-            << _GetPackedTypeAccessor(dataType, false)
-            << "(shaderData[shaderCoord]."
-            << name
-            << HdSt_ResourceBindingSuffixTokens->fallback << ");\n"
-            << "  }\n";
+        if (hasTextureScaleAndBias) {
+            accessors
+                << "    return result;\n"
+                << "  } else {\n"
+                << "    return ("
+                << _GetPackedTypeAccessor(dataType, false)
+                << "(shaderData[shaderCoord]."
+                << name
+                << HdSt_ResourceBindingSuffixTokens->fallback << ")\n"
+                << "#ifdef HD_HAS_" << name << "_" << HdStTokens->scale << "\n"
+                << "        * HdGet_" << name << "_" << HdStTokens->scale 
+                << "()" << swizzle << "\n"
+                << "#endif\n" 
+                << "#ifdef HD_HAS_" << name << "_" << HdStTokens->bias << "\n"
+                << "        + HdGet_" << name << "_" << HdStTokens->bias 
+                << "()" << swizzle << "\n"
+                << "#endif\n"
+                << ");\n"
+                << "  }\n";
+        } else {
+            accessors
+                << "    return result;\n"
+                << "  } else {\n"
+                << "    return "
+                << _GetPackedTypeAccessor(dataType, false)
+                << "(shaderData[shaderCoord]."
+                << name
+                << HdSt_ResourceBindingSuffixTokens->fallback << ");\n"
+                << "  }\n";
+        }
     } else {
         accessors
             << "  return result;\n";
@@ -1460,6 +1510,14 @@ static void _EmitTextureAccessors(
         << "}\n";
     
     TfTokenVector const &inPrimvars = acc.inPrimvars;
+
+    // Forward declare getter for inPrimvars in case it's a transform2d
+    if (!inPrimvars.empty()) {
+        accessors
+            << "#if defined(HD_HAS_" << inPrimvars[0] << ")\n"
+            << "vec" << dim << " HdGet_" << inPrimvars[0] << "(int localIndex);\n"
+            << "#endif\n";
+    }
 
     // vec4 HdGet_name(int localIndex)
     accessors
@@ -1480,7 +1538,7 @@ static void _EmitTextureAccessors(
             << "vec" << dim << "(0.0)";
     }
     accessors << "); }\n";
-    
+
     // vec4 HdGet_name()
     accessors
         << _GetUnpackedType(dataType, false)
@@ -2761,6 +2819,21 @@ HdSt_CodeGen::_GenerateShaderParameters()
               patchCoord).xxx;
       }
 
+      * transform2d
+      vec2 HdGet_<name>(int localIndex=0) {
+          float angleRad = HdGet_<name>_rotation() * 3.1415926f / 180.f;
+          mat2 rotMat = mat2(cos(angleRad), sin(angleRad), 
+                             -sin(angleRad), cos(angleRad)); 
+      #if defined(HD_HAS_<primvarName>)
+          return vec2(HdGet_<name>_translation() + rotMat * 
+            (HdGet_<name>_scale() * HdGet_<primvarName>(localIndex)));
+      #else
+          int shaderCoord = GetDrawingCoord().shaderCoord;
+          return vec2(HdGet_<name>_translation() + rotMat * 
+           (HdGet_<name>_scale() * shaderData[shaderCoord].<name>_fallback.xy));
+      #endif
+      }
+
     */
 
     std::stringstream declarations;
@@ -2831,6 +2904,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 accessors, it->second, swizzle,
                 /* dim = */ 2,
                 /* hasTextureTransform = */ false,
+                /* hasTextureScaleAndBias = */ true,
                 /* isBindless = */ true);
 
         } else if (bindingType == HdBinding::TEXTURE_2D) {
@@ -2843,6 +2917,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 accessors, it->second, swizzle,
                 /* dim = */ 2,
                 /* hasTextureTransform = */ false,
+                /* hasTextureScaleAndBias = */ true,
                 /* isBindless = */ false);
 
         } else if (bindingType == HdBinding::BINDLESS_TEXTURE_FIELD) {
@@ -2851,6 +2926,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 accessors, it->second, swizzle,
                 /* dim = */ 3,
                 /* hasTextureTransform = */ true,
+                /* hasTextureScaleAndBias = */ false,
                 /* isBindless = */ true);
 
         } else if (bindingType == HdBinding::TEXTURE_FIELD) {
@@ -2863,6 +2939,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 accessors, it->second, swizzle,
                 /* dim = */ 3,
                 /* hasTextureTransform = */ true,
+                /* hasTextureScaleAndBias = */ false,
                 /* isBindless = */ false);
 
         } else if (bindingType == HdBinding::BINDLESS_TEXTURE_UDIM_ARRAY) {
@@ -3064,6 +3141,55 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 accessors
                     << "#endif\n";
             }
+        } else if (bindingType == HdBinding::TRANSFORM_2D) {
+            // Forward declare rotation, scale, and translation
+            accessors 
+                << "float HdGet_" << it->second.name << "_" 
+                << HdStTokens->rotation  << "();\n"
+                << "vec2 HdGet_" << it->second.name << "_" 
+                << HdStTokens->scale  << "();\n"
+                << "vec2 HdGet_" << it->second.name << "_" 
+                << HdStTokens->translation  << "();\n";
+
+            // vec2 HdGet_name(int localIndex)
+            accessors
+                << _GetUnpackedType(it->second.dataType, false)
+                << " HdGet_" << it->second.name << "(int localIndex) {\n"
+                << "  float angleRad = HdGet_" << it->second.name << "_" 
+                << HdStTokens->rotation  << "()"
+                << " * 3.1415926f / 180.f;\n"
+                << "  mat2 rotMat = mat2(cos(angleRad), sin(angleRad), "
+                << "-sin(angleRad), cos(angleRad)); \n";
+            // If primvar exists, use it
+            if (!it->second.inPrimvars.empty()) {
+                accessors
+                    << "#if defined(HD_HAS_" << it->second.inPrimvars[0] << ")\n"
+                    << "  return vec2(HdGet_" << it->second.name << "_" 
+                    << HdStTokens->translation << "() + rotMat * (HdGet_" 
+                    << it->second.name << "_" << HdStTokens->scale << "() * "
+                    << "HdGet_" << it->second.inPrimvars[0] << "(localIndex)));\n"
+                    << "#else\n";
+            }
+            // Otherwise use default value.
+            accessors
+                << "  int shaderCoord = GetDrawingCoord().shaderCoord;\n"
+                << "  return vec2(HdGet_" << it->second.name << "_" 
+                << HdStTokens->translation << "() + rotMat * (HdGet_" 
+                << it->second.name << "_" << HdStTokens->scale << "() * "
+                << "shaderData[shaderCoord]." << it->second.name 
+                << HdSt_ResourceBindingSuffixTokens->fallback << swizzle 
+                << "));\n";
+            if (!it->second.inPrimvars.empty()) {
+                accessors << "#endif\n"; 
+            }
+            accessors << "}\n";
+
+            // vec2 HdGet_name()
+            accessors
+                << _GetUnpackedType(it->second.dataType, false)
+                << " HdGet_" << it->second.name << "() {\n"
+                << "  return HdGet_" << it->second.name << "(0);\n"
+                << "}\n";
         }
     }
 

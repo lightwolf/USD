@@ -23,6 +23,7 @@
 //
 #include "pxr/imaging/glf/glew.h"
 
+#include "pxr/imaging/hdSt/drawTargetAttachmentDescArray.h"
 #include "pxr/imaging/hdSt/material.h"
 #include "pxr/imaging/hdSt/materialBufferSourceAndTextureHelper.h"
 #include "pxr/imaging/hdSt/debugCodes.h"
@@ -30,6 +31,8 @@
 #include "pxr/imaging/hdSt/resourceRegistry.h"
 #include "pxr/imaging/hdSt/shaderCode.h"
 #include "pxr/imaging/hdSt/surfaceShader.h"
+#include "pxr/imaging/hdSt/drawTarget.h"
+#include "pxr/imaging/hdSt/renderBuffer.h"
 #include "pxr/imaging/hdSt/textureBinder.h"
 #include "pxr/imaging/hdSt/textureHandle.h"
 #include "pxr/imaging/hdSt/textureResource.h"
@@ -49,9 +52,6 @@
 #include "pxr/base/tf/staticTokens.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
-
-TF_DEFINE_ENV_SETTING(HDST_USE_NEW_TEXTURE_SYSTEM, true,
-                      "Use new texture system for Storm.");
 
 TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
@@ -81,6 +81,53 @@ HdStMaterial::~HdStMaterial()
                                         GetId().GetText());
 }
 
+// Check whether the texture node points to a render buffer and
+// use information from it to get the texture handle.
+//
+static
+HdStTextureHandleSharedPtr
+_GetTextureHandleFromRenderBuffer(
+    HdStResourceRegistrySharedPtr const& resourceRegistry,
+    HdSceneDelegate * const sceneDelegate,
+    HdStMaterialNetwork::TextureDescriptor const &desc,
+    std::weak_ptr<HdStShaderCode> const &shaderCode)
+{
+    // Render buffers as storm textures are only used so far for
+    // the draw targets.
+    // Bail if draw targets are not using the storm texture system.
+    if (!HdStDrawTarget::GetUseStormTextureSystem()) {
+        return nullptr;
+    }
+
+    // Texture nodes with a file attribute not being an SdfPath
+    // pointing to a prim are not pointing to render buffers.
+    if (!desc.useTexturePrimToFindTexture) {
+        return nullptr;
+    }
+
+    // Get render buffer texture node is pointing to.
+    HdStRenderBuffer * const renderBuffer =
+        dynamic_cast<HdStRenderBuffer*>(
+            sceneDelegate->GetRenderIndex().GetBprim(
+                HdPrimTypeTokens->renderBuffer, desc.texturePrim));
+    if (!renderBuffer) {
+        return nullptr;
+    }
+
+    const bool bindlessTextureEnabled
+        = GlfContextCaps::GetInstance().bindlessTextureEnabled;
+
+    return
+        resourceRegistry->AllocateTextureHandle(
+            renderBuffer->GetTextureIdentifier(
+                /* multiSampled = */ false),
+            HdTextureType::Uv,
+            desc.samplerParameters,
+            desc.memoryRequest,
+            bindlessTextureEnabled,
+            shaderCode);
+}
+
 void
 HdStMaterial::_ProcessTextureDescriptors(
     HdSceneDelegate * const sceneDelegate,
@@ -92,43 +139,53 @@ HdStMaterial::_ProcessTextureDescriptors(
     HdBufferSpecVector * const specs,
     HdBufferSourceSharedPtrVector * const sources)
 {
-    const bool useNewTextureSystem =
-        TfGetEnvSetting(HDST_USE_NEW_TEXTURE_SYSTEM);
-
-    const bool usesBindlessTextures =
-        HdSt_TextureBinder::UsesBindlessTextures();
+    const bool bindlessTextureEnabled
+        = GlfContextCaps::GetInstance().bindlessTextureEnabled;
 
     for (HdStMaterialNetwork::TextureDescriptor const &desc : descs) {
-        if (desc.askSceneDelegateForTexture || !useNewTextureSystem) {
-            HdStTextureResourceHandleSharedPtr const textureResource =
-                _GetTextureResourceHandleFromSceneDelegate(
-                    sceneDelegate,
-                    resourceRegistry,
-                    desc);
-
-            HdSt_MaterialBufferSourceAndTextureHelper::
-                ProcessTextureMaterialParam(
-                    desc.name, desc.texturePrim,
-                    textureResource,
-                    specs, sources, texturesFromSceneDelegate);
+        if (desc.useTexturePrimToFindTexture) {
+            // Extra logic to retrieve texture handle from draw target.
+            if (HdStTextureHandleSharedPtr const textureHandle = 
+                    _GetTextureHandleFromRenderBuffer(
+                        resourceRegistry, sceneDelegate, desc, shaderCode)) {
+                texturesFromStorm->push_back(
+                    { desc.name,
+                      desc.type,
+                      textureHandle,
+                      desc.texturePrim});
+            } else {
+                HdStTextureResourceHandleSharedPtr const textureResource =
+                    _GetTextureResourceHandleFromSceneDelegate(
+                        sceneDelegate,
+                        resourceRegistry,
+                        desc);
+                
+                HdSt_MaterialBufferSourceAndTextureHelper::
+                    ProcessTextureMaterialParam(
+                        desc.name, desc.texturePrim,
+                        textureResource,
+                        specs, sources, texturesFromSceneDelegate);
+            }
         } else {
-        HdStTextureHandleSharedPtr const textureHandle =
-            resourceRegistry->AllocateTextureHandle(
-                desc.textureId,
-                desc.type,
-                desc.samplerParameters,
-                desc.memoryRequest,
-                usesBindlessTextures,
-                shaderCode);
-        
-            texturesFromStorm->push_back({ desc.name,
-                           desc.type,
-                           textureHandle,
-                           desc.texturePrim});
+            HdStTextureHandleSharedPtr const textureHandle =
+                resourceRegistry->AllocateTextureHandle(
+                    desc.textureId,
+                    desc.type,
+                    desc.samplerParameters,
+                    desc.memoryRequest,
+                    bindlessTextureEnabled,
+                    shaderCode);
+            
+            texturesFromStorm->push_back(
+                { desc.name,
+                  desc.type,
+                  textureHandle,
+                  desc.texturePrim});
         }
     }
 
-    HdSt_TextureBinder::GetBufferSpecs(*texturesFromStorm, specs);
+    HdSt_TextureBinder::GetBufferSpecs(
+        *texturesFromStorm, bindlessTextureEnabled, specs);
 }
 
 /* virtual */
@@ -254,7 +311,8 @@ HdStMaterial::Sync(HdSceneDelegate *sceneDelegate,
 
     bool hasPtex = false;
     for (HdSt_MaterialParam const & param: params) {
-        if (param.IsPrimvarRedirect() || param.IsFallback()) {
+        if (param.IsPrimvarRedirect() || param.IsFallback() || 
+            param.IsTransform2d()) {
             HdStSurfaceShader::AddFallbackValueToSpecsAndSources(
                 param, &specs, &sources);
         } else if (param.IsTexture()) {
@@ -288,7 +346,8 @@ HdStMaterial::Sync(HdSceneDelegate *sceneDelegate,
 
         _surfaceShader->SetNamedTextureHandles(textures);
     _surfaceShader->SetTextureDescriptors(textureResourceDescriptors);    
-    _surfaceShader->SetBufferSources(specs, sources, resourceRegistry);
+    _surfaceShader->SetBufferSources(
+        specs, std::move(sources), resourceRegistry);
 
     if (_hasPtex != hasPtex) {
         _hasPtex = hasPtex;

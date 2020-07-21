@@ -136,21 +136,15 @@ private:
     Map _map;
 };
 
-HdSt_TextureHandleRegistry::HdSt_TextureHandleRegistry()
+HdSt_TextureHandleRegistry::HdSt_TextureHandleRegistry(Hgi * const hgi)
     : _samplerGarbageCollectionNeeded(false)
+    , _samplerObjectRegistry(std::make_unique<HdSt_SamplerObjectRegistry>(hgi))
+    , _textureObjectRegistry(std::make_unique<HdSt_TextureObjectRegistry>(hgi))
     , _textureToHandlesMap(std::make_unique<_TextureToHandlesMap>())
-    , _samplerObjectRegistry(std::make_unique<HdSt_SamplerObjectRegistry>())
-    , _textureObjectRegistry(std::make_unique<HdSt_TextureObjectRegistry>())
 {
 }
 
 HdSt_TextureHandleRegistry::~HdSt_TextureHandleRegistry() = default;
-
-void
-HdSt_TextureHandleRegistry::SetHgi(Hgi * const hgi)
-{
-    _textureObjectRegistry->SetHgi(hgi);
-}
 
 HdStTextureHandleSharedPtr
 HdSt_TextureHandleRegistry::AllocateTextureHandle(

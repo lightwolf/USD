@@ -37,6 +37,7 @@ using HdStTextureObjectSharedPtr =
     std::shared_ptr<class HdStTextureObject>;
 using HdStSamplerObjectSharedPtr =
     std::shared_ptr<class HdStSamplerObject>;
+class Hgi;
 
 /// \class HdSt_SamplerObjectRegistry
 ///
@@ -55,7 +56,7 @@ class HdSt_SamplerObjectRegistry final
 {
 public:
     HDST_API
-    HdSt_SamplerObjectRegistry();
+    explicit HdSt_SamplerObjectRegistry(Hgi * hgi);
 
     HDST_API 
     ~HdSt_SamplerObjectRegistry();
@@ -75,8 +76,15 @@ public:
     HDST_API 
     void GarbageCollect();
 
+    /// Get Hgi instance
+    ///
+    HDST_API
+    Hgi * GetHgi() const { return _hgi; }
+
 private:
     std::vector<HdStSamplerObjectSharedPtr> _samplerObjects;
+    
+    Hgi *_hgi;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -60,16 +60,12 @@ public:
     HGIMETAL_API
     ~HgiMetal() override;
 
-    /// Returns the Metal device.
-    HGIMETAL_API
-    id<MTLDevice> GetPrimaryDevice() const;
-
-    HGIMETAL_API
-    void SubmitCmds(HgiCmds* cmds, uint32_t count=1) override;
-
     HGIMETAL_API
     HgiGraphicsCmdsUniquePtr CreateGraphicsCmds(
         HgiGraphicsCmdsDesc const& desc) override;
+    
+    HGIMETAL_API
+    HgiComputeCmdsUniquePtr CreateComputeCmds() override;
 
     HGIMETAL_API
     HgiBlitCmdsUniquePtr CreateBlitCmds() override;
@@ -79,6 +75,12 @@ public:
 
     HGIMETAL_API
     void DestroyTexture(HgiTextureHandle* texHandle) override;
+
+    HGIMETAL_API
+    HgiSamplerHandle CreateSampler(HgiSamplerDesc const & desc) override;
+
+    HGIMETAL_API
+    void DestroySampler(HgiSamplerHandle* smpHandle) override;
 
     HGIMETAL_API
     HgiBufferHandle CreateBuffer(HgiBufferDesc const & desc) override;
@@ -110,11 +112,19 @@ public:
     void DestroyResourceBindings(HgiResourceBindingsHandle* resHandle) override;
 
     HGIMETAL_API
-    HgiPipelineHandle CreatePipeline(
-        HgiPipelineDesc const& pipeDesc) override;
+    HgiGraphicsPipelineHandle CreateGraphicsPipeline(
+        HgiGraphicsPipelineDesc const& pipeDesc) override;
 
     HGIMETAL_API
-    void DestroyPipeline(HgiPipelineHandle* pipeHandle) override;
+    void DestroyGraphicsPipeline(
+        HgiGraphicsPipelineHandle* pipeHandle) override;
+
+    HGIMETAL_API
+    HgiComputePipelineHandle CreateComputePipeline(
+        HgiComputePipelineDesc const& pipeDesc) override;
+
+    HGIMETAL_API
+    void DestroyComputePipeline(HgiComputePipelineHandle* pipeHandle) override;
 
     HGIMETAL_API
     TfToken const& GetAPIName() const override;
@@ -128,7 +138,11 @@ public:
     //
     // HgiMetal specific
     //
-        
+
+    /// Returns the primary Metal device.
+    HGIMETAL_API
+    id<MTLDevice> GetPrimaryDevice() const;
+
     HGIMETAL_API
     id<MTLCommandQueue> GetQueue() const {
         return _commandQueue;
@@ -157,9 +171,21 @@ public:
         CommitCommandBufferWaitType waitType = CommitCommandBuffer_NoWait,
         bool forceNewBuffer = false);
 
+protected:
+    HGIMETAL_API
+    bool _SubmitCmds(HgiCmds* cmds) override;
+
 private:
     HgiMetal & operator=(const HgiMetal&) = delete;
     HgiMetal(const HgiMetal&) = delete;
+
+    // Invalidates the resource handle and destroys the object.
+    // Metal's internal garbage collection will handle the rest.
+    template<class T>
+    void _TrashObject(HgiHandle<T>* handle) {
+        delete handle->Get();
+        *handle = HgiHandle<T>();
+    }
 
     id<MTLDevice> _device;
     id<MTLCommandQueue> _commandQueue;

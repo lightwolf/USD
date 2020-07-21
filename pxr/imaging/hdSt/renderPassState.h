@@ -45,6 +45,7 @@ using HdStRenderPassShaderSharedPtr =
 using HdSt_FallbackLightingShaderSharedPtr =
     std::shared_ptr<class HdSt_FallbackLightingShader>;
 using HdStShaderCodeSharedPtrVector = std::vector<HdStShaderCodeSharedPtr>;
+class HdRenderIndex;
 
 /// \class HdStRenderPassState
 ///
@@ -52,17 +53,18 @@ using HdStShaderCodeSharedPtrVector = std::vector<HdStShaderCodeSharedPtr>;
 ///
 /// Parameters are expressed as GL states, uniforms or shaders.
 ///
-class HdStRenderPassState : public HdRenderPassState {
+class HdStRenderPassState : public HdRenderPassState
+{
 public:
     HDST_API
     HdStRenderPassState();
     HDST_API
     HdStRenderPassState(HdStRenderPassShaderSharedPtr const &shader);
     HDST_API
-    virtual ~HdStRenderPassState();
+    ~HdStRenderPassState() override;
 
     HDST_API
-    virtual void
+    void
     Prepare(HdResourceRegistrySharedPtr const &resourceRegistry) override;
 
     /// Apply the GL states.
@@ -78,10 +80,10 @@ public:
     ///   glStencilOp()
     ///   glLineWidth()
     HDST_API
-    virtual void Bind() override;
+    void Bind() override;
 
     HDST_API
-    virtual void Unbind() override;
+    void Unbind() override;
 
     /// Set lighting shader
     HDST_API
@@ -111,8 +113,12 @@ public:
     HDST_API
     size_t GetShaderHash() const;
 
-    // Helper to convert AOV bindings to HgiGraphicsCmds descriptor
-    HgiGraphicsCmdsDesc MakeGraphicsCmdsDesc() const;
+    // Helper to get graphics cmds descriptor describing textures
+    // we render into and the blend state, constructed from
+    // AOV bindings.
+    //
+    HDST_API
+    HgiGraphicsCmdsDesc MakeGraphicsCmdsDesc(const HdRenderIndex *) const;
 
 private:
     bool _UseAlphaMask() const;

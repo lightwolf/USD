@@ -133,7 +133,7 @@ HgiInteropOpenGL::~HgiInteropOpenGL()
 }
 
 void
-HgiInteropOpenGL::CopyToInterop(
+HgiInteropOpenGL::CompositeToInterop(
     HgiTextureHandle const &color,
     HgiTextureHandle const &depth)
 {
@@ -145,27 +145,41 @@ HgiInteropOpenGL::CopyToInterop(
     // Verify there were no gl errors coming in.
     TF_VERIFY(glGetError() == GL_NO_ERROR);
 
-    // Setup shader program
-    uint32_t prg = color && depth ? _prgDepth : _prgNoDepth;
-    glUseProgram(prg);
-
     // Bind textures
     HgiGLTexture *glColor = static_cast<HgiGLTexture*>(color.Get());
     HgiGLTexture *glDepth = static_cast<HgiGLTexture*>(depth.Get());
 
-    if (glColor) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, glColor->GetTextureId());
-        GLint loc = glGetUniformLocation(prg, "colorIn");
-        glUniform1i(loc, 0);
+    if (!ARCH_UNLIKELY(glColor)) {
+        TF_CODING_ERROR("A valid HgiGL color texture handle is required.\n");
+        return;
     }
 
+#if defined(GL_KHR_debug)
+    if (GLEW_KHR_debug) {
+        glPushDebugGroup(GL_DEBUG_SOURCE_THIRD_PARTY, 0, -1, "Interop");
+    }
+#endif
+
+    // Setup shader program
+    uint32_t prg = color && depth ? _prgDepth : _prgNoDepth;
+    glUseProgram(prg);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, glColor->GetTextureId());
+    GLint loc = glGetUniformLocation(prg, "colorIn");
+    glUniform1i(loc, 0);
+
+    // Depth is optional
     if (glDepth) {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, glDepth->GetTextureId());
         GLint loc = glGetUniformLocation(prg, "depthIn");
         glUniform1i(loc, 1);
     }
+
+    // Get the current array buffer binding state
+    GLint restoreArrayBuffer = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &restoreArrayBuffer);
 
     // Vertex attributes
     GLint locPosition = glGetAttribLocation(prg, "position");
@@ -179,45 +193,90 @@ HgiInteropOpenGL::CopyToInterop(
             sizeof(float)*6, reinterpret_cast<void*>(sizeof(float)*4));
     glEnableVertexAttribArray(locUv);
 
-    // Depth test must be ALWAYS instead of disabling the depth_test because
-    // we want to transfer the depth pixels. Disabling depth_test 
-    // disables depth writes and we need to copy depth to screen FB.
+    // Since we want to composite over the application's framebuffer contents,
+    // we need to honor depth testing if we have a valid depth texture.
     GLboolean restoreDepthEnabled = glIsEnabled(GL_DEPTH_TEST);
-    glEnable(GL_DEPTH_TEST);
+    GLboolean restoreDepthMask;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &restoreDepthMask);
     GLint restoreDepthFunc;
     glGetIntegerv(GL_DEPTH_FUNC, &restoreDepthFunc);
-    glDepthFunc(GL_ALWAYS);
+    if (glDepth) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        // Note: Use LEQUAL and not LESS to ensure that fragments with only
+        // translucent contribution (that don't update depth) are composited.
+        glDepthFunc(GL_LEQUAL);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+    }
 
-    // Any alpha blending the client wanted should have happened into the AOV. 
-    // When copying back to client buffer disable blending.
+    // Enable blending to composite correctly over framebuffer contents.
+    // Use pre-multiplied alpha scaling factors.
     GLboolean blendEnabled;
     glGetBooleanv(GL_BLEND, &blendEnabled);
-    glDisable(GL_BLEND);
+    glEnable(GL_BLEND);
+    GLint restoreColorSrcFnOp, restoreAlphaSrcFnOp;
+    GLint restoreColorDstFnOp, restoreAlphaDstFnOp;
+    glGetIntegerv(GL_BLEND_SRC_RGB, &restoreColorSrcFnOp);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &restoreAlphaSrcFnOp);
+    glGetIntegerv(GL_BLEND_DST_RGB, &restoreColorDstFnOp);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &restoreAlphaDstFnOp);
+    glBlendFuncSeparate(/*srcColor*/GL_ONE,
+                        /*dstColor*/GL_ONE_MINUS_SRC_ALPHA,
+                        /*srcAlpha*/GL_ONE,
+                        /*dstAlpha*/GL_ONE);
+    GLint restoreColorOp, restoreAlphaOp;
+    glGetIntegerv(GL_BLEND_EQUATION_RGB, &restoreColorOp);
+    glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &restoreAlphaOp);
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+
+    // Disable alpha to coverage (we want to composite the pixels as-is)
+    GLboolean restoreAlphaToCoverage;
+    glGetBooleanv(GL_SAMPLE_ALPHA_TO_COVERAGE, &restoreAlphaToCoverage);
+    glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 
     // The application may have set a custom glViewport (e.g. camera mask), we 
     // instead want to blit the entire aov texture to the screen, because the 
     // aov already contains the masked result.
     int32_t restoreVp[4];
     glGetIntegerv(GL_VIEWPORT, restoreVp);
-    const GfVec3i dimensions = glColor ? 
-        glColor->GetDescriptor().dimensions :
-        glDepth->GetDescriptor().dimensions;
+    const GfVec3i dimensions = glColor->GetDescriptor().dimensions;
     glViewport(0,0, dimensions[0], dimensions[1]);
 
     // Draw fullscreen triangle
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
     // Restore state and verify gl errors
-    if (blendEnabled) {
-        glEnable(GL_BLEND);
+    glBindBuffer(GL_ARRAY_BUFFER, restoreArrayBuffer);
+    
+    if (!blendEnabled) {
+        glDisable(GL_BLEND);
     }
-    glDepthFunc(restoreDepthFunc);
+    glBlendFuncSeparate(restoreColorSrcFnOp, restoreColorDstFnOp, 
+                        restoreAlphaSrcFnOp, restoreAlphaDstFnOp);
+    glBlendEquationSeparate(restoreColorOp, restoreAlphaOp);
+
     if (!restoreDepthEnabled) {
         glDisable(GL_DEPTH_TEST);
+    } else {
+        glEnable(GL_DEPTH_TEST);
+    }
+    glDepthMask(restoreDepthMask);
+    glDepthFunc(restoreDepthFunc);
+    
+    if (restoreAlphaToCoverage) {
+        glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     }
     glViewport(restoreVp[0], restoreVp[1], restoreVp[2], restoreVp[3]);
 
     glUseProgram(0);
+
+#if defined(GL_KHR_debug)
+    if (GLEW_KHR_debug) {
+        glPopDebugGroup();
+    }
+#endif
 
     TF_VERIFY(glGetError() == GL_NO_ERROR);
 }

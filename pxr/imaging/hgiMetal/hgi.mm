@@ -26,12 +26,15 @@
 #include "pxr/imaging/hgiMetal/hgi.h"
 #include "pxr/imaging/hgiMetal/buffer.h"
 #include "pxr/imaging/hgiMetal/blitCmds.h"
+#include "pxr/imaging/hgiMetal/computeCmds.h"
+#include "pxr/imaging/hgiMetal/computePipeline.h"
 #include "pxr/imaging/hgiMetal/capabilities.h"
 #include "pxr/imaging/hgiMetal/conversions.h"
 #include "pxr/imaging/hgiMetal/diagnostic.h"
 #include "pxr/imaging/hgiMetal/graphicsCmds.h"
-#include "pxr/imaging/hgiMetal/pipeline.h"
+#include "pxr/imaging/hgiMetal/graphicsPipeline.h"
 #include "pxr/imaging/hgiMetal/resourceBindings.h"
+#include "pxr/imaging/hgiMetal/sampler.h"
 #include "pxr/imaging/hgiMetal/shaderFunction.h"
 #include "pxr/imaging/hgiMetal/shaderProgram.h"
 #include "pxr/imaging/hgiMetal/texture.h"
@@ -113,32 +116,6 @@ HgiMetal::GetPrimaryDevice() const
     return _device;
 }
 
-void
-HgiMetal::SubmitCmds(HgiCmds* cmdsptr, uint32_t count)
-{
-    TRACE_FUNCTION();
-
-    if (!cmdsptr || count==0) {
-        return;
-    }
-
-    for (uint32_t i=0; i<count; i++) {
-        HgiCmds* w = cmdsptr + i;
-
-        if (HgiMetalGraphicsCmds* gw = dynamic_cast<HgiMetalGraphicsCmds*>(w)) {
-            if (gw->Commit()) {
-                _workToFlush = true;
-            }
-        } else if (HgiMetalBlitCmds* bw = dynamic_cast<HgiMetalBlitCmds*>(w)) {
-            if (gw->Commit()) {
-                _workToFlush = true;
-            }
-        }
-    }
-    
-    CommitCommandBuffer();
-}
-
 HgiGraphicsCmdsUniquePtr
 HgiMetal::CreateGraphicsCmds(
     HgiGraphicsCmdsDesc const& desc)
@@ -156,6 +133,12 @@ HgiMetal::CreateGraphicsCmds(
     return HgiGraphicsCmdsUniquePtr(encoder);
 }
 
+HgiComputeCmdsUniquePtr
+HgiMetal::CreateComputeCmds()
+{
+    return HgiComputeCmdsUniquePtr(new HgiMetalComputeCmds(this));
+}
+
 HgiBlitCmdsUniquePtr
 HgiMetal::CreateBlitCmds()
 {
@@ -171,7 +154,19 @@ HgiMetal::CreateTexture(HgiTextureDesc const & desc)
 void
 HgiMetal::DestroyTexture(HgiTextureHandle* texHandle)
 {
-    DestroyObject(texHandle);
+    _TrashObject(texHandle);
+}
+
+HgiSamplerHandle
+HgiMetal::CreateSampler(HgiSamplerDesc const & desc)
+{
+    return HgiSamplerHandle(new HgiMetalSampler(this, desc), GetUniqueId());
+}
+
+void
+HgiMetal::DestroySampler(HgiSamplerHandle* smpHandle)
+{
+    _TrashObject(smpHandle);
 }
 
 HgiBufferHandle
@@ -183,7 +178,7 @@ HgiMetal::CreateBuffer(HgiBufferDesc const & desc)
 void
 HgiMetal::DestroyBuffer(HgiBufferHandle* bufHandle)
 {
-    DestroyObject(bufHandle);
+    _TrashObject(bufHandle);
 }
 
 HgiShaderFunctionHandle
@@ -196,7 +191,7 @@ HgiMetal::CreateShaderFunction(HgiShaderFunctionDesc const& desc)
 void
 HgiMetal::DestroyShaderFunction(HgiShaderFunctionHandle* shaderFunctionHandle)
 {
-    DestroyObject(shaderFunctionHandle);
+    _TrashObject(shaderFunctionHandle);
 }
 
 HgiShaderProgramHandle
@@ -209,7 +204,7 @@ HgiMetal::CreateShaderProgram(HgiShaderProgramDesc const& desc)
 void
 HgiMetal::DestroyShaderProgram(HgiShaderProgramHandle* shaderProgramHandle)
 {
-    DestroyObject(shaderProgramHandle);
+    _TrashObject(shaderProgramHandle);
 }
 
 
@@ -223,19 +218,33 @@ HgiMetal::CreateResourceBindings(HgiResourceBindingsDesc const& desc)
 void
 HgiMetal::DestroyResourceBindings(HgiResourceBindingsHandle* resHandle)
 {
-    DestroyObject(resHandle);
+    _TrashObject(resHandle);
 }
 
-HgiPipelineHandle
-HgiMetal::CreatePipeline(HgiPipelineDesc const& desc)
+HgiGraphicsPipelineHandle
+HgiMetal::CreateGraphicsPipeline(HgiGraphicsPipelineDesc const& desc)
 {
-    return HgiPipelineHandle(new HgiMetalPipeline(this, desc), GetUniqueId());
+    return HgiGraphicsPipelineHandle(
+        new HgiMetalGraphicsPipeline(this, desc), GetUniqueId());
 }
 
 void
-HgiMetal::DestroyPipeline(HgiPipelineHandle* pipeHandle)
+HgiMetal::DestroyGraphicsPipeline(HgiGraphicsPipelineHandle* pipeHandle)
 {
-    DestroyObject(pipeHandle);
+    _TrashObject(pipeHandle);
+}
+
+HgiComputePipelineHandle
+HgiMetal::CreateComputePipeline(HgiComputePipelineDesc const& desc)
+{
+    return HgiComputePipelineHandle(
+        new HgiMetalComputePipeline(this, desc), GetUniqueId());
+}
+
+void
+HgiMetal::DestroyComputePipeline(HgiComputePipelineHandle* pipeHandle)
+{
+    _TrashObject(pipeHandle);
 }
 
 TfToken const&
@@ -287,6 +296,20 @@ HgiMetal::CommitCommandBuffer(CommitCommandBufferWaitType waitType,
     [_commandBuffer retain];
     
     _workToFlush = false;
+}
+
+bool
+HgiMetal::_SubmitCmds(HgiCmds* cmds)
+{
+    TRACE_FUNCTION();
+
+    if (cmds) {
+        _workToFlush = Hgi::_SubmitCmds(cmds);
+    }
+
+    CommitCommandBuffer();
+
+    return _workToFlush;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

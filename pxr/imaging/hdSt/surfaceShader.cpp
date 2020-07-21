@@ -41,6 +41,7 @@
 
 #include "pxr/imaging/glf/contextCaps.h"
 
+#include "pxr/base/arch/hash.h"
 #include "pxr/base/tf/envSetting.h"
 #include "pxr/base/tf/staticTokens.h"
 
@@ -194,7 +195,11 @@ HdStSurfaceShader::BindResources(const int program,
         }
     }
 
-    HdSt_TextureBinder::BindResources(binder, _namedTextureHandles);
+    const bool bindlessTextureEnabled =
+        GlfContextCaps::GetInstance().bindlessTextureEnabled;
+
+    HdSt_TextureBinder::BindResources(
+        binder, bindlessTextureEnabled, _namedTextureHandles);
 
     glActiveTexture(GL_TEXTURE0);
 
@@ -241,7 +246,11 @@ HdStSurfaceShader::UnbindResources(const int program,
         }
     }
 
-    HdSt_TextureBinder::UnbindResources(binder, _namedTextureHandles);
+    const bool bindlessTextureEnabled =
+        GlfContextCaps::GetInstance().bindlessTextureEnabled;
+
+    HdSt_TextureBinder::UnbindResources(
+        binder, bindlessTextureEnabled, _namedTextureHandles);
 
     glActiveTexture(GL_TEXTURE0);
 }
@@ -359,7 +368,7 @@ HdStSurfaceShader::SetNamedTextureHandles(
 void
 HdStSurfaceShader::SetBufferSources(
     HdBufferSpecVector const &bufferSpecs,
-    HdBufferSourceSharedPtrVector &bufferSources,
+    HdBufferSourceSharedPtrVector &&bufferSources,
     HdStResourceRegistrySharedPtr const &resourceRegistry)
 {
     if (bufferSpecs.empty()) {
@@ -390,7 +399,8 @@ HdStSurfaceShader::SetBufferSources(
 
         if (_paramArray->IsValid()) {
             if (!bufferSources.empty()) {
-                resourceRegistry->AddSources(_paramArray, bufferSources);
+                resourceRegistry->AddSources(_paramArray,
+                                             std::move(bufferSources));
             }
         }
     }
@@ -472,13 +482,13 @@ TF_DEFINE_PRIVATE_TOKENS(
 );
 
 static TfTokenVector const &
-_GetExtraWhitelistedShaderPrimvarNames()
+_GetExtraIncludedShaderPrimvarNames()
 {
     static const TfTokenVector primvarNames = {
         HdTokens->displayColor,
         HdTokens->displayOpacity,
 
-        // Whitelist a few ad hoc primvar names that
+        // Include a few ad hoc primvar names that
         // are used by the built-in material shading system.
 
         _tokens->ptexFaceOffset,
@@ -506,7 +516,7 @@ _GetExtraWhitelistedShaderPrimvarNames()
 static TfTokenVector
 _CollectPrimvarNames(const HdSt_MaterialParamVector &params)
 {
-    TfTokenVector primvarNames = _GetExtraWhitelistedShaderPrimvarNames();
+    TfTokenVector primvarNames = _GetExtraIncludedShaderPrimvarNames();
 
     for (HdSt_MaterialParam const &param: params) {
         if (param.IsFallback()) {
@@ -529,20 +539,21 @@ _CollectPrimvarNames(const HdSt_MaterialParamVector &params)
     return primvarNames;
 }
 
-std::vector<HdStShaderCode::BarAndSources>
-HdStSurfaceShader::ComputeBufferSourcesFromTextures() const
+void
+HdStSurfaceShader::AddResourcesFromTextures(ResourceContext &ctx) const
 {
+    const bool bindlessTextureEnabled =
+        GlfContextCaps::GetInstance().bindlessTextureEnabled;
+
     // Add buffer sources for bindless texture handles (and
     // other texture metadata such as the sampling transform for
     // a field texture).
     HdBufferSourceSharedPtrVector result;
     HdSt_TextureBinder::ComputeBufferSources(
-        GetNamedTextureHandles(), &result);
+        GetNamedTextureHandles(), bindlessTextureEnabled, &result);
 
-    if (result.empty()) {
-        return { };
-    } else {
-        return { { GetShaderData(), std::move(result) } };
+    if (!result.empty()) {
+        ctx.AddSources(GetShaderData(), std::move(result));
     }
 }
 

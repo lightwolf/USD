@@ -30,6 +30,8 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/vtBufferSource.h"
 
+#include "pxr/base/arch/hash.h"
+
 PXR_NAMESPACE_OPEN_SCOPE
 
 HdStExtComputation::HdStExtComputation(SdfPath const &id)
@@ -63,7 +65,7 @@ _ComputeSharedComputationInputId(uint64_t baseId,
 
 static HdBufferArrayRangeSharedPtr
 _AllocateComputationDataRange(
-        HdBufferSourceSharedPtrVector & inputs,
+        HdBufferSourceSharedPtrVector && inputs,
         HdStResourceRegistrySharedPtr const & resourceRegistry)
 {
     HdBufferSpecVector bufferSpecs;
@@ -74,7 +76,7 @@ _AllocateComputationDataRange(
                                               HdPrimTypeTokens->extComputation,
                                               bufferSpecs,
                                               HdBufferArrayUsageHint());
-    resourceRegistry->AddSources(inputRange, inputs);
+    resourceRegistry->AddSources(inputRange, std::move(inputs));
 
     return inputRange;
 }
@@ -141,7 +143,7 @@ HdStExtComputation::Sync(HdSceneDelegate *sceneDelegate,
 
             if (barInstance.IsFirstInstance()) {
                 // Allocate the first buffer range for this input key
-                _inputRange = _AllocateComputationDataRange(inputs,
+                _inputRange = _AllocateComputationDataRange(std::move(inputs),
                                                             resourceRegistry);
                 barInstance.SetValue(_inputRange);
 
@@ -169,8 +171,8 @@ HdStExtComputation::Sync(HdSceneDelegate *sceneDelegate,
         
             if (!_inputRange || !_inputRange->IsValid()) {
                 // Allocate a new BAR if we haven't already.
-                _inputRange = _AllocateComputationDataRange(inputs,
-                                                            resourceRegistry);
+                _inputRange = _AllocateComputationDataRange(
+                    std::move(inputs), resourceRegistry);
                 TF_DEBUG(HD_SHARED_EXT_COMPUTATION_DATA).Msg(
                     "Allocated unshared ExtComputation buffer range: %s: %p\n",
                     GetId().GetText(), (void *)_inputRange.get());
@@ -185,7 +187,8 @@ HdStExtComputation::Sync(HdSceneDelegate *sceneDelegate,
                     HdBufferSpec::IsSubset(/*subset*/inputSpecs,
                                            /*superset*/barSpecs);
                 if (useExistingRange) {
-                    resourceRegistry->AddSources(_inputRange, inputs);
+                    resourceRegistry->AddSources(
+                        _inputRange, std::move(inputs));
 
                     TF_DEBUG(HD_SHARED_EXT_COMPUTATION_DATA).Msg(
                         "Reused unshared ExtComputation buffer range: "
@@ -193,8 +196,8 @@ HdStExtComputation::Sync(HdSceneDelegate *sceneDelegate,
                         GetId().GetText(), (void *)_inputRange.get());
 
                 } else {
-                    _inputRange = _AllocateComputationDataRange(inputs,
-                                                            resourceRegistry);
+                    _inputRange = _AllocateComputationDataRange(
+                        std::move(inputs), resourceRegistry);
                     TF_DEBUG(HD_SHARED_EXT_COMPUTATION_DATA).Msg(
                         "Couldn't reuse existing unshared range. Allocated a "
                         "new one.%s: %p\n",

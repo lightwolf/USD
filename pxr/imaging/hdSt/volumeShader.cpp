@@ -34,6 +34,7 @@
 #include "pxr/imaging/hdSt/resourceRegistry.h"
 #include "pxr/imaging/hd/renderDelegate.h"
 #include "pxr/imaging/hd/vtBufferSource.h"
+#include "pxr/imaging/glf/contextCaps.h"
 #include "pxr/base/tf/staticTokens.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -281,23 +282,26 @@ _ComputePoints(const GfBBox3d &bbox)
 
 }  // end anonymous namespace
 
-std::vector<HdStShaderCode::BarAndSources>
-HdSt_VolumeShader::ComputeBufferSourcesFromTextures() const
+void
+HdSt_VolumeShader::AddResourcesFromTextures(ResourceContext &ctx) const
 {
-    HdBufferSourceSharedPtrVector pointsBarSources;
+    const bool bindlessTextureEnabled
+        = GlfContextCaps::GetInstance().bindlessTextureEnabled;
+
     HdBufferSourceSharedPtrVector shaderBarSources;
 
     // Fills in sampling transforms for textures and also texture
     // handles for bindless textures.
     HdSt_TextureBinder::ComputeBufferSources(
-        GetNamedTextureHandles(), &shaderBarSources);
+        GetNamedTextureHandles(), bindlessTextureEnabled, &shaderBarSources);
 
     if (_fillsPointsBar) {
         // Compute volume bounding box from field bounding boxes
         const GfBBox3d bbox = _ComputeBBox(GetNamedTextureHandles());
 
         // Use as points
-        pointsBarSources.push_back(
+        ctx.AddSource(
+            _pointsBar,
             std::make_shared<HdVtBufferSource>(
                 HdTokens->points,
                 _ComputePoints(bbox)));
@@ -306,18 +310,9 @@ HdSt_VolumeShader::ComputeBufferSourcesFromTextures() const
         GetBufferSourcesForBBox(bbox, &shaderBarSources);
     }
 
-    std::vector<HdStShaderCode::BarAndSources> result;
-    result.reserve(2);
-
-    if (!pointsBarSources.empty()) {
-        result.emplace_back(_pointsBar, std::move(pointsBarSources));
-    }
-
     if (!shaderBarSources.empty()) {
-        result.emplace_back(GetShaderData(), std::move(shaderBarSources));
+        ctx.AddSources(GetShaderData(), std::move(shaderBarSources));
     }
-
-    return result;
 }
 
 void
@@ -342,6 +337,9 @@ HdSt_VolumeShader::UpdateTextureHandles(
     if (!TF_VERIFY(textureHandles.size() == _fieldDescriptors.size())) {
         return;
     }
+
+    const bool bindlessTextureEnabled
+        = GlfContextCaps::GetInstance().bindlessTextureEnabled;
 
     // Walk through the vector of named texture handles and field descriptors
     // simultaneously.
@@ -375,7 +373,7 @@ HdSt_VolumeShader::UpdateTextureHandles(
                 textureType,
                 samplerParams,
                 textureMemory,
-                HdSt_TextureBinder::UsesBindlessTextures(),
+                bindlessTextureEnabled,
                 shared_from_this());
     }
 

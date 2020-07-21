@@ -56,13 +56,15 @@ static const _FormatDesc FORMAT_DESC[] =
     {HdFormatInt32,     HgiFormatInt32}, 
     {HdFormatInt32Vec2, HgiFormatInt32Vec2}, 
     {HdFormatInt32Vec3, HgiFormatInt32Vec3}, 
-    {HdFormatInt32Vec4, HgiFormatInt32Vec4}, 
+    {HdFormatInt32Vec4, HgiFormatInt32Vec4},
+
+    {HdFormatFloat32UInt8, HgiFormatFloat32UInt8},
 };
 
 // A few random format validations to make sure that the format conversion
 // table stays up-to-date with changes to HdFormat and HgiFormat.
 constexpr bool _CompileTimeValidateFormatTable() {
-    return (HdFormatCount == 20 &&
+    return (HdFormatCount == 21 &&
             HdFormatUNorm8 == 0 && HgiFormatUNorm8 == 0 &&
             HdFormatFloat16Vec4 == 11 && HgiFormatFloat16Vec4 == 9 &&
             HdFormatFloat32Vec4 == 15 && HgiFormatFloat32Vec4 == 13 &&
@@ -82,6 +84,25 @@ HdxHgiConversions::GetHgiFormat(HdFormat hdFormat)
     }
 
     return FORMAT_DESC[hdFormat].hgiFormat;
+}
+
+HdFormat
+HdxHgiConversions::GetHdFormat(HgiFormat hgiFormat)
+{
+    if ((hgiFormat < 0) || (hgiFormat >= HgiFormatCount))
+    {
+        TF_CODING_ERROR("Unexpected HgiFormat %d", hgiFormat);
+        return HdFormatInvalid;
+    }
+
+    for (size_t i = 0; i < HdFormatCount; i++) {
+        if (FORMAT_DESC[i].hgiFormat == hgiFormat) {
+            return HdFormat(i);
+        }
+    }
+    
+    TF_CODING_ERROR("Unmapped HgiFormat %d", hgiFormat);
+    return HdFormatInvalid;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

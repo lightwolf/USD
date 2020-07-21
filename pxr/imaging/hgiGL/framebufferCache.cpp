@@ -36,7 +36,6 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 struct HgiGLDescriptorCacheItem {
     HgiGraphicsCmdsDesc descriptor;
-    HgiTextureHandle depthTexture;
     uint32_t framebuffer = 0;
 };
 
@@ -45,7 +44,6 @@ _CreateDescriptorCacheItem(const HgiGraphicsCmdsDesc& desc)
 {
     HgiGLDescriptorCacheItem* dci = new HgiGLDescriptorCacheItem();
     dci->descriptor = desc;
-    dci->depthTexture = desc.depthTexture;
 
     // Create framebuffer
     glCreateFramebuffers(1, &dci->framebuffer);
@@ -97,9 +95,13 @@ _CreateDescriptorCacheItem(const HgiGraphicsCmdsDesc& desc)
         uint32_t textureName = glTexture->GetTextureId();
 
         if (TF_VERIFY(glIsTexture(textureName), "Attachment not a texture")) {
+            GLenum attachment =
+                (desc.depthAttachmentDesc.format == HgiFormatFloat32UInt8)?
+                    GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+
             glNamedFramebufferTexture(
                 dci->framebuffer,
-                GL_DEPTH_ATTACHMENT,
+                attachment,
                 textureName,
                 0); // level
         }

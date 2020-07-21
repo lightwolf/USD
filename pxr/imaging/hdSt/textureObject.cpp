@@ -413,6 +413,23 @@ HdSt_TextureObjectCpuData::_DetermineFormatAndConvertIfNecessary(
 ///////////////////////////////////////////////////////////////////////////////
 // Uv texture
 
+HdStUvTextureObject::HdStUvTextureObject(
+    const HdStTextureIdentifier &textureId,
+    HdSt_TextureObjectRegistry * textureObjectRegistry)
+  : HdStTextureObject(textureId, textureObjectRegistry)
+{
+}
+
+
+HdTextureType
+HdStUvTextureObject::GetTextureType() const
+{
+    return HdTextureType::Uv;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Uv asset texture
+
 static
 HdWrap
 _GetWrapParameter(const bool hasWrapMode, const GLenum wrapMode)
@@ -430,7 +447,9 @@ _GetWrapParameter(const bool hasWrapMode, const GLenum wrapMode)
         // Note that some graphics drivers produce results for GL_CLAMP
         // that match neither GL_CLAMP_TO_BORDER not GL_CLAMP_TO_EDGE.
         //
-        case GL_CLAMP: return HdWrapLegacyClamp;
+        // We pick GL_CLAMP_TO_EDGE here - breaking backwards compatibility.
+        //
+        case GL_CLAMP: return HdWrapClamp;
         default:
             TF_CODING_ERROR("Unsupported GL wrap mode 0x%04x", wrapMode);
         }
@@ -473,15 +492,15 @@ _GetImageOriginLocation(const HdStSubtextureIdentifier * const subId)
     return GlfImage::OriginLowerLeft;
 }
 
-HdStUvTextureObject::HdStUvTextureObject(
+HdStAssetUvTextureObject::HdStAssetUvTextureObject(
     const HdStTextureIdentifier &textureId,
     HdSt_TextureObjectRegistry * const textureObjectRegistry)
-  : HdStTextureObject(textureId, textureObjectRegistry)
+  : HdStUvTextureObject(textureId, textureObjectRegistry)
   , _wrapParameters{HdWrapUseMetadata, HdWrapUseMetadata}
 {
 }
 
-HdStUvTextureObject::~HdStUvTextureObject()
+HdStAssetUvTextureObject::~HdStAssetUvTextureObject()
 {
     if (Hgi * hgi = _GetHgi()) {
         hgi->DestroyTexture(&_gpuTexture);
@@ -489,7 +508,7 @@ HdStUvTextureObject::~HdStUvTextureObject()
 }
 
 void
-HdStUvTextureObject::_Load()
+HdStAssetUvTextureObject::_Load()
 {
     TRACE_FUNCTION();
 
@@ -518,7 +537,7 @@ HdStUvTextureObject::_Load()
 }
 
 void
-HdStUvTextureObject::_Commit()
+HdStAssetUvTextureObject::_Commit()
 {
     TRACE_FUNCTION();
 
@@ -539,7 +558,7 @@ HdStUvTextureObject::_Commit()
         if (desc.mipLevels > 1) {
             HgiBlitCmdsUniquePtr const blitCmds = hgi->CreateBlitCmds();
             blitCmds->GenerateMipMaps(_gpuTexture);
-            hgi->SubmitCmds(blitCmds.get(), 1);
+            hgi->SubmitCmds(blitCmds.get());
         }
     }
 
@@ -548,15 +567,9 @@ HdStUvTextureObject::_Commit()
 }
 
 bool
-HdStUvTextureObject::IsValid() const
+HdStAssetUvTextureObject::IsValid() const
 {
-    return _gpuTexture;
-}
-
-HdTextureType
-HdStUvTextureObject::GetTextureType() const
-{
-    return HdTextureType::Uv;
+    return bool(_gpuTexture);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -674,7 +687,7 @@ HdStFieldTextureObject::_Commit()
 bool
 HdStFieldTextureObject::IsValid() const
 {
-    return _gpuTexture;
+    return bool(_gpuTexture);
 }
 
 HdTextureType

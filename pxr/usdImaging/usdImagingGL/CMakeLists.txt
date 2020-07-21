@@ -45,10 +45,8 @@ pxr_library(usdImagingGL
         ${TBB_INCLUDE_DIRS}
 
     PUBLIC_CLASSES
-        domeLightAdapter
         drawModeAdapter
         engine
-        materialTextureAdapter
         package
         renderParams
 
@@ -59,7 +57,6 @@ pxr_library(usdImagingGL
 
     PRIVATE_CLASSES
         legacyEngine
-        textureUtils
 
     PRIVATE_HEADERS
         unitTestGLDrawing.h

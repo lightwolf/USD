@@ -39,6 +39,7 @@
 
 #include "pxr/imaging/glf/contextCaps.h"
 #include "pxr/imaging/glf/simpleLight.h"
+#include "pxr/imaging/glf/simpleLightingContext.h"
 
 #include "pxr/base/gf/frustum.h"
 
@@ -300,6 +301,8 @@ HdxSimpleLightTask::Sync(HdSceneDelegate* delegate,
             }
         }
     }
+
+    _lightingShader->AllocateTextureHandles(delegate);
 
     *dirtyBits = HdChangeTracker::Clean;
 }

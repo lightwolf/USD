@@ -297,12 +297,18 @@ HgiInteropMetal::HgiInteropMetal(Hgi* hgi)
         "{\n"
         "    vec2 uv = vec2(texCoord.x, 1.0 - texCoord.y) * texSize;\n"
         "#if __VERSION__ >= 140\n"
+        "    vec4 encodedDepth = texture(depthTexture, uv.st);\n"
+        "#else\n"
+        "    vec4 encodedDepth = texture2DRect(depthTexture, uv.st);\n"
+        "#endif\n"
+        "    float depth = dot(encodedDepth,\n"
+        "        vec4(1.0, 1 / 255.0, 1 / 65025.0, 1 / 16581375.0) );\n"
+        "#if __VERSION__ >= 140\n"
         "    fragColor = texture(interopTexture, uv.st);\n"
-        "    gl_FragDepth = texture(depthTexture, uv.st).r;\n"
         "#else\n"
         "    gl_FragColor = texture2DRect(interopTexture, uv.st);\n"
-        "    gl_FragDepth = texture2DRect(depthTexture, uv.st).r;\n"
         "#endif\n"
+        "    gl_FragDepth = depth;\n"
         "}\n";
 
     GLuint fsColor = _compileShader(fragmentShaderColor, GL_FRAGMENT_SHADER);
@@ -338,7 +344,18 @@ HgiInteropMetal::HgiInteropMetal(Hgi* hgi)
         "{\n"
         "    if(gid.x >= texOut.get_width() || gid.y >= texOut.get_height())\n"
         "        return;\n"
-        "    texOut.write(float(texIn.read(gid)), gid);\n"
+        "    float depth = texIn.read(gid);\n"
+        // This works around an issue with AMD Vega incorrectly resolving
+        // depth buffers when there's an empty render target performing the
+        // load/resolve
+        "    float maxDepth = 1.0f - FLT_EPSILON;\n"
+        "    depth = depth == 0.0f?maxDepth:min(maxDepth, depth);\n"
+        "    float4 encodedDepth =\n"
+        "        float4(1.0f, 255.0f, 65025.0f, 16581375.0f) * depth;\n"
+        "    encodedDepth = fract(encodedDepth);\n"
+        "    encodedDepth -= encodedDepth.yzww *\n"
+        "        float4(1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0, 0.0);\n"
+        "    texOut.write(encodedDepth, gid);\n"
         "}\n"
         "\n"
         "kernel void copyColour(\n"
@@ -546,7 +563,6 @@ HgiInteropMetal::_SetAttachmentSize(int width, int height)
         width,
         height,
         kCVPixelFormatType_32BGRA,
-        //kCVPixelFormatType_64RGBAHalf,
         (__bridge CFDictionaryRef)cvBufferProperties,
         &_pixelBuffer);
     
@@ -554,7 +570,7 @@ HgiInteropMetal::_SetAttachmentSize(int width, int height)
         kCFAllocatorDefault,
         width,
         height,
-        kCVPixelFormatType_OneComponent32Float,
+        kCVPixelFormatType_32BGRA,
         (__bridge CFDictionaryRef)cvBufferProperties,
         &_depthBuffer);
     
@@ -595,7 +611,6 @@ HgiInteropMetal::_SetAttachmentSize(int width, int height)
         _cvmtlTextureCache,
         _pixelBuffer,
         (__bridge CFDictionaryRef)metalTextureProperties,
-        //MTLPixelFormatRGBA16Float,
         MTLPixelFormatBGRA8Unorm,
         width,
         height,
@@ -614,7 +629,7 @@ HgiInteropMetal::_SetAttachmentSize(int width, int height)
         _cvmtlTextureCache,
         _depthBuffer,
         (__bridge CFDictionaryRef)metalTextureProperties,
-        MTLPixelFormatR32Float,
+        MTLPixelFormatBGRA8Unorm,
         width,
         height,
         0,
@@ -768,6 +783,9 @@ HgiInteropMetal::_BlitToOpenGL(bool flipY, int shaderIndex)
 
     _CaptureOpenGlState();
     
+    // XXX: This doesn't support "optional" depth. Enabling depth writes without
+    // a depth aov to xfer would mean that the bound depth buffer is overwritten
+    // with the fullscreen tri's depth (i.e., the near plane).
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
@@ -776,7 +794,10 @@ HgiInteropMetal::_BlitToOpenGL(bool flipY, int shaderIndex)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     glEnable(GL_BLEND);
-    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+    glBlendFuncSeparate(/*srcColor*/GL_ONE,
+                        /*dstColor*/GL_ONE_MINUS_SRC_ALPHA,
+                        /*srcAlpha*/GL_ONE,
+                        /*dstAlpha*/GL_ONE);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
     
     ShaderContext &shader = _shaderProgramContext[shaderIndex];
@@ -827,12 +848,12 @@ HgiInteropMetal::_BlitToOpenGL(bool flipY, int shaderIndex)
 }
 
 void
-HgiInteropMetal::CopyToInterop(
+HgiInteropMetal::CompositeToInterop(
     HgiTextureHandle const &color,
     HgiTextureHandle const &depth)
 {
     if (!ARCH_UNLIKELY(color)) {
-        TF_WARN("No valid color texture provided");
+        TF_CODING_ERROR("No valid color texture provided");
         return;
     }
 

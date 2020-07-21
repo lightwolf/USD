@@ -103,6 +103,11 @@ HdxColorizeSelectionTask::_Sync(HdSceneDelegate* delegate,
         _GetTaskParams(delegate, &_params);
     }
     *dirtyBits = HdChangeTracker::Clean;
+
+    HdxSelectionTrackerSharedPtr sel;
+    if (_GetTaskContextData(ctx, HdxTokens->selectionState, &sel)) {
+        sel->UpdateSelection(&(delegate->GetRenderIndex()));
+    }
 }
 
 void
@@ -123,9 +128,7 @@ HdxColorizeSelectionTask::Prepare(HdTaskContext* ctx,
                               _params.elementIdBufferPath));
 
     HdxSelectionTrackerSharedPtr sel;
-    if (_GetTaskContextData(ctx, HdxTokens->selectionState, &sel)) {
-        sel->Prepare(renderIndex);
-    }
+    _GetTaskContextData(ctx, HdxTokens->selectionState, &sel);
 
     if (sel && sel->GetVersion() != _lastVersion) {
         _lastVersion = sel->GetVersion();
@@ -389,7 +392,7 @@ HdxColorizeSelectionTask::_CreateParameterBuffer()
         copyOp.destinationByteOffset = 0;
         copyOp.gpuDestinationBuffer = _parameterBuffer;
         blitCmds->CopyBufferCpuToGpu(copyOp);
-        _GetHgi()->SubmitCmds(blitCmds.get(), 1);
+        _GetHgi()->SubmitCmds(blitCmds.get());
     }
 }
 
