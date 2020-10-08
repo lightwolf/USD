@@ -40,7 +40,11 @@
 #include "pxr/imaging/hdSt/textureHandleRegistry.h"
 #include "pxr/imaging/hdSt/textureObjectRegistry.h"
 
+#include "pxr/imaging/hio/glslfx.h"
+#include "pxr/imaging/hgi/hgi.h"
+
 #include "pxr/base/tf/envSetting.h"
+#include "pxr/base/tf/hash.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -94,18 +98,18 @@ HdStResourceRegistry::HdStResourceRegistry(Hgi * const hgi)
     , _numBufferSourcesToResolve(0)
     // default aggregation strategies for varying (vertex, varying) primvars
     , _nonUniformAggregationStrategy(
-        std::make_unique<HdStVBOMemoryManager>(_hgi))
+        std::make_unique<HdStVBOMemoryManager>(this))
     , _nonUniformImmutableAggregationStrategy(
-        std::make_unique<HdStVBOMemoryManager>(_hgi))
+        std::make_unique<HdStVBOMemoryManager>(this))
     // default aggregation strategy for uniform on UBO (for globals)
     , _uniformUboAggregationStrategy(
-        std::make_unique<HdStInterleavedUBOMemoryManager>(_hgi))
+        std::make_unique<HdStInterleavedUBOMemoryManager>(this))
     // default aggregation strategy for uniform on SSBO (for primvars)
     , _uniformSsboAggregationStrategy(
-        std::make_unique<HdStInterleavedSSBOMemoryManager>(_hgi))
+        std::make_unique<HdStInterleavedSSBOMemoryManager>(this))
     // default aggregation strategy for single buffers (for nested instancer)
     , _singleAggregationStrategy(
-        std::make_unique<HdStVBOSimpleMemoryManager>(_hgi))
+        std::make_unique<HdStVBOSimpleMemoryManager>(this))
     , _textureHandleRegistry(std::make_unique<HdSt_TextureHandleRegistry>(hgi))
 {
 }
@@ -115,6 +119,25 @@ HdStResourceRegistry::~HdStResourceRegistry() = default;
 void HdStResourceRegistry::InvalidateShaderRegistry()
 {
     _geometricShaderRegistry.Invalidate();
+    _glslfxFileRegistry.Invalidate();
+}
+
+
+void HdStResourceRegistry::ReloadResource(TfToken const& resourceType,
+                                          std::string const& path) 
+{
+    // find the file and invalidate it 
+    if (resourceType == HdResourceTypeTokens->shaderFile) {
+
+        size_t pathHash = TfHash()(path);
+        HdInstance<HioGlslfxSharedPtr> glslfxInstance = 
+                                                RegisterGLSLFXFile(pathHash);
+
+        // Reload the glslfx file.
+        HioGlslfxSharedPtr glslfxSharedPtr = glslfxInstance.GetValue();
+        glslfxSharedPtr.reset(new HioGlslfx(path));
+        glslfxInstance.SetValue(glslfxSharedPtr);
+    }
 }
 
 VtDictionary
@@ -464,7 +487,7 @@ HdStResourceRegistry::RegisterDispatchBuffer(
 {
     HdStDispatchBufferSharedPtr const result =
         std::make_shared<HdStDispatchBuffer>(
-            _hgi, role, count, commandNumUints);
+            this, role, count, commandNumUints);
 
     _dispatchBufferRegistry.push_back(result);
 
@@ -596,6 +619,13 @@ HdStResourceRegistry::RegisterGLSLProgram(
     return _glslProgramRegistry.GetInstance(id);
 }
 
+HdInstance<HioGlslfxSharedPtr>
+HdStResourceRegistry::RegisterGLSLFXFile(
+        HdInstance<HioGlslfxSharedPtr>::ID id)
+{
+    return _glslfxFileRegistry.GetInstance(id);
+}
+
 HdInstance<HdStTextureResourceHandleSharedPtr>
 HdStResourceRegistry::RegisterTextureResourceHandle(
         HdInstance<HdStTextureResourceHandleSharedPtr>::ID id)
@@ -608,6 +638,27 @@ HdStResourceRegistry::FindTextureResourceHandle(
         HdInstance<HdStTextureResourceHandleSharedPtr>::ID id, bool *found)
 {
     return _textureResourceHandleRegistry.FindInstance(id, found);
+}
+
+HdInstance<HgiResourceBindingsSharedPtr>
+HdStResourceRegistry::RegisterResourceBindings(
+    HdInstance<HgiResourceBindingsSharedPtr>::ID id)
+{
+    return _resourceBindingsRegistry.GetInstance(id);
+}
+
+HdInstance<HgiGraphicsPipelineSharedPtr>
+HdStResourceRegistry::RegisterGraphicsPipeline(
+    HdInstance<HgiGraphicsPipelineSharedPtr>::ID id)
+{
+    return _graphicsPipelineRegistry.GetInstance(id);
+}
+
+HdInstance<HgiComputePipelineSharedPtr>
+HdStResourceRegistry::RegisterComputePipeline(
+    HdInstance<HgiComputePipelineSharedPtr>::ID id)
+{
+    return _computePipelineRegistry.GetInstance(id);
 }
 
 std::ostream &operator <<(
@@ -623,6 +674,23 @@ std::ostream &operator <<(
     out << self._singleBufferArrayRegistry;
 
     return out;
+}
+
+HgiBlitCmds*
+HdStResourceRegistry::GetBlitCmds()
+{
+    if (!_blitCmds) {
+        _blitCmds = _hgi->CreateBlitCmds();
+    }
+    return _blitCmds.get();
+}
+
+void HdStResourceRegistry::SubmitHgiWork()
+{
+    if (_blitCmds) {
+        _hgi->SubmitCmds(_blitCmds.get());
+        _blitCmds.reset();
+    }
 }
 
 void
@@ -710,10 +778,12 @@ HdStResourceRegistry::_Commit()
         // for each gpu computation, make sure its destination buffer to be
         // allocated.
         //
-        TF_FOR_ALL(compIt, _pendingComputations) {
-            if (compIt->range) {
+        for (_PendingComputation &pendingComp : _pendingComputations) {
+            HdComputationSharedPtr const &comp = pendingComp.computation;
+            HdBufferArrayRangeSharedPtr &dstRange = pendingComp.range;
+            if (dstRange) {
                 // ask the size of destination buffer of the gpu computation
-                int numElements = compIt->computation->GetNumOutputElements();
+                int numElements = comp->GetNumOutputElements();
                 if (numElements > 0) {
                     // We call BufferArray->Reallocate() later so that
                     // the reallocation happens only once per BufferArray.
@@ -721,9 +791,9 @@ HdStResourceRegistry::_Commit()
                     // if the range is already larger than the current one,
                     // leave it as it is (there is a possibilty that GPU
                     // computation generates less data than it was).
-                    int currentNumElements = compIt->range->GetNumElements();
+                    int currentNumElements = dstRange->GetNumElements();
                     if (currentNumElements < numElements) {
-                        compIt->range->Resize(numElements);
+                        dstRange->Resize(numElements);
                     }
                  }
             }
@@ -751,31 +821,26 @@ HdStResourceRegistry::_Commit()
         // 4. copy phase:
         //
 
-        TF_FOR_ALL(reqIt, _pendingSources) {
+        for (_PendingSource &pendingSource : _pendingSources) {
+            HdBufferArrayRangeSharedPtr &dstRange = pendingSource.range;
             // CPU computation may not have a range. (e.g. adjacency)
-            if (!reqIt->range) continue;
+            if (!dstRange) continue;
 
             // CPU computation may result in an empty buffer source
             // (e.g. GPU quadrangulation table could be empty for quad only
             // mesh)
-            if (reqIt->range->GetNumElements() == 0) continue;
+            if (dstRange->GetNumElements() == 0) continue;
 
-            // Note that for staticArray in interleavedVBO,
-            // it's possible range->GetNumElements() != srcIt->GetNumElements().
-            // (range->GetNumElements() should always be 1, but srcIt
-            //  (vtBufferSource) could have a VtArray with arraySize entries).
-
-            TF_FOR_ALL(srcIt, reqIt->sources) {
-                // execute copy
-                reqIt->range->CopyData(*srcIt);
+            for (auto const& src : pendingSource.sources) {// execute copy
+                dstRange->CopyData(src);
 
                 // also copy any chained buffers
-                _CopyChainedBuffers(*srcIt, reqIt->range);
+                _CopyChainedBuffers(src, dstRange);
             }
 
             if (TfDebug::IsEnabled(HD_BUFFER_ARRAY_RANGE_CLEANED)) {
                 std::stringstream ss;
-                ss << *reqIt->range;
+                ss << *dstRange;
                 TF_DEBUG(HD_BUFFER_ARRAY_RANGE_CLEANED).Msg("CLEAN: %s\n", 
                                                             ss.str().c_str());
             }
@@ -783,10 +848,11 @@ HdStResourceRegistry::_Commit()
     }
 
     {
-        // HD_TRACE_SCOPE("Flush");
+        HD_TRACE_SCOPE("Flush");
         // 5. flush phase:
         //
         // flush cosolidated buffer updates
+        SubmitHgiWork();
     }
 
     {
@@ -797,12 +863,16 @@ HdStResourceRegistry::_Commit()
         // they are registered.
         //   e.g. smooth normals -> quadrangulation.
         //
-        TF_FOR_ALL(it, _pendingComputations) {
-            it->computation->Execute(it->range, this);
+        for (_PendingComputation &pendingComp : _pendingComputations) {
+            HdComputationSharedPtr const &comp = pendingComp.computation;
+            HdBufferArrayRangeSharedPtr &dstRange = pendingComp.range;
+            comp->Execute(dstRange, this);
 
             HD_PERF_COUNTER_INCR(HdPerfTokens->computationsCommited);
         }
     }
+
+    SubmitHgiWork();
 
     // release sources
     WorkParallelForEach(_pendingSources.begin(), _pendingSources.end(),
@@ -870,7 +940,13 @@ HdStResourceRegistry::_GarbageCollect()
     // Cleanup Shader registries
     _geometricShaderRegistry.GarbageCollect();
     _glslProgramRegistry.GarbageCollect();
+    _glslfxFileRegistry.GarbageCollect();
     _textureResourceHandleRegistry.GarbageCollect();
+
+    // Cleanup Hgi resources bindings and pipelines
+    _resourceBindingsRegistry.GarbageCollect();
+    _graphicsPipelineRegistry.GarbageCollect();
+    _computePipelineRegistry.GarbageCollect();
 
     // cleanup buffer array
     // buffer array retains weak_ptrs of range. All unused ranges should be
@@ -880,6 +956,8 @@ HdStResourceRegistry::_GarbageCollect()
     _uniformUboBufferArrayRegistry.GarbageCollect();
     _uniformSsboBufferArrayRegistry.GarbageCollect();
     _singleBufferArrayRegistry.GarbageCollect();
+
+    SubmitHgiWork();
 }
 
 void
@@ -1058,11 +1136,12 @@ HdStResourceRegistry::_TallyResourceAllocation(VtDictionary *result) const
     // Texture registry
     {
         GlfTextureRegistry &textureReg = GlfTextureRegistry::GetInstance();
-        std::vector<VtDictionary> textureInfo = textureReg.GetTextureInfos();
+        std::vector<VtDictionary> textureInfos = textureReg.GetTextureInfos();
         size_t textureMemory = 0;
-        TF_FOR_ALL (textureIt, textureInfo) {
-            VtDictionary &info = (*textureIt);
-            textureMemory += info["memoryUsed"].Get<size_t>();
+        for (VtDictionary const &info :  textureInfos) {
+            if (VtDictionaryIsHolding<size_t>(info, "memoryUsed")) {
+                textureMemory += VtDictionaryGet<size_t>(info, "memoryUsed");
+            }
         }
         (*result)[HdPerfTokens->textureMemory] = VtValue(textureMemory);
     }

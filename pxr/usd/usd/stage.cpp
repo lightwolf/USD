@@ -3552,7 +3552,18 @@ UsdStage::MuteAndUnmuteLayers(const std::vector<std::string> &muteLayers,
     TfAutoMallocTag2 tag("Usd", _mallocTagID);
 
     PcpChanges changes;
-    _cache->RequestLayerMuting(muteLayers, unmuteLayers, &changes);
+    std::vector<std::string> newMutedLayers, newUnMutedLayers;
+    _cache->RequestLayerMuting(muteLayers, unmuteLayers, &changes, 
+            &newMutedLayers, &newUnMutedLayers);
+
+    UsdStageWeakPtr self(this);
+
+    // Notify for layer muting/unmuting
+    if (!newMutedLayers.empty() || !newUnMutedLayers.empty()) {
+        UsdNotice::LayerMutingChanged(self, newMutedLayers, newUnMutedLayers)
+            .Send(self);
+    }
+
     if (changes.IsEmpty()) {
         return;
     }
@@ -3560,8 +3571,6 @@ UsdStage::MuteAndUnmuteLayers(const std::vector<std::string> &muteLayers,
     using _PathsToChangesMap = UsdNotice::ObjectsChanged::_PathsToChangesMap;
     _PathsToChangesMap resyncChanges, infoChanges;
     _Recompose(changes, &resyncChanges);
-
-    UsdStageWeakPtr self(this);
 
     UsdNotice::ObjectsChanged(self, &resyncChanges, &infoChanges)
         .Send(self);
@@ -5029,7 +5038,10 @@ UsdStage::_FlattenProperty(const UsdProperty &srcProp,
     {
         SdfChangeBlock block;
 
-        SdfPrimSpecHandle primSpec = _CreatePrimSpecForEditing(dstParent);
+        // Use the edit target from the destination prim's stage, since it may
+        // be different from this stage
+        SdfPrimSpecHandle primSpec = 
+            dstParent.GetStage()->_CreatePrimSpecForEditing(dstParent);
         if (!primSpec) {
             // _CreatePrimSpecForEditing will have already issued any
             // coding errors, so just bail out.
@@ -5068,8 +5080,11 @@ UsdStage::_FlattenProperty(const UsdProperty &srcProp,
 
         // Apply offsets that affect the edit target to flattened time 
         // samples to ensure they resolve to the expected value.
+        // Use the edit target from the destination prim's stage, since it may 
+        // be different from this stage.
         const SdfLayerOffset stageToLayerOffset = 
-            GetEditTarget().GetMapFunction().GetTimeOffset().GetInverse();
+            dstParent.GetStage()->GetEditTarget().GetMapFunction().
+            GetTimeOffset().GetInverse();
 
         // Copy authored property values and metadata.
         _CopyProperty(srcProp, primSpec, dstName, remapping, stageToLayerOffset);

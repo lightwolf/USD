@@ -23,8 +23,8 @@
 //
 #include "pxr/pxr.h"
 
-#include "pxr/imaging/hdSt/bufferArrayRangeGL.h"
-#include "pxr/imaging/hdSt/bufferResourceGL.h"
+#include "pxr/imaging/hdSt/bufferArrayRange.h"
+#include "pxr/imaging/hdSt/bufferResource.h"
 #include "pxr/imaging/hdSt/drawItem.h"
 #include "pxr/imaging/hdSt/extCompGpuComputation.h"
 #include "pxr/imaging/hdSt/flatNormals.h"
@@ -54,7 +54,6 @@
 #include "pxr/imaging/hd/flatNormals.h"
 #include "pxr/imaging/hd/perfLog.h"
 #include "pxr/imaging/hd/repr.h"
-#include "pxr/imaging/hd/selection.h"
 #include "pxr/imaging/hd/smoothNormals.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hd/vertexAdjacency.h"
@@ -321,8 +320,7 @@ HdStMesh::_PopulateTopology(HdSceneDelegate *sceneDelegate,
                     // Quadrangulate preprocessing
                     HdSt_QuadInfoBuilderComputationSharedPtr quadInfoBuilder =
                         topology->GetQuadInfoBuilderComputation(
-                            HdStGLUtils::IsGpuComputeEnabled(),
-                            id, resourceRegistry.get());
+                            /*GPU*/ true, id, resourceRegistry.get());
                     resourceRegistry->AddSource(quadInfoBuilder);
                 }
             }
@@ -459,24 +457,22 @@ HdStMesh::_PopulateAdjacency(HdStResourceRegistrySharedPtr const &resourceRegist
 
         resourceRegistry->AddSource(adjacencyComputation);
 
-        if (HdStGLUtils::IsGpuComputeEnabled()) {
-            // also send adjacency table to gpu
-            HdBufferSourceSharedPtr adjacencyForGpuComputation =
-                HdBufferSourceSharedPtr(
-                    new Hd_AdjacencyBufferSource(
-                        adjacency.get(), adjacencyComputation));
+        // also send adjacency table to gpu
+        HdBufferSourceSharedPtr adjacencyForGpuComputation =
+            HdBufferSourceSharedPtr(
+                new Hd_AdjacencyBufferSource(
+                    adjacency.get(), adjacencyComputation));
 
-            HdBufferSpecVector bufferSpecs;
-            adjacencyForGpuComputation->GetBufferSpecs(&bufferSpecs);
+        HdBufferSpecVector bufferSpecs;
+        adjacencyForGpuComputation->GetBufferSpecs(&bufferSpecs);
 
-            HdBufferArrayRangeSharedPtr adjRange =
-                resourceRegistry->AllocateNonUniformBufferArrayRange(
-                    HdTokens->topology, bufferSpecs, HdBufferArrayUsageHint());
+        HdBufferArrayRangeSharedPtr adjRange =
+            resourceRegistry->AllocateNonUniformBufferArrayRange(
+                HdTokens->topology, bufferSpecs, HdBufferArrayUsageHint());
 
-            adjacency->SetAdjacencyRange(adjRange);
-            resourceRegistry->AddSource(adjRange,
-                                        adjacencyForGpuComputation);
-        }
+        adjacency->SetAdjacencyRange(adjRange);
+        resourceRegistry->AddSource(adjRange,
+                                    adjacencyForGpuComputation);
 
         adjacencyInstance.SetValue(adjacency);
     }
@@ -492,31 +488,15 @@ _QuadrangulatePrimvar(HdBufferSourceSharedPtr const &source,
 {
     if (!TF_VERIFY(computations)) return source;
 
-    if (!HdStGLUtils::IsGpuComputeEnabled()) {
-        // CPU quadrangulation
-        // set quadrangulation as source instead of original source.
-        HdBufferSourceSharedPtr quadsource =
-            topology->GetQuadrangulateComputation(source, id);
-
-        if (quadsource) {
-            // don't transfer source to gpu, it needs to be quadrangulated.
-            // It will be resolved as a pre-chained source.
-            return quadsource;
-        } else {
-            return source;
-        }
-    } else {
-        // GPU quadrangulation computation needs original vertices to be
-        // transfered
-        HdComputationSharedPtr computation =
-            topology->GetQuadrangulateComputationGPU(
-                source->GetName(), source->GetTupleType().type, id);
-        // computation can be null for all quad mesh.
-        if (computation) {
-            computations->push_back(computation);
-        }
-        return source;
+    // GPU quadrangulation computation needs original vertices to be transfered
+    HdComputationSharedPtr computation =
+        topology->GetQuadrangulateComputationGPU(
+            source->GetName(), source->GetTupleType().type, id);
+    // computation can be null for all quad mesh.
+    if (computation) {
+        computations->push_back(computation);
     }
+    return source;
 }
 
 static HdBufferSourceSharedPtr
@@ -562,22 +542,14 @@ _RefinePrimvar(HdBufferSourceSharedPtr const &source,
 {
     if (!TF_VERIFY(computations)) return source;
 
-    if (!HdStGLUtils::IsGpuComputeEnabled()) {
-        // CPU subdivision
-        // note: if the topology is empty, the source will be returned
-        //       without change. We still need the type of buffer
-        //       to get the codegen work even for empty meshes
-        return topology->GetOsdRefineComputation(source, varying);
-    } else {
-        // GPU subdivision
-        HdComputationSharedPtr computation =
-            topology->GetOsdRefineComputationGPU(
-                source->GetName(),
-                source->GetTupleType().type);
-        // computation can be null for empty mesh
-        if (computation)
-            computations->push_back(computation);
-    }
+    // GPU subdivision
+    HdComputationSharedPtr computation =
+        topology->GetOsdRefineComputationGPU(
+            source->GetName(),
+            source->GetTupleType().type);
+    // computation can be null for empty mesh
+    if (computation)
+        computations->push_back(computation);
 
     return source;
 }
@@ -626,8 +598,6 @@ HdStMesh::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
 
     int numPoints = _topology ? _topology->GetNumPoints() : 0;
     int refineLevel = _topology ? _topology->GetRefineLevel() : 0;
-
-    bool cpuNormals = (!HdStGLUtils::IsGpuComputeEnabled());
 
     // Don't call _GetRefineLevelForDesc(desc) instead of GetRefineLevel(). Why?
     //
@@ -806,86 +776,55 @@ HdStMesh::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
         
         // The smooth normals computation uses the points primvar as a source.
         //
-        if (cpuNormals) {
-            // CPU smooth normals require the points source data
-            // So it is expected to be dirty.  So if the
-            // points variable is not set it means the points primvar is
-            // missing or invalid, so we skip smooth normals.
-            if (points) {
-                // CPU smooth normals depends on CPU adjacency.
-                //
-                HdBufferSourceSharedPtr normal =
-                    HdBufferSourceSharedPtr(
-                        new Hd_SmoothNormalsComputation(
-                            _vertexAdjacency.get(), points, normalsName,
-                            _vertexAdjacency->GetSharedAdjacencyBuilderComputation(
-                                _topology.get()),
-                            usePackedSmoothNormals));
-
-                if (doRefine) {
-                    normal = _RefinePrimvar(normal, /*varying=*/false,
-                                                      &computations, _topology);
-                } else if (doQuadrangulate) {
-                    normal = _QuadrangulatePrimvar(normal,
-                                                   &computations,
-                                                   _topology,
-                                                   id,
-                                                   resourceRegistry);
-                }
-
-                sources.push_back(normal);
-            }
+        // If we don't have the buffer source, we can get the points
+        // data type from the bufferspec in the vertex bar. We need it
+        // so we know what type normals should be.
+        HdType pointsDataType = HdTypeInvalid;
+        if (points) {
+            pointsDataType = points->GetTupleType().type;
         } else {
-            // If we don't have the buffer source, we can get the points
-            // data type from the bufferspec in the vertex bar. We need it
-            // so we know what type normals should be.
-            HdType pointsDataType = HdTypeInvalid;
-            if (points) {
-                pointsDataType = points->GetTupleType().type;
-            } else {
-                pointsDataType = _GetPointsDataTypeFromBar(drawItem);
-            }
+            pointsDataType = _GetPointsDataTypeFromBar(drawItem);
+        }
 
-            if (pointsDataType != HdTypeInvalid) {
-                // Smooth normals will compute normals as the same datatype
-                // as points, unless we ask for packed normals.
-                // This is unfortunate; can we force them to be float?
-                HdComputationSharedPtr smoothNormalsComputation(
-                    new HdSt_SmoothNormalsComputationGPU(
-                        _vertexAdjacency.get(),
-                        HdTokens->points,
-                        normalsName,
-                        pointsDataType,
-                        usePackedSmoothNormals));
-                computations.push_back(smoothNormalsComputation);
+        if (pointsDataType != HdTypeInvalid) {
+            // Smooth normals will compute normals as the same datatype
+            // as points, unless we ask for packed normals.
+            // This is unfortunate; can we force them to be float?
+            HdComputationSharedPtr smoothNormalsComputation(
+                new HdSt_SmoothNormalsComputationGPU(
+                    _vertexAdjacency.get(),
+                    HdTokens->points,
+                    normalsName,
+                    pointsDataType,
+                    usePackedSmoothNormals));
+            computations.push_back(smoothNormalsComputation);
 
-                // note: we haven't had explicit dependency for GPU
-                // computations just yet. Currently they are executed
-                // sequentially, so the dependency is expressed by
-                // registering order.
-                //
-                // note: we can use "pointsDataType" as the normals data type
-                // because, if we decided to refine/quadrangulate, we will have
-                // forced unpacked normals.
-                if (doRefine) {
-                    HdComputationSharedPtr computation =
-                        _topology->GetOsdRefineComputationGPU(
-                            HdStTokens->smoothNormals, pointsDataType);
+            // note: we haven't had explicit dependency for GPU
+            // computations just yet. Currently they are executed
+            // sequentially, so the dependency is expressed by
+            // registering order.
+            //
+            // note: we can use "pointsDataType" as the normals data type
+            // because, if we decided to refine/quadrangulate, we will have
+            // forced unpacked normals.
+            if (doRefine) {
+                HdComputationSharedPtr computation =
+                    _topology->GetOsdRefineComputationGPU(
+                        HdStTokens->smoothNormals, pointsDataType);
 
-                    // computation can be null for empty mesh
-                    if (computation) {
+                // computation can be null for empty mesh
+                if (computation) {
+                    computations.push_back(computation);
+                }
+            } else if (doQuadrangulate) {
+                HdComputationSharedPtr computation =
+                    _topology->GetQuadrangulateComputationGPU(
+                        HdStTokens->smoothNormals,
+                        pointsDataType, GetId());
+
+                // computation can be null for all-quad mesh
+                if (computation) {
                         computations.push_back(computation);
-                    }
-                } else if (doQuadrangulate) {
-                    HdComputationSharedPtr computation =
-                        _topology->GetQuadrangulateComputationGPU(
-                            HdStTokens->smoothNormals,
-                            pointsDataType, GetId());
-
-                    // computation can be null for all-quad mesh
-                    if (computation) {
-                            computations.push_back(computation);
-                    }
                 }
             }
         }
@@ -1262,42 +1201,32 @@ HdStMesh::_PopulateElementPrimvars(HdSceneDelegate *sceneDelegate,
         TfToken normalsName = usePackedNormals ?
             HdStTokens->packedFlatNormals : HdStTokens->flatNormals;
 
-        bool cpuNormals = (!HdStGLUtils::IsGpuComputeEnabled());
         // the flat normals computation uses the points primvar as a source.
-        if (cpuNormals) {
-            if (points) {
-                HdBufferSourceSharedPtr normal(
-                    new Hd_FlatNormalsComputation(
-                        _topology.get(),
-                        points, normalsName, usePackedNormals));
-                sources.push_back(normal);
-            }
+        //
+        // If we don't have the buffer source, we can get the points
+        // data type from the bufferspec in the vertex bar. We need it
+        // so we know what type normals should be.
+        HdType pointsDataType = HdTypeInvalid;
+        if (points) {
+            pointsDataType = points->GetTupleType().type;
         } else {
-            // If we don't have the buffer source, we can get the points
-            // data type from the bufferspec in the vertex bar. We need it
-            // so we know what type normals should be.
-            HdType pointsDataType = HdTypeInvalid;
-            if (points) {
-                pointsDataType = points->GetTupleType().type;
-            } else {
-                pointsDataType = _GetPointsDataTypeFromBar(drawItem);
-            }
+            pointsDataType = _GetPointsDataTypeFromBar(drawItem);
+        }
 
-            if (pointsDataType != HdTypeInvalid) {
-                // Flat normals will compute normals as the same datatype
-                // as points, unless we ask for packed normals.
-                // This is unfortunate; can we force them to be float?
-                HdComputationSharedPtr flatNormalsComputation(
-                    new HdSt_FlatNormalsComputationGPU(
-                        drawItem->GetTopologyRange(),
-                        drawItem->GetVertexPrimvarRange(),
-                        numFaces,
-                        HdTokens->points,
-                        normalsName,
-                        pointsDataType,
-                        usePackedNormals));
-                computations.push_back(flatNormalsComputation);
-            }
+        if (pointsDataType != HdTypeInvalid) {
+            // Flat normals will compute normals as the same datatype
+            // as points, unless we ask for packed normals.
+            // This is unfortunate; can we force them to be float?
+            HdComputationSharedPtr flatNormalsComputation(
+                new HdSt_FlatNormalsComputationGPU(
+                    drawItem->GetTopologyRange(),
+                    drawItem->GetVertexPrimvarRange(),
+                    numFaces,
+                    HdTokens->points,
+                    normalsName,
+                    pointsDataType,
+                    usePackedNormals));
+            computations.push_back(flatNormalsComputation);
         }
     }
 
@@ -1365,10 +1294,10 @@ HdStMesh::_GetPointsDataTypeFromBar(HdStDrawItem *drawItem) const
     if (HdBufferArrayRangeSharedPtr const &bar =
             drawItem->GetVertexPrimvarRange()) {
         if (bar->IsValid()) {
-            HdStBufferArrayRangeGLSharedPtr bar_ =
-                std::static_pointer_cast<HdStBufferArrayRangeGL>
+            HdStBufferArrayRangeSharedPtr bar_ =
+                std::static_pointer_cast<HdStBufferArrayRange>
                 (bar);
-            HdStBufferResourceGLSharedPtr pointsResource =
+            HdStBufferResourceSharedPtr pointsResource =
                 bar_->GetResource(HdTokens->points);
             if (pointsResource) {
                 pointsDataType = pointsResource->GetTupleType().type;
@@ -1652,8 +1581,7 @@ HdStMesh::_UpdateDrawItem(HdSceneDelegate *sceneDelegate,
 void
 HdStMesh::_UpdateDrawItemGeometricShader(HdSceneDelegate *sceneDelegate,
                                          HdStDrawItem *drawItem,
-                                         const HdMeshReprDesc &desc,
-                                         size_t drawItemIdForDesc)
+                                         const HdMeshReprDesc &desc)
 {
     HdRenderIndex &renderIndex = sceneDelegate->GetRenderIndex();
 
@@ -1756,16 +1684,6 @@ HdStMesh::_UpdateDrawItemGeometricShader(HdSceneDelegate *sceneDelegate,
     bool useCustomDisplacement = hasCustomDisplacementTerminal &&
         desc.useCustomDisplacement && _displacementEnabled;
 
-    // The edge geomstyles below are rasterized as lines.
-    // See HdSt_GeometricShader::BindResources()
-    bool rasterizedAsLines = 
-         (desc.geomStyle == HdMeshGeomStyleEdgeOnly ||
-         desc.geomStyle == HdMeshGeomStyleHullEdgeOnly);
-    bool discardIfNotActiveSelected = rasterizedAsLines && 
-                                     (drawItemIdForDesc == 1);
-    bool discardIfNotRolloverSelected = rasterizedAsLines && 
-                                     (drawItemIdForDesc == 2);
-
     // create a shaderKey and set to the geometric shader.
     HdSt_MeshShaderKey shaderKey(primType,
                                  desc.shadingTerminal,
@@ -1779,9 +1697,7 @@ HdStMesh::_UpdateDrawItemGeometricShader(HdSceneDelegate *sceneDelegate,
                                  cullStyle,
                                  geomStyle,
                                  desc.lineWidth,
-                                 desc.enableScalarOverride,
-                                 discardIfNotActiveSelected,
-                                 discardIfNotRolloverSelected);
+                                 desc.enableScalarOverride);
 
     HdStResourceRegistrySharedPtr resourceRegistry =
         std::static_pointer_cast<HdStResourceRegistry>(
@@ -1847,48 +1763,7 @@ HdStMesh::_PropagateDirtyBits(HdDirtyBits bits) const
                     DirtyPointsIndices);
     }
 
-    // If normals are dirty and we are doing CPU normals
-    // then the normals computation needs the points primvar
-    // so mark points as dirty, so that the scene delegate will provide
-    // the data.
-    if ((bits & (DirtySmoothNormals | DirtyFlatNormals)) &&
-        !HdStGLUtils::IsGpuComputeEnabled()) {
-        bits |= HdChangeTracker::DirtyPoints;
-    }
-
     return bits;
-}
-
-static
-size_t _GetNumDrawItemsForDesc(const HdMeshReprDesc& reprDesc)
-{
-    // By default, each repr desc item maps to 1 draw item
-    size_t numDrawItems = 1;
-    switch (reprDesc.geomStyle) {
-    case HdMeshGeomStyleInvalid:
-        numDrawItems = 0;
-        break;
-
-    // The edge geomstyles (below) result in geometry rasterized as lines.
-    // This has an interesting and unfortunate limitation in that a
-    // shared edge corresponds to the face that was drawn first/last
-    // (depending on the depth test), and hence, cannot be uniquely
-    // identified.
-    // For face selection highlighting, this means that only a subset of the
-    // edges of a selected face may be highlighted.
-    // In order to support correct face selection highlighting, we draw the
-    // geometry two more times (one for each selection mode), discarding
-    // fragments that don't correspond to a selected face in that mode.
-    case HdMeshGeomStyleHullEdgeOnly:
-    case HdMeshGeomStyleEdgeOnly:
-        numDrawItems += HdSelection::HighlightModeCount;
-        break;
-
-    default:
-        break;
-    }
-
-    return numDrawItems;
 }
 
 void
@@ -1912,16 +1787,16 @@ HdStMesh::_InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits)
         for (size_t descIdx = 0; descIdx < descs.size(); ++descIdx) {
             const HdMeshReprDesc &desc = descs[descIdx];
 
-            size_t numDrawItems = _GetNumDrawItemsForDesc(desc);
-            if (numDrawItems == 0) continue;
+            if (desc.geomStyle == HdMeshGeomStyleInvalid) {
+                continue;
+            }
 
-            for (size_t itemId = 0; itemId < numDrawItems; itemId++) {
-                HdRepr::DrawItemUniquePtr drawItem =
-                    std::make_unique<HdStDrawItem>(&_sharedData);
-                HdDrawingCoord *drawingCoord = drawItem->GetDrawingCoord();
-                repr->AddDrawItem(std::move(drawItem));
+            HdRepr::DrawItemUniquePtr drawItem =
+                std::make_unique<HdStDrawItem>(&_sharedData);
+            HdDrawingCoord *drawingCoord = drawItem->GetDrawingCoord();
+            repr->AddDrawItem(std::move(drawItem));
 
-                switch (desc.geomStyle) {
+            switch (desc.geomStyle) {
                 case HdMeshGeomStyleHull:
                 case HdMeshGeomStyleHullEdgeOnly:
                 case HdMeshGeomStyleHullEdgeOnSurf:
@@ -1955,12 +1830,11 @@ HdStMesh::_InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits)
                         *dirtyBits |= DirtyIndices;
                     }
                 }
-                }
+            }
 
-                // Set up drawing coord instance primvars.
-                drawingCoord->SetInstancePrimvarBaseIndex(
-                    HdStMesh::InstancePrimvar);
-            } // for each draw item
+            // Set up drawing coord instance primvars.
+            drawingCoord->SetInstancePrimvarBaseIndex(
+                HdStMesh::InstancePrimvar);
 
             if (desc.flatShadingEnabled) {
                 if (!(_customDirtyBitsInUse & DirtyFlatNormals)) {
@@ -2016,17 +1890,16 @@ HdStMesh::_UpdateRepr(HdSceneDelegate *sceneDelegate,
     int drawItemIndex = 0;
     for (size_t descIdx = 0; descIdx < reprDescs.size(); ++descIdx) {
         const HdMeshReprDesc &desc = reprDescs[descIdx];
-        size_t numDrawItems = _GetNumDrawItemsForDesc(desc);
-        if (numDrawItems == 0) continue;
+        if (desc.geomStyle == HdMeshGeomStyleInvalid) {
+            continue;
+        }
         
-        for (size_t itemId = 0; itemId < numDrawItems; itemId++) {
-            HdStDrawItem *drawItem = static_cast<HdStDrawItem*>(
-                curRepr->GetDrawItem(drawItemIndex++));
+        HdStDrawItem *drawItem = static_cast<HdStDrawItem*>(
+            curRepr->GetDrawItem(drawItemIndex++));
 
-            if (HdChangeTracker::IsDirty(*dirtyBits)) {
-                _UpdateDrawItem(sceneDelegate, drawItem, dirtyBits, desc,
-                        requireSmoothNormals, requireFlatNormals);
-            } 
+        if (HdChangeTracker::IsDirty(*dirtyBits)) {
+            _UpdateDrawItem(sceneDelegate, drawItem, dirtyBits, desc,
+                requireSmoothNormals, requireFlatNormals);
         }
     }
 
@@ -2056,20 +1929,19 @@ HdStMesh::_UpdateShadersForAllReprs(HdSceneDelegate *sceneDelegate,
 
         int drawItemIndex = 0;
         for (size_t descIdx = 0; descIdx < descs.size(); ++descIdx) {
-            size_t numDrawItems = _GetNumDrawItemsForDesc(descs[descIdx]);
-            if (numDrawItems == 0) continue;
+            if (descs[descIdx].geomStyle == HdMeshGeomStyleInvalid) {
+                continue;
+            }
 
-            for (size_t itemId = 0; itemId < numDrawItems; itemId++) {
-                HdStDrawItem *drawItem = static_cast<HdStDrawItem*>(
-                    repr->GetDrawItem(drawItemIndex++));
+            HdStDrawItem *drawItem = static_cast<HdStDrawItem*>(
+                repr->GetDrawItem(drawItemIndex++));
 
-                if (updateMaterialShader) {
-                    drawItem->SetMaterialShader(materialShader);
-                }
-                if (updateGeometricShader) {
-                    _UpdateDrawItemGeometricShader(sceneDelegate,
-                        drawItem, descs[descIdx], itemId);
-                }
+            if (updateMaterialShader) {
+                drawItem->SetMaterialShader(materialShader);
+            }
+            if (updateGeometricShader) {
+                _UpdateDrawItemGeometricShader(sceneDelegate,
+                    drawItem, descs[descIdx]);
             }
         }
     }

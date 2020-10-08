@@ -84,7 +84,7 @@ HdSt_TextureObjectRegistry::AllocateTextureObject(
     // Check with instance registry and allocate texture and sampler object
     // if first object.
     HdInstance<HdStTextureObjectSharedPtr> inst =
-        _textureObjectRegistry.GetInstance(textureId.Hash());
+        _textureObjectRegistry.GetInstance(TfHash()(textureId));
 
     if (inst.IsFirstInstance()) {
         HdStTextureObjectSharedPtr const texture = _MakeTextureObject(
@@ -148,6 +148,11 @@ HdSt_TextureObjectRegistry::Commit()
         TRACE_FUNCTION_SCOPE("Loading textures");
 
         if (_isGlfBaseTextureDataThreadSafe) {
+            // Loading a texture file of a previously unseen type might
+            // require loading a new plugin, so give up the GIL temporarily
+            // to the threads loading the images.
+            TF_PY_ALLOW_THREADS_IN_SCOPE();
+
             // Parallel load texture files
             WorkParallelForEach(result.begin(), result.end(),
                                 [](const HdStTextureObjectSharedPtr &texture) {

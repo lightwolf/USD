@@ -212,11 +212,13 @@ public:
     void SetColorCorrectionParams(HdxColorCorrectionTaskParams const& params);
 
     /// -------------------------------------------------------
-    /// Color Channel API
+    /// Present API
 
-    /// Configure color channel by settings params.
+    /// Enable / disable presenting the render to bound framebuffer.
+    /// An application may choose to manage the AOVs that are rendered into
+    /// itself and skip the task controller's presentation.
     HDX_API
-    void SetColorChannelParams(HdxColorChannelTaskParams const& params);
+    void SetEnablePresentation(bool enabled);
 
 private:
     ///
@@ -240,7 +242,6 @@ private:
     void _CreateSelectionTask();
     void _CreateColorizeSelectionTask();
     void _CreateColorCorrectionTask();
-    void _CreateColorChannelTask();
     void _CreatePickTask();
     void _CreatePickFromRenderBufferTask();
     void _CreateAovInputTask();
@@ -256,7 +257,6 @@ private:
     bool _SelectionEnabled() const;
     bool _ColorizeSelectionEnabled() const;
     bool _ColorCorrectionEnabled() const;
-    bool _ColorChannelEnabled() const;
     bool _ColorizeQuantizationEnabled() const;
     bool _AovsSupported() const;
     bool _CamerasSupported() const;
@@ -265,9 +265,6 @@ private:
     SdfPath _GetRenderTaskPath(TfToken const& materialTag) const;
     SdfPath _GetAovPath(TfToken const& aov) const;
     SdfPathVector _GetAovEnabledTasks() const;
-
-    // Helper function to load the default domeLight texture
-    void _LoadDefaultDomeLightTexture();
 
     // Helper function to set the parameters of a light, get a particular light 
     // in the scene, replace and remove Sprims from the scene 
@@ -343,7 +340,6 @@ private:
     SdfPath _selectionTaskId;
     SdfPath _colorizeSelectionTaskId;
     SdfPath _colorCorrectionTaskId;
-    SdfPath _colorChannelTaskId;
     SdfPath _pickTaskId;
     SdfPath _pickFromRenderBufferTaskId;
     SdfPath _presentTaskId;
@@ -355,7 +351,6 @@ private:
     
     // Built-in lights
     SdfPathVector _lightIds;
-    HdTextureResourceSharedPtr _defaultDomeLightTextureResource;
 
     // Generated renderbuffers
     SdfPathVector _aovBufferIds;

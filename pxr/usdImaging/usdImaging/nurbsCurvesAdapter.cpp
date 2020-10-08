@@ -169,14 +169,6 @@ UsdImagingNurbsCurvesAdapter::UpdateForTime(UsdPrim const& prim,
     UsdImagingValueCache* valueCache = _GetValueCache();
 
     HdPrimvarDescriptorVector& primvars = valueCache->GetPrimvars(cachePath);
-    if (requestedBits & HdChangeTracker::DirtyTopology) {
-
-        VtValue& topology = valueCache->GetTopology(cachePath);
-
-        // Currently drawing the cage for NURBS curves so this creates
-        // a Basis Curves Topology with pre-set parameters
-        _GetBasisCurvesTopology(prim, &topology, time);
-    }
 
     if (requestedBits & HdChangeTracker::DirtyWidths) {
         // First check for "primvars:widths"
@@ -232,10 +224,50 @@ UsdImagingNurbsCurvesAdapter::UpdateForTime(UsdPrim const& prim,
     }
 }
 
-void
-UsdImagingNurbsCurvesAdapter::_GetBasisCurvesTopology(UsdPrim const& prim, 
-                                         VtValue* topo, 
-                                         UsdTimeCode time) const
+HdDirtyBits
+UsdImagingNurbsCurvesAdapter::ProcessPropertyChange(UsdPrim const& prim,
+                                        SdfPath const& cachePath,
+                                        TfToken const& propertyName)
+{
+    if (propertyName == UsdGeomTokens->points) {
+        return HdChangeTracker::DirtyPoints;
+    }
+    else if (propertyName == UsdGeomTokens->curveVertexCounts) {
+        return HdChangeTracker::DirtyTopology;
+    }
+    // Handle attributes that are treated as "built-in" primvars.
+    else if (propertyName == UsdGeomTokens->widths) {
+        UsdGeomCurves curves(prim);
+        return UsdImagingPrimAdapter::_ProcessNonPrefixedPrimvarPropertyChange(
+            prim, cachePath, propertyName, HdTokens->widths,
+            _UsdToHdInterpolation(curves.GetWidthsInterpolation()),
+            HdChangeTracker::DirtyWidths);
+    
+    } else if (propertyName == UsdGeomTokens->normals) {
+        UsdGeomPointBased pb(prim);
+        return UsdImagingPrimAdapter::_ProcessNonPrefixedPrimvarPropertyChange(
+            prim, cachePath, propertyName, HdTokens->normals,
+            _UsdToHdInterpolation(pb.GetNormalsInterpolation()),
+            HdChangeTracker::DirtyNormals);
+    }
+    // Handle prefixed primvars that use special dirty bits.
+    else if (propertyName == UsdImagingTokens->primvarsWidths) {
+        return UsdImagingPrimAdapter::_ProcessPrefixedPrimvarPropertyChange(
+            prim, cachePath, propertyName, HdChangeTracker::DirtyWidths);
+    
+    } else if (propertyName == UsdImagingTokens->primvarsNormals) {
+        return UsdImagingPrimAdapter::_ProcessPrefixedPrimvarPropertyChange(
+                prim, cachePath, propertyName, HdChangeTracker::DirtyNormals);
+    }
+
+    // Allow base class to handle change processing.
+    return BaseAdapter::ProcessPropertyChange(prim, cachePath, propertyName);
+}
+
+VtValue
+UsdImagingNurbsCurvesAdapter::GetTopology(UsdPrim const& prim, 
+                                          SdfPath const& cachePath, 
+                                          UsdTimeCode time) const
 {
     // Currently drawing the cage for NURBS curves so this creates 
     // a Basis Curves Topology with the following parameters:
@@ -248,7 +280,7 @@ UsdImagingNurbsCurvesAdapter::_GetBasisCurvesTopology(UsdPrim const& prim,
         topoCurveType, topoCurveBasis, topoCurveWrap,
         _Get<VtIntArray>(prim, UsdGeomTokens->curveVertexCounts, time),
         VtIntArray());
-    *topo = VtValue(topology);
+    return VtValue(topology);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

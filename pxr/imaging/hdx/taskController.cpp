@@ -46,12 +46,10 @@
 
 #include "pxr/imaging/hdSt/light.h"
 #include "pxr/imaging/hdSt/renderDelegate.h"
-#include "pxr/imaging/hdSt/textureResource.h"
 #include "pxr/imaging/hdSt/tokens.h"
 
 #include "pxr/imaging/glf/simpleLight.h"
 #include "pxr/imaging/glf/simpleLightingContext.h"
-#include "pxr/imaging/glf/textureRegistry.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -189,15 +187,9 @@ _IsStormRenderingBackend(HdRenderIndex const *index)
 static GfVec3i
 _ViewportToAovDimension(const GfVec4d& viewport)
 {
-    // Get the viewport dimensions (for renderbuffer allocation)
-    // XXX Sometimes viewport is set very large to do cam-zooming tricks.
-    // That would result in extra-large / incorrect Aov dimensions.
-    // What we really want here is the window size, but non of the hydra 
-    // clients currently pass in window size.
-    // The viewport XY (lower left corner) may also have been modified for e.g.
-    // a 'camera mask border'.
-    int w = viewport[2] + viewport[0];
-    int h = viewport[3] + viewport[1];
+    // Ignore the viewport offset and use its size as the aov size.
+    int w = viewport[2];
+    int h = viewport[3];
     return GfVec3i(w, h, 1);
 }
 
@@ -208,7 +200,6 @@ HdxTaskController::HdxTaskController(HdRenderIndex *renderIndex,
     , _delegate(renderIndex, controllerId)
 {
     _CreateRenderGraph();
-    _LoadDefaultDomeLightTexture();
 }
 
 HdxTaskController::~HdxTaskController()
@@ -225,7 +216,6 @@ HdxTaskController::~HdxTaskController()
         _shadowTaskId,
         _colorizeSelectionTaskId,
         _colorCorrectionTaskId,
-        _colorChannelTaskId,
         _pickTaskId,
         _pickFromRenderBufferTaskId,
         _presentTaskId
@@ -514,21 +504,6 @@ HdxTaskController::_CreateColorCorrectionTask()
 }
 
 void
-HdxTaskController::_CreateColorChannelTask()
-{
-    _colorChannelTaskId = GetControllerId().AppendChild(
-        _tokens->colorChannelTask);
-
-    HdxColorChannelTaskParams taskParams;
-
-    GetRenderIndex()->InsertTask<HdxColorChannelTask>(&_delegate,
-        _colorChannelTaskId);
-
-    _delegate.SetParameter(_colorChannelTaskId, HdTokens->params,
-        taskParams);
-}
-
-void
 HdxTaskController::_CreatePickTask()
 {
     _pickTaskId = GetControllerId().AppendChild(
@@ -641,24 +616,6 @@ HdxTaskController::_ColorCorrectionEnabled() const
 }
 
 bool
-HdxTaskController::_ColorChannelEnabled() const
-{
-    if (_colorChannelTaskId.IsEmpty()) {
-        return false;
-    }
-
-    const HdxColorChannelTaskParams& colorChannelParams =
-        _delegate.GetParameter<HdxColorChannelTaskParams>(
-            _colorChannelTaskId, HdTokens->params);
-
-    // Disable the task if the chosen channel is "color"
-    bool useColorChannel = colorChannelParams.channel != 
-                           HdxColorChannelTokens->color &&
-                           !colorChannelParams.channel.IsEmpty();
-    return useColorChannel;
-}
-
-bool
 HdxTaskController::_AovsSupported() const
 {
     return GetRenderIndex()->IsBprimTypeSupported(
@@ -747,11 +704,6 @@ HdxTaskController::GetRenderingTasks() const
         tasks.push_back(GetRenderIndex()->GetTask(_colorCorrectionTaskId));
     }
 
-    // Apply color channel filtering
-    if (_ColorChannelEnabled()) {
-        tasks.push_back(GetRenderIndex()->GetTask(_colorChannelTaskId));
-    }
-
     // Render pixels to screen
     if (!_presentTaskId.IsEmpty()) {
         tasks.push_back(GetRenderIndex()->GetTask(_presentTaskId));
@@ -780,23 +732,6 @@ HdxTaskController::_GetAovPath(TfToken const& aov) const
     return GetControllerId().AppendChild(TfToken(identifier));
 }
 
-void
-HdxTaskController::_LoadDefaultDomeLightTexture()
-{
-    // load and attach the texture for the Default DomeLight Texture
-    GlfTextureHandleRefPtr texture = 
-                GlfTextureRegistry::GetInstance().GetTextureHandle(
-                HdxPackageDefaultDomeLightTexture(),
-                GlfImage::ImageOriginLocation::OriginUpperLeft);
-
-    _defaultDomeLightTextureResource = HdTextureResourceSharedPtr(
-                new HdStSimpleTextureResource(texture, HdTextureType::Uv, 
-                HdWrap::HdWrapRepeat, HdWrap::HdWrapRepeat, 
-                HdWrap::HdWrapRepeat, HdMinFilter::HdMinFilterLinear, 
-                HdMagFilter::HdMagFilterLinear, 
-                0.0f));
-}
-
 void 
 HdxTaskController::_SetParameters(SdfPath const& pathName, 
                                     GlfSimpleLight const& light)
@@ -813,8 +748,6 @@ HdxTaskController::_SetParameters(SdfPath const& pathName,
     // if we are setting the parameters for the dome light we need to add the 
     // default dome light texture resource.
     if (light.IsDomeLight()) {
-        _delegate.SetParameter(pathName, HdLightTokens->textureResource, 
-            _defaultDomeLightTextureResource);
         _delegate.SetParameter(pathName, HdLightTokens->textureFile,
                                SdfAssetPath(
                                    HdxPackageDefaultDomeLightTexture(),
@@ -1101,17 +1034,6 @@ HdxTaskController::SetViewportRenderOutput(TfToken const& name)
             colCorParams);
         GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
             _colorCorrectionTaskId, HdChangeTracker::DirtyParams);
-    }
-
-    if (!_colorChannelTaskId.IsEmpty()) {
-        HdxColorChannelTaskParams colChannelParams =
-            _delegate.GetParameter<HdxColorChannelTaskParams>(
-                _colorChannelTaskId, HdTokens->params);
-
-        _delegate.SetParameter(_colorChannelTaskId, HdTokens->params,
-            colChannelParams);
-        GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
-            _colorChannelTaskId, HdChangeTracker::DirtyParams);
     }
 
     if (!_presentTaskId.IsEmpty()) {
@@ -1593,9 +1515,6 @@ HdxTaskController::SetLightingState(GlfSimpleLightingContextPtr const& src)
                                     HdLightTokens->params, lights[i]);
 
             if (light.IsDomeLight()) {
-                _delegate.SetParameter(_lightIds[i], 
-                                    HdLightTokens->textureResource, 
-                                    _defaultDomeLightTextureResource);
                 _delegate.SetParameter(
                     _lightIds[i], HdLightTokens->textureFile,
                     SdfAssetPath(
@@ -1632,26 +1551,24 @@ HdxTaskController::SetLightingState(GlfSimpleLightingContextPtr const& src)
 void
 HdxTaskController::SetRenderViewport(GfVec4d const& viewport)
 {
-    bool viewportChanged = false;
+    // Suppress the viewport offset from the rendering tasks. This is relevant
+    // only for the composition step (i.e. present task),
+    GfVec4d zeroOffsetViewport(0, 0, viewport[2], viewport[3]);
+    HdChangeTracker &changeTracker = GetRenderIndex()->GetChangeTracker();
 
     for (SdfPath const& renderTaskId : _renderTaskIds) {
         HdxRenderTaskParams params =
             _delegate.GetParameter<HdxRenderTaskParams>(
                 renderTaskId, HdTokens->params);
 
-        if (params.viewport == viewport) {
+        if (params.viewport == zeroOffsetViewport) {
             continue;
         }
 
-        viewportChanged = true;
-        params.viewport = viewport;
+        params.viewport = zeroOffsetViewport;
         _delegate.SetParameter(renderTaskId, HdTokens->params, params);
-        GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
+        changeTracker.MarkTaskDirty(
             renderTaskId, HdChangeTracker::DirtyParams);
-    }
-
-    if (!viewportChanged) {
-        return;
     }
 
     if (!_shadowTaskId.IsEmpty()) {
@@ -1660,21 +1577,41 @@ HdxTaskController::SetRenderViewport(GfVec4d const& viewport)
         HdxShadowTaskParams params =
             _delegate.GetParameter<HdxShadowTaskParams>(
                 _shadowTaskId, HdTokens->params);
-        params.viewport = viewport;
-        _delegate.SetParameter(_shadowTaskId, HdTokens->params, params);
-        GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
-            _shadowTaskId, HdChangeTracker::DirtyParams);
+        if (params.viewport != zeroOffsetViewport) {
+            params.viewport = zeroOffsetViewport;
+            _delegate.SetParameter(_shadowTaskId, HdTokens->params, params);
+            changeTracker.MarkTaskDirty(
+                _shadowTaskId, HdChangeTracker::DirtyParams);
+        }
     }
 
     if (!_pickFromRenderBufferTaskId.IsEmpty()) {
         HdxPickFromRenderBufferTaskParams params =
             _delegate.GetParameter<HdxPickFromRenderBufferTaskParams>(
                 _pickFromRenderBufferTaskId, HdTokens->params);
-        params.viewport = viewport;
-        _delegate.SetParameter(
-            _pickFromRenderBufferTaskId, HdTokens->params, params);
-        GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
-            _pickFromRenderBufferTaskId, HdChangeTracker::DirtyParams);
+        if (params.viewport != zeroOffsetViewport) {
+            params.viewport = zeroOffsetViewport;
+            _delegate.SetParameter(
+                _pickFromRenderBufferTaskId, HdTokens->params, params);
+            changeTracker.MarkTaskDirty(
+                _pickFromRenderBufferTaskId, HdChangeTracker::DirtyParams);
+        }
+    }
+
+    if (!_presentTaskId.IsEmpty()) {
+        HdxPresentTaskParams params =
+            _delegate.GetParameter<HdxPresentTaskParams>(
+                _presentTaskId, HdTokens->params);
+        // The composition step uses the viewport passed in by the application,
+        // which may have a non-zero offset for things like camera masking.
+        GfVec4i iViewport = GfVec4i(int(viewport[0]), int(viewport[1]),
+                                    int(viewport[2]), int(viewport[3]));
+        if (params.compRegion != iViewport) {
+            params.compRegion = iViewport;
+            _delegate.SetParameter(_presentTaskId, HdTokens->params, params);
+            changeTracker.MarkTaskDirty(
+                _presentTaskId, HdChangeTracker::DirtyParams);
+        }
     }
 
     // Update all of the render buffer sizes as well.
@@ -1686,7 +1623,7 @@ HdxTaskController::SetRenderViewport(GfVec4d const& viewport)
         if (desc.dimensions != dimensions) {
             desc.dimensions = dimensions;
             _delegate.SetParameter(id, _tokens->renderBufferDescriptor, desc);
-            GetRenderIndex()->GetChangeTracker().MarkBprimDirty(id,
+            changeTracker.MarkBprimDirty(id,
                 HdRenderBuffer::DirtyDescription);
         }
     }
@@ -1802,23 +1739,20 @@ HdxTaskController::SetColorCorrectionParams(
 }
 
 void 
-HdxTaskController::SetColorChannelParams(
-    HdxColorChannelTaskParams const& params)
+HdxTaskController::SetEnablePresentation(bool enabled)
 {
-    if (_colorChannelTaskId.IsEmpty()) {
-        return;
-    }
-
-    HdxColorChannelTaskParams oldParams = 
-        _delegate.GetParameter<HdxColorChannelTaskParams>(
-            _colorChannelTaskId, HdTokens->params);
-
-    if (params != oldParams) {
-        _delegate.SetParameter(
-            _colorChannelTaskId, HdTokens->params, params);
-
-        GetRenderIndex()->GetChangeTracker().MarkTaskDirty(
-            _colorChannelTaskId, HdChangeTracker::DirtyParams);
+    if (enabled && _presentTaskId.IsEmpty()) {
+        _CreatePresentTask();
+        // Sync the curreng viewport size into the PresentTask
+        if (!_renderTaskIds.empty()) {
+            HdxRenderTaskParams params =
+                _delegate.GetParameter<HdxRenderTaskParams>(
+                    _renderTaskIds.front(), HdTokens->params);
+            SetRenderViewport(params.viewport);
+        }
+    } else if (!enabled && !_presentTaskId.IsEmpty()) {
+        GetRenderIndex()->RemoveTask(_presentTaskId);
+        _presentTaskId = SdfPath::EmptyPath();
     }
 }
 

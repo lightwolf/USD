@@ -186,6 +186,7 @@ HgiMetalGraphicsCmds::SetScissor(GfVec4i const& sc)
 void
 HgiMetalGraphicsCmds::BindPipeline(HgiGraphicsPipelineHandle pipeline)
 {
+    _primitiveType = pipeline->GetDescriptor().primitiveType;
     if (HgiMetalGraphicsPipeline* p =
         static_cast<HgiMetalGraphicsPipeline*>(pipeline.Get())) {
         p->BindPipeline(_encoder);
@@ -250,8 +251,7 @@ HgiMetalGraphicsCmds::DrawIndexed(
     uint32_t indexCount,
     uint32_t indexBufferByteOffset,
     uint32_t vertexOffset,
-    uint32_t instanceCount,
-    uint32_t firstInstance)
+    uint32_t instanceCount)
 {
     TF_VERIFY(instanceCount>0);
 
@@ -260,15 +260,17 @@ HgiMetalGraphicsCmds::DrawIndexed(
 
     // We assume 32bit indices: GL_UNSIGNED_INT
     TF_VERIFY(indexDesc.usage & HgiBufferUsageIndex32);
-    
-    [_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+
+    MTLPrimitiveType type=HgiMetalConversions::GetPrimitiveType(_primitiveType);
+
+    [_encoder drawIndexedPrimitives:type
                          indexCount:indexCount
                           indexType:MTLIndexTypeUInt32
                         indexBuffer:indexBuf->GetBufferId()
                   indexBufferOffset:indexBufferByteOffset
                       instanceCount:instanceCount
                          baseVertex:vertexOffset
-                       baseInstance:firstInstance];
+                       baseInstance:0];
 
     _hasWork = true;
 }

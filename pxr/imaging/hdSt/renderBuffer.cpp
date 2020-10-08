@@ -182,7 +182,7 @@ HdStRenderBuffer::Map()
     const HgiTextureDesc &desc = texture->GetDescriptor();
     const size_t dataByteSize =
         desc.dimensions[0] * desc.dimensions[1] * desc.dimensions[2] *
-        HgiDataSizeOfFormat(desc.format);
+        HgiGetDataSizeOfFormat(desc.format);
     
     if (dataByteSize == 0) {
         return nullptr;
@@ -207,8 +207,6 @@ HdStRenderBuffer::Map()
         copyOp.gpuSourceTexture = texture;
         copyOp.sourceTexelOffset = GfVec3i(0);
         copyOp.mipLevel = 0;
-        copyOp.startLayer = 0;
-        copyOp.numLayers = 1;
         copyOp.cpuDestinationBuffer = _mappedBuffer.data();
         copyOp.destinationByteOffset = 0;
         copyOp.destinationBufferByteSize = dataByteSize;

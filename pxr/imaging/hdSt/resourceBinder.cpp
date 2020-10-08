@@ -26,8 +26,8 @@
 
 #include "pxr/imaging/hdSt/resourceBinder.h"
 #include "pxr/imaging/hdSt/glConversions.h"
-#include "pxr/imaging/hdSt/bufferArrayRangeGL.h"
-#include "pxr/imaging/hdSt/bufferResourceGL.h"
+#include "pxr/imaging/hdSt/bufferArrayRange.h"
+#include "pxr/imaging/hdSt/bufferResource.h"
 #include "pxr/imaging/hdSt/shaderCode.h"
 #include "pxr/imaging/hdSt/drawItem.h"
 #include "pxr/imaging/hdSt/materialParam.h"
@@ -84,9 +84,6 @@ namespace {
                 break;
             case HdBinding::BINDLESS_SSBO_RANGE:
                 return HdBinding(HdBinding::BINDLESS_SSBO_RANGE, uniformLocation++);
-            case HdBinding::TBO:
-                return HdBinding(HdBinding::TBO, uniformLocation++, textureUnit++);
-                break;
             case HdBinding::BINDLESS_UNIFORM:
                 return HdBinding(HdBinding::BINDLESS_UNIFORM, uniformLocation++);
                 break;
@@ -180,11 +177,9 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     const bool bindlessTextureEnabled
         = GlfContextCaps::GetInstance().bindlessTextureEnabled;
 
-    HdBinding::Type arrayBufferBindingType = HdBinding::TBO;  // 3.0
+    HdBinding::Type arrayBufferBindingType = HdBinding::SSBO;
     if (bindlessUniformEnabled) {
         arrayBufferBindingType = HdBinding::BINDLESS_UNIFORM; // EXT
-    } else if (ssboEnabled) {
-        arrayBufferBindingType = HdBinding::SSBO;             // 4.3
     }
 
     HdBinding::Type structBufferBindingType = HdBinding::UBO;  // 3.1
@@ -231,8 +226,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr constantBar_ =
         drawItem->GetConstantPrimvarRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr constantBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(constantBar_);
+        HdStBufferArrayRangeSharedPtr constantBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(constantBar_);
 
         MetaData::StructBlock sblock(_tokens->constantPrimvars);
         TF_FOR_ALL (it, constantBar->GetResources()) {
@@ -265,8 +260,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
         if (HdBufferArrayRangeSharedPtr instanceBar_ =
             drawItem->GetInstancePrimvarRange(i)) {
 
-            HdStBufferArrayRangeGLSharedPtr instanceBar =
-                std::static_pointer_cast<HdStBufferArrayRangeGL>(instanceBar_);
+            HdStBufferArrayRangeSharedPtr instanceBar =
+                std::static_pointer_cast<HdStBufferArrayRange>(instanceBar_);
 
             TF_FOR_ALL (it, instanceBar->GetResources()) {
                 TfToken const& name = it->first;
@@ -293,8 +288,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr vertexBar_ =
         drawItem->GetVertexPrimvarRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr vertexBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(vertexBar_);
+        HdStBufferArrayRangeSharedPtr vertexBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(vertexBar_);
 
         TF_FOR_ALL (it, vertexBar->GetResources()) {
             TfToken const& name = it->first;
@@ -320,14 +315,14 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr topologyBar_ =
         drawItem->GetTopologyRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr topologyBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(topologyBar_);
+        HdStBufferArrayRangeSharedPtr topologyBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(topologyBar_);
 
         TF_FOR_ALL (it, topologyBar->GetResources()) {
             // Don't need to sanitize the name, since topology resources are
             // created internally.
             TfToken const& name = it->first;
-            HdStBufferResourceGLSharedPtr const& resource = it->second;
+            HdStBufferResourceSharedPtr const& resource = it->second;
 
             if (name == HdTokens->indices) {
                 // IBO. no need for codegen
@@ -369,8 +364,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr topVisBar_ =
         drawItem->GetTopologyVisibilityRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr topVisBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(topVisBar_);
+        HdStBufferArrayRangeSharedPtr topVisBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(topVisBar_);
 
         MetaData::StructBlock sblock(_tokens->topologyVisibility);
         TF_FOR_ALL (it, topVisBar->GetResources()) {
@@ -396,8 +391,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr elementBar_ =
         drawItem->GetElementPrimvarRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr elementBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(elementBar_);
+        HdStBufferArrayRangeSharedPtr elementBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(elementBar_);
 
         TF_FOR_ALL (it, elementBar->GetResources()) {
             TfToken const& name = it->first;
@@ -418,8 +413,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr fvarBar_ =
         drawItem->GetFaceVaryingPrimvarRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr fvarBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(fvarBar_);
+        HdStBufferArrayRangeSharedPtr fvarBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(fvarBar_);
 
         TF_FOR_ALL (it, fvarBar->GetResources()) {
             TfToken const& name = it->first;
@@ -488,14 +483,14 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
     if (HdBufferArrayRangeSharedPtr instanceIndexBar_ =
         drawItem->GetInstanceIndexRange()) {
 
-        HdStBufferArrayRangeGLSharedPtr instanceIndexBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL>(
+        HdStBufferArrayRangeSharedPtr instanceIndexBar =
+            std::static_pointer_cast<HdStBufferArrayRange>(
                                                         instanceIndexBar_);
 
-        HdStBufferResourceGLSharedPtr instanceIndices
+        HdStBufferResourceSharedPtr instanceIndices
             = instanceIndexBar->GetResource(
                                     HdInstancerTokens->instanceIndices);
-        HdStBufferResourceGLSharedPtr culledInstanceIndices
+        HdStBufferResourceSharedPtr culledInstanceIndices
             = instanceIndexBar->GetResource(
                                     HdInstancerTokens->culledInstanceIndices);
 
@@ -543,8 +538,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
         // uniform block
         HdBufferArrayRangeSharedPtr const &shaderBar_ = 
                                                 (*shader)->GetShaderData();
-        HdStBufferArrayRangeGLSharedPtr shaderBar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (shaderBar_);
+        HdStBufferArrayRangeSharedPtr shaderBar =
+            std::static_pointer_cast<HdStBufferArrayRange> (shaderBar_);
         if (shaderBar) {
             HdBinding shaderParamBinding =
                 locator.GetBinding(structBufferBindingType, 
@@ -614,7 +609,9 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
                         MetaData::ShaderParameterAccessor(
                             /*name=*/glName,
                             /*type=*/glType,
-                            /*swizzle=*/glSwizzle);
+                            /*swizzle=*/glSwizzle,
+                            /*inPrimvars=*/param.samplerCoords,
+                            /*isPremultiplied=*/param.isPremultiplied);
                     _bindingMap[name] = texelBinding; // used for non-bindless
 
                     HdBinding layoutBinding = bindless
@@ -649,7 +646,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
                             /*name=*/param.name,
                             /*type=*/glType,
                             /*swizzle=*/glSwizzle,
-                            /*inPrimvars=*/param.samplerCoords);
+                            /*inPrimvars=*/param.samplerCoords,
+                            /*isPremultiplied=*/param.isPremultiplied);
                     // used for non-bindless
                     _bindingMap[param.name] = textureBinding;
 
@@ -686,6 +684,7 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
                             /*type=*/glType,
                             /*swizzle=*/glSwizzle,
                             /*inPrimvars=*/param.samplerCoords,
+                            /*isPremultiplied=*/param.isPremultiplied,
                             /*processTextureFallbackValue=*/isMaterialShader);
                     _bindingMap[name] = textureBinding; // used for non-bindless
                 } else if (param.textureType == HdTextureType::Field) {
@@ -703,6 +702,7 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
                             /*type=*/glType,
                             /*swizzle=*/glSwizzle,
                             /*inPrimvars=*/param.samplerCoords,
+                            /*isPremultiplied=*/param.isPremultiplied,
                             /*processTextureFallbackValue=*/isMaterialShader);
                     _bindingMap[name] = textureBinding; // used for non-bindless
                 }
@@ -756,8 +756,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
             MetaData::StructBlock sblock(it->GetName());
 
             HdBufferArrayRangeSharedPtr bar_ = it->GetBar();
-            HdStBufferArrayRangeGLSharedPtr bar =
-                std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+            HdStBufferArrayRangeSharedPtr bar =
+                std::static_pointer_cast<HdStBufferArrayRange> (bar_);
 
             for (auto const& nameRes : bar->GetResources()) {
                 HdTupleType valueType = nameRes.second->GetTupleType();
@@ -779,8 +779,8 @@ HdSt_ResourceBinder::ResolveBindings(HdStDrawItem const *drawItem,
                 // binding type and binding location.
 
                 HdBufferArrayRangeSharedPtr bar_ = it->GetBar();
-                HdStBufferArrayRangeGLSharedPtr bar =
-                    std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+                HdStBufferArrayRangeSharedPtr bar =
+                    std::static_pointer_cast<HdStBufferArrayRange> (bar_);
 
                 for (auto const& nameRes : bar->GetResources()) {
                     HdBinding binding = locator.GetBinding(it->GetBindingType(), nameRes.first);
@@ -858,14 +858,14 @@ HdSt_ResourceBinder::ResolveComputeBindings(
 
 void
 HdSt_ResourceBinder::BindBuffer(TfToken const &name,
-                              HdStBufferResourceGLSharedPtr const &buffer) const
+                              HdStBufferResourceSharedPtr const &buffer) const
 {
     BindBuffer(name, buffer, buffer->GetOffset(), /*level=*/-1);
 }
 
 void
 HdSt_ResourceBinder::BindBuffer(TfToken const &name,
-                              HdStBufferResourceGLSharedPtr const &buffer,
+                              HdStBufferResourceSharedPtr const &buffer,
                               int offset,
                               int level) const
 {
@@ -973,7 +973,6 @@ HdSt_ResourceBinder::BindBuffer(TfToken const &name,
                           offset,
                           buffer->GetStride());
         break;
-    case HdBinding::TBO:
     case HdBinding::TEXTURE_2D:
     case HdBinding::TEXTURE_FIELD:
         // nothing
@@ -987,7 +986,7 @@ HdSt_ResourceBinder::BindBuffer(TfToken const &name,
 
 void
 HdSt_ResourceBinder::UnbindBuffer(TfToken const &name,
-                                HdStBufferResourceGLSharedPtr const &buffer,
+                                HdStBufferResourceSharedPtr const &buffer,
                                 int level) const
 {
     HD_TRACE_FUNCTION();
@@ -1042,7 +1041,6 @@ HdSt_ResourceBinder::UnbindBuffer(TfToken const &name,
     case HdBinding::UNIFORM:
         glBindBufferBase(GL_UNIFORM_BUFFER, loc, 0);
         break;
-    case HdBinding::TBO:
     case HdBinding::TEXTURE_2D:
     case HdBinding::TEXTURE_FIELD:
         // nothing
@@ -1056,7 +1054,7 @@ HdSt_ResourceBinder::UnbindBuffer(TfToken const &name,
 
 void
 HdSt_ResourceBinder::BindConstantBuffer(
-    HdStBufferArrayRangeGLSharedPtr const &constantBar) const
+    HdStBufferArrayRangeSharedPtr const &constantBar) const
 {
     if (!constantBar) return;
 
@@ -1066,7 +1064,7 @@ HdSt_ResourceBinder::BindConstantBuffer(
 
 void
 HdSt_ResourceBinder::UnbindConstantBuffer(
-    HdStBufferArrayRangeGLSharedPtr const &constantBar) const
+    HdStBufferArrayRangeSharedPtr const &constantBar) const
 {
     if (!constantBar) return;
 
@@ -1075,7 +1073,7 @@ HdSt_ResourceBinder::UnbindConstantBuffer(
 
 void
 HdSt_ResourceBinder::BindInterleavedBuffer(
-    HdStBufferArrayRangeGLSharedPtr const &interleavedBar,
+    HdStBufferArrayRangeSharedPtr const &interleavedBar,
     TfToken const &name) const
 {
     if (!interleavedBar) return;
@@ -1085,7 +1083,7 @@ HdSt_ResourceBinder::BindInterleavedBuffer(
 
 void
 HdSt_ResourceBinder::UnbindInterleavedBuffer(
-    HdStBufferArrayRangeGLSharedPtr const &interleavedBar,
+    HdStBufferArrayRangeSharedPtr const &interleavedBar,
     TfToken const &name) const
 {
     if (!interleavedBar) return;
@@ -1095,7 +1093,7 @@ HdSt_ResourceBinder::UnbindInterleavedBuffer(
 
 void
 HdSt_ResourceBinder::BindInstanceBufferArray(
-    HdStBufferArrayRangeGLSharedPtr const &bar, int level) const
+    HdStBufferArrayRangeSharedPtr const &bar, int level) const
 {
     if (!bar) return;
 
@@ -1106,7 +1104,7 @@ HdSt_ResourceBinder::BindInstanceBufferArray(
 
 void
 HdSt_ResourceBinder::UnbindInstanceBufferArray(
-    HdStBufferArrayRangeGLSharedPtr const &bar, int level) const
+    HdStBufferArrayRangeSharedPtr const &bar, int level) const
 {
     if (!bar) return;
 
@@ -1170,7 +1168,7 @@ HdSt_ResourceBinder::UnbindShaderResources(HdStShaderCode const *shader) const
 }
 
 void
-HdSt_ResourceBinder::BindBufferArray(HdStBufferArrayRangeGLSharedPtr const &bar) const
+HdSt_ResourceBinder::BindBufferArray(HdStBufferArrayRangeSharedPtr const &bar) const
 {
     if (!bar) return;
 
@@ -1186,20 +1184,20 @@ HdSt_ResourceBinder::Bind(HdBindingRequest const& req) const
         return;
     } else if (req.IsResource()) {
         HdBufferResourceSharedPtr res_ = req.GetResource();
-        HdStBufferResourceGLSharedPtr res =
-            std::static_pointer_cast<HdStBufferResourceGL> (res_);
+        HdStBufferResourceSharedPtr res =
+            std::static_pointer_cast<HdStBufferResource> (res_);
 
         BindBuffer(req.GetName(), res, req.GetByteOffset());
     } else if (req.IsInterleavedBufferArray()) {
         // note: interleaved buffer needs only 1 binding
         HdBufferArrayRangeSharedPtr bar_ = req.GetBar();
-        HdStBufferArrayRangeGLSharedPtr bar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+        HdStBufferArrayRangeSharedPtr bar =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar_);
         BindBuffer(req.GetName(), bar->GetResource(), req.GetByteOffset());
     } else if (req.IsBufferArray()) {
         HdBufferArrayRangeSharedPtr bar_ = req.GetBar();
-        HdStBufferArrayRangeGLSharedPtr bar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+        HdStBufferArrayRangeSharedPtr bar =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar_);
         BindBufferArray(bar);
     }
 }
@@ -1211,21 +1209,21 @@ HdSt_ResourceBinder::Unbind(HdBindingRequest const& req) const
         return;
     } else if (req.IsResource()) {
         HdBufferResourceSharedPtr res_ = req.GetResource();
-        HdStBufferResourceGLSharedPtr res =
-            std::static_pointer_cast<HdStBufferResourceGL> (res_);
+        HdStBufferResourceSharedPtr res =
+            std::static_pointer_cast<HdStBufferResource> (res_);
 
         UnbindBuffer(req.GetName(), res);
     } else if (req.IsInterleavedBufferArray()) {
         // note: interleaved buffer needs only 1 binding
         HdBufferArrayRangeSharedPtr bar_ = req.GetBar();
-        HdStBufferArrayRangeGLSharedPtr bar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+        HdStBufferArrayRangeSharedPtr bar =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar_);
 
         UnbindBuffer(req.GetName(), bar->GetResource());
     } else if (req.IsBufferArray()) {
         HdBufferArrayRangeSharedPtr bar_ = req.GetBar();
-        HdStBufferArrayRangeGLSharedPtr bar =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar_);
+        HdStBufferArrayRangeSharedPtr bar =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar_);
 
         UnbindBufferArray(bar);
     }
@@ -1233,7 +1231,7 @@ HdSt_ResourceBinder::Unbind(HdBindingRequest const& req) const
 
 void
 HdSt_ResourceBinder::UnbindBufferArray(
-    HdStBufferArrayRangeGLSharedPtr const &bar) const
+    HdStBufferArrayRangeSharedPtr const &bar) const
 {
     if (!bar) return;
 
@@ -1367,8 +1365,7 @@ HdSt_ResourceBinder::IntrospectBindings(HgiShaderProgramHandle const & hgiProgra
                 name = n.str();
             }
             if (type == HdBinding::UNIFORM       ||
-                type == HdBinding::UNIFORM_ARRAY ||
-                type == HdBinding::TBO) {
+                type == HdBinding::UNIFORM_ARRAY) {
                 GLint loc = glGetUniformLocation(program, name.c_str());
                 // update location in resource binder.
                 // some uniforms may be optimized out.

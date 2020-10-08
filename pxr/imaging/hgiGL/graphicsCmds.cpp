@@ -42,6 +42,8 @@ HgiGLGraphicsCmds::HgiGLGraphicsCmds(
     : HgiGraphicsCmds()
     , _recording(true)
     , _descriptor(desc)
+    , _primitiveType(HgiPrimitiveTypeTriangleList)
+    , _pushStack(0)
 {
     if (desc.HasAttachments()) {
         _ops.push_back( HgiGLOps::BindFramebufferOp(device, desc) );
@@ -71,6 +73,7 @@ HgiGLGraphicsCmds::SetScissor(GfVec4i const& sc)
 void
 HgiGLGraphicsCmds::BindPipeline(HgiGraphicsPipelineHandle pipeline)
 {
+    _primitiveType = pipeline->GetDescriptor().primitiveType;
     _ops.push_back( HgiGLOps::BindPipeline(pipeline) );
 }
 
@@ -114,30 +117,35 @@ HgiGLGraphicsCmds::DrawIndexed(
     uint32_t indexCount,
     uint32_t indexBufferByteOffset,
     uint32_t vertexOffset,
-    uint32_t instanceCount,
-    uint32_t firstInstance)
+    uint32_t instanceCount)
 {
     _ops.push_back(
         HgiGLOps::DrawIndexed(
+            _primitiveType,
             indexBuffer,
             indexCount,
             indexBufferByteOffset,
             vertexOffset,
-            instanceCount,
-            firstInstance)
+            instanceCount)
         );
 }
 
 void
 HgiGLGraphicsCmds::PushDebugGroup(const char* label)
 {
-    _ops.push_back( HgiGLOps::PushDebugGroup(label) );
+    if (HgiGLDebugEnabled()) {
+        _pushStack++;
+        _ops.push_back( HgiGLOps::PushDebugGroup(label) );
+    }
 }
 
 void
 HgiGLGraphicsCmds::PopDebugGroup()
 {
-    _ops.push_back( HgiGLOps::PopDebugGroup() );
+    if (HgiGLDebugEnabled()) {
+        _pushStack--;
+        _ops.push_back( HgiGLOps::PopDebugGroup() );
+    }
 }
 
 bool
@@ -147,22 +155,24 @@ HgiGLGraphicsCmds::_Submit(Hgi* hgi)
         return false;
     }
 
+    TF_VERIFY(_pushStack==0, "Push and PopDebugGroup do not even out");
+
     // Capture OpenGL state before executing the 'ops' and restore it when this
     // function ends. We do this defensively because parts of our pipeline may
     // not set and restore all relevant gl state.
     HgiGL_ScopedStateHolder openglStateGuard;
 
     // Resolve multisample textures
-    _Resolve();
-
     HgiGL* hgiGL = static_cast<HgiGL*>(hgi);
     HgiGLDevice* device = hgiGL->GetPrimaryDevice();
+    _AddResolveToOps(device);
+
     device->SubmitOps(_ops);
     return true;
 }
 
 void
-HgiGLGraphicsCmds::_Resolve()
+HgiGLGraphicsCmds::_AddResolveToOps(HgiGLDevice *device)
 {
     if (!_recording) {
         return;
@@ -180,23 +190,15 @@ HgiGLGraphicsCmds::_Resolve()
         return;
     }
 
-    // At the end of the GraphicsCmd we resolve the multisample textures.
-    // This emulates what happens in Metal or Vulkan when the multisample
-    // resolve happens at the end of a render pass.
-    GfVec4i region(0, 0, _descriptor.width, _descriptor.height);
+    if ((!_descriptor.colorResolveTextures.empty()) ||
+        _descriptor.depthResolveTexture) {
+        // At the end of the GraphicsCmd we resolve the multisample
+        // textures.  This emulates what happens in Metal or Vulkan
+        // when the multisample resolve happens at the end of a render
+        // pass.
+        _ops.push_back(HgiGLOps::ResolveFramebuffer(device, _descriptor));
+    }
 
-    for (size_t i=0; i<_descriptor.colorResolveTextures.size(); i++) {
-        HgiTextureHandle src = _descriptor.colorTextures[i];
-        HgiTextureHandle dst = _descriptor.colorResolveTextures[i];
-        _ops.push_back(HgiGLOps::ResolveImage(src, dst, region,/*depth*/false));
-    }
-    
-    if (_descriptor.depthResolveTexture) {
-        HgiTextureHandle src = _descriptor.depthTexture;
-        HgiTextureHandle dst = _descriptor.depthResolveTexture;
-        _ops.push_back(HgiGLOps::ResolveImage(src, dst, region,/*depth*/true));
-    }
-    
     _recording = false;
 }
 

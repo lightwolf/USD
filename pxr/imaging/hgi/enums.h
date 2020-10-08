@@ -277,25 +277,6 @@ enum HgiShaderStageBits : HgiBits
 };
 using HgiShaderStage = HgiBits;
 
-/// \enum HgiPipelineType
-///
-/// Describes the intended bind point for this pipeline.
-///
-/// <ul>
-/// <li>HgiPipelineTypeGraphics:
-///   The pipeline is meant to be bound to the graphics pipeline.</li>
-/// <li>HgiPipelineTypeCompute:
-///   The pipeline is meant to be bound to the compute pipeline.</li>
-/// </ul>
-///
-enum HgiPipelineType
-{
-    HgiPipelineTypeGraphics = 0,
-    HgiPipelineTypeCompute,
-
-    HgiPipelineTypeCount
-};
-
 /// \enum HgiBindResourceType
 ///
 /// Describes the type of the resource to be bound.
@@ -304,9 +285,6 @@ enum HgiPipelineType
 /// <li>HgiBindResourceTypeSampler:
 ///   Sampler.
 ///   Glsl example: uniform sampler samplerOnly</li>
-/// <li>HgiBindResourceTypeCombinedImageSampler:
-///   Image and sampler combined in one.
-///   Glsl example: uniform sampler2D combined</li>
 /// <li>HgiBindResourceTypeSamplerImage:
 ///   Image for use with sampling ops.
 ///   Glsl example: uniform texture2D textureOnly
@@ -322,7 +300,6 @@ enum HgiPipelineType
 enum HgiBindResourceType
 {
     HgiBindResourceTypeSampler = 0,
-    HgiBindResourceTypeCombinedImageSampler,
     HgiBindResourceTypeSamplerImage,
     HgiBindResourceTypeStorageImage,
     HgiBindResourceTypeUniformBuffer,
@@ -459,6 +436,51 @@ enum HgiCompareFunction
     HgiCompareFunctionAlways,
 
     HgiCompareFunctionCount
+};
+
+/// \enum HgiComponentSwizzle
+///
+/// Swizzle for a component.
+///
+enum HgiComponentSwizzle
+{
+    HgiComponentSwizzleZero = 0,
+    HgiComponentSwizzleOne,
+    HgiComponentSwizzleR,
+    HgiComponentSwizzleG,
+    HgiComponentSwizzleB,
+    HgiComponentSwizzleA,
+
+    HgiComponentSwizzleCount
+};
+
+/// \enum HgiPrimitiveType
+///
+/// What the stream of vertices being rendered represents
+///
+/// <ul>
+/// <li>HgiPrimitiveTypePointList:
+///   Rasterize a point at each vertex.</li>
+/// <li>HgiPrimitiveTypeLineList:
+///   Rasterize a line between each separate pair of vertices.</li>
+/// <li>HgiPrimitiveTypeLineStrip:
+///   Rasterize a line between each pair of adjacent vertices.</li>
+/// <li>HgiPrimitiveTypeTriangleList:
+///   Rasterize a triangle for every separate set of three vertices.</li>
+/// <li>HgiPrimitiveTypePatchList:
+///   A user-defined number of vertices, which is tessellated into
+///   points, lines, or triangles.</li>
+/// </ul>
+///
+enum HgiPrimitiveType
+{
+    HgiPrimitiveTypePointList = 0,
+    HgiPrimitiveTypeLineList,
+    HgiPrimitiveTypeLineStrip,
+    HgiPrimitiveTypeTriangleList,
+    HgiPrimitiveTypePatchList,
+
+    HgiPrimitiveTypeCount
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

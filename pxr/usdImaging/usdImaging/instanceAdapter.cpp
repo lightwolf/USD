@@ -267,18 +267,21 @@ UsdImagingInstanceAdapter::_Populate(UsdPrim const& prim,
                 continue;
             }
 
-            // If we're processing the master prim, it's normally not allowed
-            // to be imageable.  We can't instance a gprim (or instancer)
-            // directly since we don't derive any scalability benefit from
-            // mesh-to-mesh instancing.
+            // If we're processing the root instance prim, we normally don't
+            // allow it to be imageable.  If you directly instance a gprim,
+            // the gprim attributes can vary per-instance, meaning you'd need
+            // to add one hydra prototype per instance and you'd lose any
+            // scalability benefit.
             //
-            // Exceptions (like cards mode) will be flagged by the function
-            // CanPopulateMaster() on their prim adapter.
+            // Normally we skip this prim and warn (if it's of imageable type),
+            // but a few exceptions (like cards mode) will be flagged by the
+            // function CanPopulateUsdInstance(), in which case we allow them
+            // to be populated.
             //
-            // If the master prim has an adapter and shouldn't, generate a
-            // warning and continue.
+            // (Note: any prim type that implements CanPopulateUsdInstance will
+            // need extensive code support in this adapter as well).
             if (iter->IsMaster() && primAdapter &&
-                !primAdapter->CanPopulateMaster()) {
+                !primAdapter->CanPopulateUsdInstance()) {
                 TF_WARN("The gprim at path <%s> was directly instanced. "
                         "In order to instance this prim, put the prim under an "
                         "Xform, and instance the Xform parent.",
@@ -1301,14 +1304,12 @@ UsdImagingInstanceAdapter::ProcessPropertyChange(UsdPrim const& prim,
         return HdChangeTracker::DirtyInstanceIndex;
     }
 
-    if (UsdGeomPrimvar::IsPrimvarRelatedPropertyName(propertyName)) {
+    if (UsdGeomPrimvarsAPI::CanContainPropertyName(propertyName)) {
         return UsdImagingPrimAdapter::_ProcessPrefixedPrimvarPropertyChange(
                 prim, cachePath, propertyName);
     }
 
-    // For other property changes, blast everything.  This will trigger a
-    // prim resync.
-    return HdChangeTracker::AllDirty;
+    return HdChangeTracker::Clean;
 }
 
 void
@@ -1706,6 +1707,49 @@ UsdImagingInstanceAdapter::GetSubdivTags(UsdPrim const& usdPrim,
     return UsdImagingPrimAdapter::GetSubdivTags(usdPrim, cachePath, time);
 }
 
+VtValue
+UsdImagingInstanceAdapter::GetTopology(UsdPrim const& usdPrim,
+                                       SdfPath const& cachePath,
+                                       UsdTimeCode time) const
+{
+    if (_IsChildPrim(usdPrim, cachePath)) {
+        // Note that the proto group in this proto has not yet been
+        // updated with new instances at this point.
+        UsdImagingInstancerContext instancerContext;
+        _ProtoPrim const& proto = _GetProtoPrim(usdPrim.GetPath(),
+                                                cachePath,
+                                                &instancerContext);
+        if (!TF_VERIFY(proto.adapter, "%s", cachePath.GetText())) {
+            return VtValue();
+        }
+        return proto.adapter->GetTopology(
+                _GetPrim(proto.path), cachePath, time);
+    }
+    return UsdImagingPrimAdapter::GetTopology(usdPrim, cachePath, time);
+}
+
+/*virtual*/
+HdCullStyle 
+UsdImagingInstanceAdapter::GetCullStyle(UsdPrim const& usdPrim,
+                                        SdfPath const& cachePath,
+                                        UsdTimeCode time) const
+{
+    if (_IsChildPrim(usdPrim, cachePath)) {
+        // Note that the proto group in this proto has not yet been
+        // updated with new instances at this point.
+        UsdImagingInstancerContext instancerContext;
+        _ProtoPrim const& proto = _GetProtoPrim(usdPrim.GetPath(),
+                                                cachePath,
+                                                &instancerContext);
+        if (!TF_VERIFY(proto.adapter, "%s", cachePath.GetText())) {
+            return HdCullStyleDontCare;
+        }
+        return proto.adapter->GetCullStyle(
+                _GetPrim(proto.path), cachePath, time);
+    }
+    return UsdImagingPrimAdapter::GetCullStyle(usdPrim, cachePath, time);
+}
+
 void
 UsdImagingInstanceAdapter::_ResyncInstancer(SdfPath const& instancerPath,
                                             UsdImagingIndexProxy* index,
@@ -1881,7 +1925,7 @@ struct UsdImagingInstanceAdapter::_ComputeInstanceMapVariabilityFn
         // is not variable.
         UsdTimeCode time = adapter->_GetTimeWithOffset(0.0);
         for (UsdPrim const& prim : instanceContext) {
-            if (!adapter->GetVisible(prim, time)) {
+            if (!adapter->GetVisible(prim, prim.GetPath(), time)) {
                 return false;
             }
         }
@@ -1985,7 +2029,7 @@ struct UsdImagingInstanceAdapter::_ComputeInstanceMapFn
     bool GetVisible(const std::vector<UsdPrim>& instanceContext)
     {
         for (UsdPrim const& prim : instanceContext) {
-            if (!adapter->GetVisible(prim, time)) {
+            if (!adapter->GetVisible(prim, prim.GetPath(), time)) {
                 return false;
             }
         }

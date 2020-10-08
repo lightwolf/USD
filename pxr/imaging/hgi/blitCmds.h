@@ -26,13 +26,16 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hgi/api.h"
+#include "pxr/imaging/hgi/buffer.h"
 #include "pxr/imaging/hgi/cmds.h"
 #include "pxr/imaging/hgi/texture.h"
 #include <memory>
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 struct HgiTextureGpuToCpuOp;
+struct HgiTextureCpuToGpuOp;
 struct HgiBufferGpuToGpuOp;
 struct HgiBufferCpuToGpuOp;
 struct HgiResolveImageOp;
@@ -65,6 +68,10 @@ public:
     HGI_API
     virtual void CopyTextureGpuToCpu(HgiTextureGpuToCpuOp const& copyOp) = 0;
 
+    /// Copy new data from the CPU into a GPU texture.
+    HGI_API
+    virtual void CopyTextureCpuToGpu(HgiTextureCpuToGpuOp const& copyOp) = 0;
+
     /// Copy a buffer resource from GPU to GPU.
     HGI_API
     virtual void CopyBufferGpuToGpu(HgiBufferGpuToGpuOp const& copyOp) = 0;
@@ -74,6 +81,16 @@ public:
     HGI_API
     virtual void CopyBufferCpuToGpu(HgiBufferCpuToGpuOp const& copyOp) = 0;
 
+    /// Queue a copy new data from cpu into gpu buffer.
+    /// For example copy new data into a uniform block or storage buffer.
+    /// This is very similar to calling CopyBufferCpuToGpu, except this can
+    /// be more efficient if we end up needing many small, consecutive writes
+    /// into the same buffer, since this will queue those changes together
+    /// into a staging buffer and only flush to the GPU when we write to
+    /// a different, or non-consecutive area of a buffer.
+    HGI_API
+    void QueueCopyBufferCpuToGpu(HgiBufferCpuToGpuOp const& copyOp);
+
     /// Generate mip maps for a texture
     HGI_API
     virtual void GenerateMipMaps(HgiTextureHandle const& texture) = 0;
@@ -82,9 +99,28 @@ protected:
     HGI_API
     HgiBlitCmds();
 
+    /// Flush any queued buffer data copies to GPU.
+    /// This will copy the new buffer data from staging area to GPU.
+    HGI_API
+    void FlushQueuedCopies();
+
 private:
     HgiBlitCmds & operator=(const HgiBlitCmds&) = delete;
     HgiBlitCmds(const HgiBlitCmds&) = delete;
+    
+    struct BufferFlushListEntry {
+        BufferFlushListEntry(HgiBufferHandle const& _buffer,
+                             uint64_t _start, uint64_t _end) {
+            buffer = _buffer;
+            start = _start;
+            end = _end;
+        }
+        HgiBufferHandle buffer;
+        uint64_t start;
+        uint64_t end;
+    };
+
+    std::unordered_map<class HgiBuffer*, BufferFlushListEntry> queuedBuffers;
 };
 
 

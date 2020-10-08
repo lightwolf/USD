@@ -27,7 +27,7 @@
 #include "pxr/imaging/hdSt/basisCurvesComputations.h"
 #include "pxr/imaging/hdSt/basisCurvesShaderKey.h"
 #include "pxr/imaging/hdSt/basisCurvesTopology.h"
-#include "pxr/imaging/hdSt/bufferArrayRangeGL.h"
+#include "pxr/imaging/hdSt/bufferArrayRange.h"
 #include "pxr/imaging/hdSt/drawItem.h"
 #include "pxr/imaging/hdSt/extCompGpuComputation.h"
 #include "pxr/imaging/hdSt/geometricShader.h"
@@ -704,15 +704,21 @@ HdStBasisCurves::_PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
                 }
             }
 
-            // XXX: this really needs to happen for all primvars.
+            // XXX: interpolation really needs to happen for all primvars.
             if (primvar.name == HdTokens->widths) {
-                sources.push_back(HdBufferSourceSharedPtr(
-                        new HdSt_BasisCurvesWidthsInterpolaterComputation(
-                            _topology.get(), value.Get<VtFloatArray>())));
+                VtFloatArray array =  value.Get<VtFloatArray>();
+                if (!array.empty()) {
+                    sources.push_back(HdBufferSourceSharedPtr(
+                            new HdSt_BasisCurvesWidthsInterpolaterComputation(
+                                _topology.get(), array)));
+                }
             } else if (primvar.name == HdTokens->normals) {
-                sources.push_back(HdBufferSourceSharedPtr(
-                        new HdSt_BasisCurvesNormalsInterpolaterComputation(
-                            _topology.get(), value.Get<VtVec3fArray>())));
+                VtVec3fArray array = value.Get<VtVec3fArray>();
+                if (!array.empty()) {
+                    sources.push_back(HdBufferSourceSharedPtr(
+                            new HdSt_BasisCurvesNormalsInterpolaterComputation(
+                                _topology.get(), array)));
+                }
             } else {
                 sources.push_back(HdBufferSourceSharedPtr(
                         new HdVtBufferSource(primvar.name, value)));
@@ -856,26 +862,26 @@ HdSt_HasResource(HdStDrawItem* drawItem, const TfToken& resourceToken){
 
     typedef HdBufferArrayRangeSharedPtr HdBarPtr;
     if (HdBarPtr const& bar = drawItem->GetConstantPrimvarRange()){
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     if (HdBarPtr const& bar = drawItem->GetVertexPrimvarRange()) {
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     if (HdBarPtr const& bar = drawItem->GetElementPrimvarRange()){
-        HdStBufferArrayRangeGLSharedPtr bar_ =
-            std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+        HdStBufferArrayRangeSharedPtr bar_ =
+            std::static_pointer_cast<HdStBufferArrayRange> (bar);
 
         hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
     }
     int instanceNumLevels = drawItem->GetInstancePrimvarNumLevels();
     for (int i = 0; i < instanceNumLevels; ++i) {
         if (HdBarPtr const& bar = drawItem->GetInstancePrimvarRange(i)) {
-            HdStBufferArrayRangeGLSharedPtr bar_ =
-                std::static_pointer_cast<HdStBufferArrayRangeGL> (bar);
+            HdStBufferArrayRangeSharedPtr bar_ =
+                std::static_pointer_cast<HdStBufferArrayRange> (bar);
 
             hasAuthoredResouce |= bool(bar_->GetResource(resourceToken));
         }
@@ -931,4 +937,3 @@ HdStBasisCurves::GetInitialDirtyBitsMask() const
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
-

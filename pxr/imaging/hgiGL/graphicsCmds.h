@@ -34,7 +34,7 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 struct HgiGraphicsCmdsDesc;
-
+class HgiGLDevice;
 
 /// \class HgiGLGraphicsCmds
 ///
@@ -91,7 +91,6 @@ public:
         HgiBufferHandle const& indexBuffer,
         uint32_t indexCount,
         uint32_t indexBufferByteOffset,
-        uint32_t firstIndex,
         uint32_t vertexOffset,
         uint32_t instanceCount) override;
 
@@ -112,11 +111,13 @@ private:
     HgiGLGraphicsCmds(const HgiGLGraphicsCmds&) = delete;
 
     /// This performs multisample resolve when needed at the end of recording.
-    void _Resolve();
+    void _AddResolveToOps(HgiGLDevice* device);
 
     bool _recording;
     HgiGraphicsCmdsDesc _descriptor;
+    HgiPrimitiveType _primitiveType;
     HgiGLOpsVector _ops;
+    int _pushStack;
 
     // Cmds is used only one frame so storing multi-frame state on will not
     // survive.

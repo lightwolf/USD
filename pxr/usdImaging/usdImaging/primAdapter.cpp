@@ -106,6 +106,13 @@ UsdImagingPrimAdapter::ShouldCullChildren() const
 
 /*virtual*/
 bool
+UsdImagingPrimAdapter::ShouldIgnoreNativeInstanceSubtrees() const
+{
+    return false;
+}
+
+/*virtual*/
+bool
 UsdImagingPrimAdapter::IsInstancerAdapter() const
 {
     return false;
@@ -113,7 +120,7 @@ UsdImagingPrimAdapter::IsInstancerAdapter() const
 
 /*virtual*/
 bool
-UsdImagingPrimAdapter::CanPopulateMaster() const
+UsdImagingPrimAdapter::CanPopulateUsdInstance() const
 {
     return false;
 }
@@ -217,6 +224,14 @@ void
 UsdImagingPrimAdapter::MarkMaterialDirty(UsdPrim const& prim,
                                          SdfPath const& cachePath,
                                          UsdImagingIndexProxy* index)
+{
+}
+
+/*virtual*/
+void
+UsdImagingPrimAdapter::MarkLightParamsDirty(UsdPrim const& prim,
+                                            SdfPath const& cachePath,
+                                            UsdImagingIndexProxy* index)
 {
 }
 
@@ -431,23 +446,6 @@ UsdImagingPrimAdapter::PopulateSelection(
     }
 
     return true;
-}
-
-HdTextureResource::ID
-UsdImagingPrimAdapter::GetTextureResourceID(UsdPrim const& usdPrim,
-                                            SdfPath const &id,
-                                            UsdTimeCode time,
-                                            size_t salt) const
-{
-    return HdTextureResource::ID(-1);
-}
-
-HdTextureResourceSharedPtr
-UsdImagingPrimAdapter::GetTextureResource(UsdPrim const& usdPrim,
-                                          SdfPath const &id,
-                                          UsdTimeCode time) const
-{
-    return nullptr;
 }
 
 HdVolumeFieldDescriptorVector
@@ -905,9 +903,6 @@ UsdImagingPrimAdapter::_IsVarying(UsdPrim prim,
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    // Unset the bit initially.
-    (*dirtyFlags) &= ~dirtyFlag;
-
     if (exists != nullptr) {
         *exists = false;
     }
@@ -938,9 +933,6 @@ UsdImagingPrimAdapter::_IsTransformVarying(UsdPrim prim,
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
-
-    // Unset the bit initially.
-    (*dirtyFlags) &= ~dirtyFlag;
 
     UsdImaging_XformCache &xfCache = _delegate->_xformCache;
 
@@ -1105,18 +1097,46 @@ UsdImagingPrimAdapter::SampleTransform(
     return 1;
 }
 
-bool
-UsdImagingPrimAdapter::GetVisible(UsdPrim const& prim, UsdTimeCode time) const
+VtValue
+UsdImagingPrimAdapter::Get(
+    UsdPrim const& prim,
+    SdfPath const& cachePath,
+    TfToken const &key,
+    UsdTimeCode time) const
 {
-    HD_TRACE_FUNCTION();
+    // XXX: This does not work for point instancer child
+    // prims; while we do not hit this code path given the
+    // current state of the universe, we need to rethink
+    // UsdImagingDelegate::Get().
+    //
+    // XXX(UsdImaging): We use cachePath directly as
+    // usdPath here, but should do the proper
+    // transformation.  Maybe we can use the
+    // primInfo.usdPrim?
 
-    if (_delegate->IsInInvisedPaths(prim.GetPath())) return false;
+    UsdAttribute const &attr = prim.GetAttribute(key);
+    VtValue value;
+    TF_VERIFY(attr && attr.Get(&value, time),
+              "%s, %s\n", cachePath.GetText(), key.GetText());
+
+    return value;
+}
+
+bool
+UsdImagingPrimAdapter::GetVisible(
+    UsdPrim const& prim, 
+    SdfPath const& cachePath, 
+    UsdTimeCode time) const
+{
+    TRACE_FUNCTION();
+
+    if (_delegate->IsInInvisedPaths(prim.GetPath())) {
+        return false;
+    }
 
     UsdImaging_VisCache &visCache = _delegate->_visCache;
-    if (_IsEnabledVisCache() && visCache.GetTime() == time)
-    {
-        return visCache.GetValue(prim)
-                    == UsdGeomTokens->inherited;
+    if (_IsEnabledVisCache() && visCache.GetTime() == time) {
+        return visCache.GetValue(prim) == UsdGeomTokens->inherited;
     } else {
         return UsdImaging_VisStrategy::ComputeVisibility(prim, time)
                     == UsdGeomTokens->inherited;
@@ -1159,6 +1179,14 @@ UsdImagingPrimAdapter::GetInheritablePurpose(UsdPrim const& prim) const
     return purposeInfo.GetInheritablePurpose();
 }
 
+HdCullStyle 
+UsdImagingPrimAdapter::GetCullStyle(UsdPrim const& prim,
+                                    SdfPath const& cachePath,
+                                    UsdTimeCode time) const
+{
+    return HdCullStyleDontCare;
+}
+
 SdfPath
 UsdImagingPrimAdapter::GetMaterialUsdPath(UsdPrim const& prim) const
 {
@@ -1178,6 +1206,15 @@ TfToken
 UsdImagingPrimAdapter::GetModelDrawMode(UsdPrim const& prim)
 {
     return _delegate->_GetModelDrawMode(prim);
+}
+
+/*virtual*/ 
+VtValue 
+UsdImagingPrimAdapter::GetTopology(UsdPrim const& prim,
+                                   SdfPath const& cachePath,
+                                   UsdTimeCode time) const
+{
+    return VtValue();
 }
 
 VtArray<VtIntArray>

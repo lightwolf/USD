@@ -535,6 +535,8 @@ public:
     USD_API
     bool RemoveConnection(const SdfPath& source) const;
 
+    /// \deprecated Use SetConnections(SdfPathVector()) instead.
+    /// 
     /// Clears all connection edits from the current EditTarget, and makes
     /// the opinion explicit, which means we are effectively resetting the
     /// composed value of the targets list to empty.
@@ -560,6 +562,12 @@ public:
     /// Compose this attribute's connections and fill \p sources with the
     /// result.  All preexisting elements in \p sources are lost.
     ///
+    /// Returns true if any connection path opinions have been authored and no
+    /// composition errors were encountered, returns false otherwise. 
+    /// Note that authored opinions may include opinions that clear the 
+    /// connections and a return value of true does not necessarily indicate 
+    /// that \p sources will contain any connection paths.
+    /// 
     /// See \ref Usd_ScenegraphInstancing_TargetsAndConnections for details on 
     /// behavior when targets point to objects beneath instance prims.
     ///

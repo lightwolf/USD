@@ -132,25 +132,24 @@ HdSt_RenderPass::_Execute(HdRenderPassStateSharedPtr const &renderPassState,
     const HgiGraphicsCmdsDesc desc =
         stRenderPassState->MakeGraphicsCmdsDesc(GetRenderIndex());
     HgiGraphicsCmdsUniquePtr gfxCmds = _hgi->CreateGraphicsCmds(desc);
-
-    // XXX When there are no aovBindings we get a null work object.
-    // This would ideally never happen, but currently happens for some
-    // custom prims that spawn an imagingGLengine  with a task controller that
-    // has no aovBindings.
- 
-    if (gfxCmds) {
-        HdRprimCollection const &collection = GetRprimCollection();
-        std::string passName = "HdSt_RenderPass: " +
-            collection.GetMaterialTag().GetString();
-        gfxCmds->PushDebugGroup(passName.c_str());
+    if (!TF_VERIFY(gfxCmds)) {
+        return;
     }
+    HdRprimCollection const &collection = GetRprimCollection();
+    std::string passName = "HdSt_RenderPass: " +
+        collection.GetMaterialTag().GetString();
+    gfxCmds->PushDebugGroup(passName.c_str());
 
     // Draw
+    GfVec4f const& viewport = renderPassState->GetViewport();
+    gfxCmds->SetViewport(GfVec4i(int(viewport[0]), int(viewport[1]), 
+                                 int(viewport[2]), int(viewport[3])));
+
     HdStCommandBuffer* cmdBuffer = &_cmdBuffer;
     HgiGLGraphicsCmds* glGfxCmds = 
         dynamic_cast<HgiGLGraphicsCmds*>(gfxCmds.get());
 
-    if (gfxCmds && glGfxCmds) {
+    if (glGfxCmds) {
         // XXX Tmp code path to allow non-hgi code to insert functions into
         // HgiGL ops-stack. Will be removed once Storms uses Hgi everywhere
         auto executeDrawOp = [cmdBuffer, stRenderPassState, resourceRegistry] {

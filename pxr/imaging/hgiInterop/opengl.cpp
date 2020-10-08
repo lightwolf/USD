@@ -135,7 +135,8 @@ HgiInteropOpenGL::~HgiInteropOpenGL()
 void
 HgiInteropOpenGL::CompositeToInterop(
     HgiTextureHandle const &color,
-    HgiTextureHandle const &depth)
+    HgiTextureHandle const &depth,
+    GfVec4i const &compRegion)
 {
     if (!ARCH_UNLIKELY(color)) {
         TF_WARN("No valid color texture provided");
@@ -236,18 +237,16 @@ HgiInteropOpenGL::CompositeToInterop(
     glGetBooleanv(GL_SAMPLE_ALPHA_TO_COVERAGE, &restoreAlphaToCoverage);
     glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 
-    // The application may have set a custom glViewport (e.g. camera mask), we 
-    // instead want to blit the entire aov texture to the screen, because the 
-    // aov already contains the masked result.
     int32_t restoreVp[4];
     glGetIntegerv(GL_VIEWPORT, restoreVp);
-    const GfVec3i dimensions = glColor->GetDescriptor().dimensions;
-    glViewport(0,0, dimensions[0], dimensions[1]);
+    glViewport(compRegion[0], compRegion[1], compRegion[2], compRegion[3]);
 
     // Draw fullscreen triangle
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
     // Restore state and verify gl errors
+    glDisableVertexAttribArray(locPosition);
+    glDisableVertexAttribArray(locUv);
     glBindBuffer(GL_ARRAY_BUFFER, restoreArrayBuffer);
     
     if (!blendEnabled) {
@@ -271,6 +270,11 @@ HgiInteropOpenGL::CompositeToInterop(
     glViewport(restoreVp[0], restoreVp[1], restoreVp[2], restoreVp[3]);
 
     glUseProgram(0);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
 #if defined(GL_KHR_debug)
     if (GLEW_KHR_debug) {

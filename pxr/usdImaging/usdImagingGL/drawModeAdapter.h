@@ -40,9 +40,8 @@ class UsdImagingGLDrawModeAdapter : public UsdImagingPrimAdapter
 public:
     using BaseAdapter = UsdImagingPrimAdapter;
 
-    UsdImagingGLDrawModeAdapter()
-        : UsdImagingPrimAdapter()
-    {}
+    USDIMAGINGGL_API
+    UsdImagingGLDrawModeAdapter();
 
     USDIMAGINGGL_API
     ~UsdImagingGLDrawModeAdapter() override;
@@ -63,9 +62,9 @@ public:
     // render index compatibility at a later point than adapter lookup.
     bool IsSupported(UsdImagingIndexProxy const* index) const override;
 
-    // Cards prims can take effect on master prims, so we need to let the
+    // Cards mode can be applied to instance prims, so we need to let the
     // UsdImagingInstanceAdapter know we want special handling.
-    bool CanPopulateMaster() const override;
+    bool CanPopulateUsdInstance() const override;
 
     // ---------------------------------------------------------------------- //
     /// \name Parallel Setup and Resolve
@@ -111,10 +110,24 @@ public:
                              SdfPath const& cachePath,
                              UsdImagingIndexProxy* index) override;
 
-    USDIMAGING_API
+    USDIMAGINGGL_API
     void MarkMaterialDirty(UsdPrim const& prim,
                            SdfPath const& cachePath,
                            UsdImagingIndexProxy* index) override;
+
+    // ---------------------------------------------------------------------- //
+    /// \name Data access
+    // ---------------------------------------------------------------------- //
+
+    USDIMAGINGGL_API
+    HdCullStyle GetCullStyle(UsdPrim const& prim,
+                             SdfPath const& cachePath,
+                             UsdTimeCode time) const override;
+
+    USDIMAGINGGL_API
+    VtValue GetTopology(UsdPrim const& prim,
+                        SdfPath const& cachePath,
+                        UsdTimeCode time) const override;
 
 protected:
     USDIMAGINGGL_API
@@ -128,8 +141,19 @@ private:
                                GfRange3d const& extents, uint8_t axes_mask) 
         const;
 
+    void _ComputeGeometryData(UsdPrim const& prim,
+                              SdfPath const& cachePath,
+                              UsdTimeCode time,
+                              TfToken const& drawMode,
+                              VtValue* topology, 
+                              VtValue* points, 
+                              GfRange3d* extent,
+                              VtValue* uv,
+                              VtValue* assign) const;
+
     // Check whether the given cachePath is a path to the draw mode material.
     bool _IsMaterialPath(SdfPath const& path) const;
+
     // Check whether the given cachePath is a path to a draw mode texture.
     bool _IsTexturePath(SdfPath const& path) const;
 
@@ -176,6 +200,10 @@ private:
     // Map from cachePath to what drawMode it was populated as.
     using _DrawModeMap = TfHashMap<SdfPath, TfToken, SdfPath::Hash>;
     _DrawModeMap _drawModeMap;
+
+    // The default value of model:drawModeColor, fetched from the schema
+    // registry and stored for quick access...
+    GfVec3f _schemaColor;
 };
 
 

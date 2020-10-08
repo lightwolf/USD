@@ -95,15 +95,15 @@ protected:
 
 private:
     void _ValidateCompatibility(
-        HdStBufferArrayRangeGLSharedPtr const& constantBar,
-        HdStBufferArrayRangeGLSharedPtr const& indexBar,
-        HdStBufferArrayRangeGLSharedPtr const& topologyVisibilityBar,
-        HdStBufferArrayRangeGLSharedPtr const& elementBar,
-        HdStBufferArrayRangeGLSharedPtr const& fvarBar,
-        HdStBufferArrayRangeGLSharedPtr const& vertexBar,
+        HdStBufferArrayRangeSharedPtr const& constantBar,
+        HdStBufferArrayRangeSharedPtr const& indexBar,
+        HdStBufferArrayRangeSharedPtr const& topologyVisibilityBar,
+        HdStBufferArrayRangeSharedPtr const& elementBar,
+        HdStBufferArrayRangeSharedPtr const& fvarBar,
+        HdStBufferArrayRangeSharedPtr const& vertexBar,
         int instancerNumLevels,
-        HdStBufferArrayRangeGLSharedPtr const& instanceIndexBar,
-        std::vector<HdStBufferArrayRangeGLSharedPtr> const& instanceBars) const;
+        HdStBufferArrayRangeSharedPtr const& instanceIndexBar,
+        std::vector<HdStBufferArrayRangeSharedPtr> const& instanceBars) const;
 
     // Culling requires custom resource binding.
     class _CullingProgram : public _DrawingProgram
@@ -144,7 +144,10 @@ private:
 
     // GLsync is not defined in gl.h. It's defined in spec as an opaque pointer:
     typedef struct __GLsync *GLsync;
-    void _EndGPUCountVisibleInstances(GLsync resultSync, size_t * result);
+    void _EndGPUCountVisibleInstances(
+        HdStResourceRegistrySharedPtr const &resourceRegistry, 
+        GLsync resultSync,
+        size_t * result);
 
     HdStDispatchBufferSharedPtr _dispatchBuffer;
     HdStDispatchBufferSharedPtr _dispatchBufferCullInput;

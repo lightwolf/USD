@@ -52,6 +52,9 @@ public:
     void CopyTextureGpuToCpu(HgiTextureGpuToCpuOp const& copyOp) override;
 
     HGIGL_API
+    void CopyTextureCpuToGpu(HgiTextureCpuToGpuOp const& copyOp) override;
+
+    HGIGL_API
     void CopyBufferGpuToGpu(HgiBufferGpuToGpuOp const& copyOp) override;
 
     HGIGL_API
@@ -74,6 +77,7 @@ private:
     HgiGLBlitCmds(const HgiGLBlitCmds&) = delete;
 
     HgiGLOpsVector _ops;
+    int _pushStack;
 
     // BlitCmds is used only one frame so storing multi-frame state here will
     // not survive.

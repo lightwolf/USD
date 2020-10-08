@@ -67,6 +67,7 @@ HdxColorCorrectionTask::HdxColorCorrectionTask(
     , _indexBuffer()
     , _vertexBuffer()
     , _texture3dLUT()
+    , _sampler()
     , _shaderProgram()
     , _resourceBindings()
     , _pipeline()
@@ -78,6 +79,10 @@ HdxColorCorrectionTask::~HdxColorCorrectionTask()
 {
     if (_texture3dLUT) {
         _GetHgi()->DestroyTexture(&_texture3dLUT);
+    }
+
+    if (_sampler) {
+        _GetHgi()->DestroySampler(&_sampler);
     }
 
     if (_vertexBuffer) {
@@ -307,21 +312,20 @@ HdxColorCorrectionTask::_CreateResourceBindings(
     // Begin the resource set
     HgiResourceBindingsDesc resourceDesc;
     resourceDesc.debugName = "ColorCorrection";
-    resourceDesc.pipelineType = HgiPipelineTypeGraphics;
 
     HgiTextureBindDesc texBind0;
     texBind0.bindingIndex = 0;
-    texBind0.resourceType = HgiBindResourceTypeCombinedImageSampler;
     texBind0.stageUsage = HgiShaderStageFragment;
     texBind0.textures.push_back(aovTexture);
+    texBind0.samplers.push_back(_sampler);
     resourceDesc.textures.emplace_back(std::move(texBind0));
 
     if (useOCIO && _texture3dLUT) {
         HgiTextureBindDesc texBind1;
         texBind1.bindingIndex = 1;
-        texBind1.resourceType = HgiBindResourceTypeCombinedImageSampler;
         texBind1.stageUsage = HgiShaderStageFragment;
         texBind1.textures.push_back(_texture3dLUT);
+        texBind1.samplers.push_back(_sampler);
         resourceDesc.textures.emplace_back(std::move(texBind1));
     }
 
@@ -354,7 +358,6 @@ HdxColorCorrectionTask::_CreatePipeline(HgiTextureHandle const& aovTexture)
 
     HgiGraphicsPipelineDesc desc;
     desc.debugName = "ColorCorrection Pipeline";
-    desc.resourceBindings = _resourceBindings;
     desc.shaderProgram = _shaderProgram;
     
     // Describe the vertex buffer
@@ -399,6 +402,26 @@ HdxColorCorrectionTask::_CreatePipeline(HgiTextureHandle const& aovTexture)
     return true;
 }
 
+bool
+HdxColorCorrectionTask::_CreateSampler()
+{
+    if (_sampler) {
+        return true;
+    }
+
+    HgiSamplerDesc sampDesc;
+
+    sampDesc.magFilter = HgiSamplerFilterLinear;
+    sampDesc.minFilter = HgiSamplerFilterLinear;
+
+    sampDesc.addressModeU = HgiSamplerAddressModeClampToEdge;
+    sampDesc.addressModeV = HgiSamplerAddressModeClampToEdge;
+
+    _sampler = _GetHgi()->CreateSampler(sampDesc);
+
+    return true;
+}
+
 void
 HdxColorCorrectionTask::_ApplyColorCorrection(
     HgiTextureHandle const& aovTexture)
@@ -420,7 +443,7 @@ HdxColorCorrectionTask::_ApplyColorCorrection(
     gfxCmds->BindVertexBuffers(0, {_vertexBuffer}, {0});
     GfVec4i vp = GfVec4i(0, 0, dimensions[0], dimensions[1]);
     gfxCmds->SetViewport(vp);
-    gfxCmds->DrawIndexed(_indexBuffer, 3, 0, 0, 1, 0);
+    gfxCmds->DrawIndexed(_indexBuffer, 3, 0, 0, 1);
     gfxCmds->PopDebugGroup();
 
     // Done recording commands, submit work.
@@ -497,6 +520,9 @@ HdxColorCorrectionTask::Execute(HdTaskContext* ctx)
         ctx, HdxAovTokens->colorIntermediate, &aovTextureIntermediate);
 
     if (!TF_VERIFY(_CreateBufferResources())) {
+        return;
+    }
+    if (!TF_VERIFY(_CreateSampler())) {
         return;
     }
     if (!TF_VERIFY(_CreateShaderResources())) {

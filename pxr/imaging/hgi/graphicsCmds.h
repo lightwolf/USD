@@ -86,6 +86,8 @@ public:
     /// `stages` describes for what shader stage you are setting the push
     /// constant values for. Each stage can have its own (or none) binding
     /// and they must match what is described in the shader functions.
+    /// `bindIndex` is the binding point index in the pipeline's shader
+    /// to bind the data to.
     /// `byteSize` is the size of the data you are updating.
     /// `data` is the data you are copying into the push constants block.
     HGI_API
@@ -108,7 +110,9 @@ public:
 
     /// Records a draw command that renders one or more instances of primitives
     /// using an indexBuffer starting from the base vertex of the base instance.
-    /// `indexCount` is the number of vertices.
+    /// The 'primitive type' (eg. Lines, Triangles, etc) can be acquired from
+    /// the bound HgiPipeline.
+    /// `indexCount`: The type of primitive to is the number of vertices.
     /// `indexBufferByteOffset`: Byte offset within indexBuffer to start reading
     ///                          indices from.
     /// `vertexOffset`: the value added to the vertex index before indexing into
@@ -119,7 +123,6 @@ public:
         HgiBufferHandle const& indexBuffer,
         uint32_t indexCount,
         uint32_t indexBufferByteOffset,
-        uint32_t firstIndex,
         uint32_t vertexOffset,
         uint32_t instanceCount) = 0;
 

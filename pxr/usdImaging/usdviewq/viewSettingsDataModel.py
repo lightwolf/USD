@@ -37,15 +37,15 @@ from .freeCamera import FreeCamera
 from .common import ClearColors, HighlightColors
 
 
-# Map of clear color names to rgba color tuples.
+# Map of clear color names to rgba color tuples in linear space.
 _CLEAR_COLORS_DICT = {
     ClearColors.BLACK:       (0.0, 0.0, 0.0, 1.0),
-    ClearColors.DARK_GREY:   (0.3, 0.3, 0.3, 1.0),
-    ClearColors.LIGHT_GREY:  (0.7, 0.7, 0.7, 1.0),
+    ClearColors.DARK_GREY:   (0.07074, 0.07074, 0.07074, 1.0),
+    ClearColors.LIGHT_GREY:  (0.45626, 0.45626, 0.45626, 1.0),
     ClearColors.WHITE:       (1.0, 1.0, 1.0, 1.0)}
 
 
-# Map of highlight color names to rgba color tuples.
+# Map of highlight color names to rgba color tuples in linear space.
 _HIGHLIGHT_COLORS_DICT = {
     HighlightColors.WHITE:   (1.0, 1.0, 1.0, 0.5),
     HighlightColors.YELLOW:  (1.0, 1.0, 0.0, 0.5),
@@ -128,6 +128,7 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
         self._displayRender = self.stateProperty("displayRender", default=False)
         self._displayPrimId = self.stateProperty("displayPrimId", default=False)
         self._enableSceneMaterials = self.stateProperty("enableSceneMaterials", default=True)
+        self._enableSceneLights = self.stateProperty("enableSceneLights", default=True)
         self._cullBackfaces = self.stateProperty("cullBackfaces", default=False)
         self._showInactivePrims = self.stateProperty("showInactivePrims", default=True)
         self._showAllMasterPrims = self.stateProperty("showAllMasterPrims", default=False)
@@ -180,6 +181,7 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
         state["displayRender"] = self._displayRender
         state["displayPrimId"] = self._displayPrimId
         state["enableSceneMaterials"] = self._enableSceneMaterials
+        state["enableSceneLights"] = self._enableSceneLights
         state["cullBackfaces"] = self._cullBackfaces
         state["showInactivePrims"] = self._showInactivePrims
         state["showAllMasterPrims"] = self._showAllMasterPrims
@@ -403,6 +405,15 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
     @visibleViewSetting
     def enableSceneMaterials(self, value):
         self._enableSceneMaterials = value
+
+    @property
+    def enableSceneLights(self):
+        return self._enableSceneLights
+
+    @enableSceneLights.setter
+    @visibleViewSetting
+    def enableSceneLights(self, value):
+        self._enableSceneLights = value
 
     @property
     def cullBackfaces(self):
