@@ -112,6 +112,38 @@ HgiGLGraphicsCmds::BindVertexBuffers(
 }
 
 void
+HgiGLGraphicsCmds::Draw(
+    uint32_t vertexCount,
+    uint32_t vertexOffset,
+    uint32_t instanceCount)
+{
+    _ops.push_back(
+        HgiGLOps::Draw(
+            _primitiveType,
+            vertexCount,
+            vertexOffset,
+            instanceCount)
+        );
+}
+
+void
+HgiGLGraphicsCmds::DrawIndirect(
+    HgiBufferHandle const& drawParameterBuffer,
+    uint32_t drawBufferOffset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    _ops.push_back(
+        HgiGLOps::DrawIndirect(
+            _primitiveType,
+            drawParameterBuffer,
+            drawBufferOffset,
+            drawCount,
+            stride)
+        );
+}
+
+void
 HgiGLGraphicsCmds::DrawIndexed(
     HgiBufferHandle const& indexBuffer,
     uint32_t indexCount,
@@ -127,6 +159,25 @@ HgiGLGraphicsCmds::DrawIndexed(
             indexBufferByteOffset,
             vertexOffset,
             instanceCount)
+        );
+}
+
+void
+HgiGLGraphicsCmds::DrawIndexedIndirect(
+    HgiBufferHandle const& indexBuffer,
+    HgiBufferHandle const& drawParameterBuffer,
+    uint32_t drawBufferOffset,
+    uint32_t drawCount,
+    uint32_t stride)
+{
+    _ops.push_back(
+        HgiGLOps::DrawIndexedIndirect(
+            _primitiveType,
+            indexBuffer,
+            drawParameterBuffer,
+            drawBufferOffset,
+            drawCount,
+            stride)
         );
 }
 
@@ -148,8 +199,14 @@ HgiGLGraphicsCmds::PopDebugGroup()
     }
 }
 
+void
+HgiGLGraphicsCmds::MemoryBarrier(HgiMemoryBarrier barrier)
+{
+    _ops.push_back( HgiGLOps::MemoryBarrier(barrier) );
+}
+
 bool
-HgiGLGraphicsCmds::_Submit(Hgi* hgi)
+HgiGLGraphicsCmds::_Submit(Hgi* hgi, HgiSubmitWaitType wait)
 {
     if (_ops.empty()) {
         return false;

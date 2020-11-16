@@ -95,7 +95,7 @@ class TestUsdSkelCache(unittest.TestCase):
         query = cache.GetSkelQuery(
             UsdSkel.Skeleton.Get(stage, "/AnimBinding/Instance/Override"))
         self.assertTrue(query)
-        self.assertTrue(query.GetAnimQuery().GetPrim().IsInMaster())
+        self.assertTrue(query.GetAnimQuery().GetPrim().IsInPrototype())
 
 
     def test_InheritedSkeletonBinding(self):
@@ -237,7 +237,7 @@ class TestUsdSkelCache(unittest.TestCase):
         self.assertFalse(cache.GetSkinningQuery(inheritBindingMesh))
         self.assertFalse(cache.GetSkinningQuery(overrideBindingMesh))
 
-        # Need to explicitly traverse instance masters to see these bindings.
+        # Need to explicitly traverse instance prototypes to see these bindings.
         cache.Populate(root, Usd.TraverseInstanceProxies())
 
         query = cache.GetSkinningQuery(inheritBindingMesh)
@@ -248,6 +248,40 @@ class TestUsdSkelCache(unittest.TestCase):
         self.assertTrue(query)
         self.assertEqual(list(query.GetJointOrder()), ["override"])
         self.assertEqual(list(query.GetBlendShapeOrder()), ["override"])
+
+    def test_InstancedBlendShape(self):
+        """Tests for correctness in the interpretation of instanced 
+           blend shapes."""
+
+        testFile = "populate.usda"
+        stage = Usd.Stage.Open(testFile)
+        cache = UsdSkel.Cache()
+        skelRoot = UsdSkel.Root(stage.GetPrimAtPath("/SkelBinding"))
+        self.assertTrue(cache.Populate(skelRoot, Usd.TraverseInstanceProxies()))
+
+        # instance proxy mesh
+        mesh = stage.GetPrimAtPath("/SkelBinding/Instance/Override")
+        skelBinding = UsdSkel.BindingAPI(mesh)
+        self.assertEqual(list(skelBinding.GetBlendShapesAttr().Get()), 
+            ["override"])
+
+        skel = skelBinding.GetSkeleton()
+        skelq = cache.GetSkelQuery(skel)
+        animq = skelq.GetAnimQuery()
+        self.assertEqual(list(animq.GetBlendShapeOrder()), 
+            ["override", "shape"])
+
+        skinq = cache.GetSkinningQuery(mesh)
+        self.assertTrue(skinq.HasBlendShapes())
+        self.assertEqual(skelBinding.GetInheritedAnimationSource(), 
+            stage.GetPrimAtPath("/Anim1"))
+
+        # bug PRES-77530
+        # because skelBinding.GetBlendShapesAttr().Get() and 
+        # animq.GetBlendShapeOrder() have different order,
+        # the mapper should not be null.
+        mapper = skinq.GetBlendShapeMapper()
+        self.assertFalse(mapper.IsNull())
 
 if __name__ == "__main__":
     unittest.main()

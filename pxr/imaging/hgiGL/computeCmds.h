@@ -65,6 +65,9 @@ public:
     HGIGL_API
     void Dispatch(int dimX, int dimY) override;
 
+    HGIGL_API
+    void MemoryBarrier(HgiMemoryBarrier barrier) override;
+
 protected:
     friend class HgiGL;
 
@@ -72,7 +75,7 @@ protected:
     HgiGLComputeCmds(HgiGLDevice* device);
 
     HGIGL_API
-    bool _Submit(Hgi* hgi) override;
+    bool _Submit(Hgi* hgi, HgiSubmitWaitType wait) override;
 
 private:
     HgiGLComputeCmds() = delete;

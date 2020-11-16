@@ -407,12 +407,14 @@ HdxFullscreenShader::_CreatePipeline(
     _attachment0.alphaBlendOp = _alphaBlendOp;
     if (colorDst) {
         _attachment0.format = colorDst.Get()->GetDescriptor().format;
+        _attachment0.usage = colorDst.Get()->GetDescriptor().usage;
     }
 
     _depthAttachment.loadOp = HgiAttachmentLoadOpDontCare;
     _depthAttachment.storeOp = HgiAttachmentStoreOpStore;
     if (depthDst) {
         _depthAttachment.format = depthDst.Get()->GetDescriptor().format;
+        _depthAttachment.usage = depthDst.Get()->GetDescriptor().usage;
     }
 
     HgiGraphicsPipelineDesc desc;
@@ -545,8 +547,6 @@ HdxFullscreenShader::_Draw(
 
     // Prepare graphics cmds.
     HgiGraphicsCmdsDesc gfxDesc;
-    gfxDesc.width = dimensions[0];
-    gfxDesc.height = dimensions[1];
 
     if (colorDst) {
         gfxDesc.colorAttachmentDescs.emplace_back(_attachment0);

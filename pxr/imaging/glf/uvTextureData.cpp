@@ -74,9 +74,7 @@ GlfUVTextureData::GlfUVTextureData(std::string const &filePath,
     _nativeWidth(0), _nativeHeight(0),
     _resizedWidth(0), _resizedHeight(0),
     _bytesPerPixel(0),
-    _glInternalFormat(GL_RGB),
-    _glFormat(GL_RGB),
-    _glType(GL_UNSIGNED_BYTE),
+    _hioFormat(HioFormatUNorm8Vec3),
     _size(0),
     _sourceColorSpace(sourceColorSpace)
 {
@@ -98,9 +96,9 @@ GlfUVTextureData_ComputeMemory(GlfImageSharedPtr const &img,
     // extra 1/4 + 1/16 + 1/64 + 1/256 + ... of memory
     const double scale = generateMipmap ? 4.0 / 3 : 1.0;
 
-    if (GlfIsCompressedFormat(img->GetFormat())) {
-         return scale * GlfGetCompressedTextureSize(img->GetWidth(), 
-                            img->GetHeight(), img->GetFormat(), img->GetType());
+    if (HioIsCompressed(img->GetHioFormat())) {
+        return scale * HioGetDataSize(img->GetHioFormat(), 
+                            GfVec3i(img->GetWidth(), img->GetHeight(), 1));
     }
 
     const size_t numPixels = img->GetWidth() * img->GetHeight();
@@ -306,8 +304,8 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
 
     // Load the first mip to extract important data
     GlfImageSharedPtr image = degradedImage.images[0];
-    _glFormat = image->GetFormat();
-    _glType   = image->GetType();
+    _hioFormat = image->GetHioFormat();
+
     _targetMemory = _params.targetMemory;
     _wrapInfo.hasWrapModeS =
         image->GetSamplerMetadata(GL_TEXTURE_WRAP_S, &_wrapInfo.wrapModeS);
@@ -317,7 +315,7 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
     _nativeWidth = _resizedWidth = image->GetWidth();
     _nativeHeight = _resizedHeight = image->GetHeight();
 
-    bool isCompressed = GlfIsCompressedFormat(image->GetFormat());
+    bool isCompressed = HioIsCompressed(_hioFormat);
     bool needsCropping = _params.cropTop || _params.cropBottom ||
                          _params.cropLeft || _params.cropRight;
     bool needsResizeOnLoad = false;
@@ -326,13 +324,12 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
     if (isCompressed) {
         // When using compressed formats the bytesPerPixel is not 
         // used and the glFormat matches the glInternalFormat.
-        _bytesPerPixel = image->GetBytesPerPixel(); 
-        _glInternalFormat = _glFormat;
+        // XXX internalFormat is used to get the HioFormat back until 
+        // textureData is updated to include hioFormat 
+        _bytesPerPixel = image->GetBytesPerPixel();
     } else {
-        _bytesPerPixel = GlfGetNumElements(_glFormat) * 
-                         GlfGetElementSize(_glType);
-        _glInternalFormat = _GLInternalFormatFromImageData(
-                                _glFormat, _glType, image->IsColorSpaceSRGB());
+        _bytesPerPixel = GlfGetNumElements(_hioFormat) *
+                            GlfGetElementSize(_hioFormat);
 
         if (needsCropping) {
             TRACE_FUNCTION_SCOPE("cropping");
@@ -407,9 +404,9 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
         mip.height = needsResizeOnLoad ? _resizedHeight : image->GetHeight();
         
         const size_t numPixels = mip.width * mip.height;
-        mip.size   = isCompressed ? GlfGetCompressedTextureSize( 
-                                     mip.width, mip.height, _glFormat, _glType):
-                                    numPixels * _bytesPerPixel;
+        mip.size   = isCompressed ? HioGetDataSize(_hioFormat, 
+                                        GfVec3i(mip.width, mip.height,1))
+                                  : numPixels * _bytesPerPixel;
         mip.offset = _size;
         _size += mip.size;
     }
@@ -431,10 +428,9 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
     // This is a storage spec "template" common to all other storage specs,
     // and is incomplete.
     GlfImage::StorageSpec commonStorageSpec;
-    commonStorageSpec.format = _glFormat;
+    commonStorageSpec.hioFormat = _hioFormat;
     commonStorageSpec.flipped = (originLocation == GlfImage::OriginLowerLeft) ?
                       (true) : (false);
-    commonStorageSpec.type = _glType;
 
     std::atomic<bool> returnVal(true);
 
@@ -455,9 +451,8 @@ GlfUVTextureData::Read(int degradeLevel, bool generateMipmap,
             GlfImage::StorageSpec storage;
             storage.width = mip.width;
             storage.height = mip.height;
-            storage.format = commonStorageSpec.format;
+            storage.hioFormat = commonStorageSpec.hioFormat;
             storage.flipped = commonStorageSpec.flipped;
-            storage.type = commonStorageSpec.type;
             storage.data = _rawBuffer.get() + mip.offset;
             
             if (!image->ReadCropped(

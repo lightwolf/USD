@@ -1,5 +1,5 @@
 //
-// Copyright 2016 Pixar
+// Copyright 2020 Pixar
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -21,47 +21,33 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_IMAGING_HD_ST_PERSISTENT_BUFFER_H
-#define PXR_IMAGING_HD_ST_PERSISTENT_BUFFER_H
+#ifndef PXR_USD_SDF_LAYER_HINTS_H
+#define PXR_USD_SDF_LAYER_HINTS_H
 
 #include "pxr/pxr.h"
-#include "pxr/imaging/hdSt/api.h"
-
-#include "pxr/imaging/hd/resource.h"
-
-#include "pxr/imaging/hgi/buffer.h"
-
-#include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-class Hgi;
-
-using HdStPersistentBufferSharedPtr = 
-    std::shared_ptr<class HdStPersistentBuffer>;
-
-/// \class HdStPersistentBuffer
-///
-/// A buffer used to prepare data on the GPU that has a persistent mapping
-/// from the CPU.
-///
-class HdStPersistentBuffer : public HdResource {
+/// Contains hints about layer contents that may be used to accelerate certain
+/// composition operations.
+class SdfLayerHints
+{
 public:
-    HDST_API
-    HdStPersistentBuffer(
-        Hgi* hgi, TfToken const &role, size_t dataSize, void* data);
-    HDST_API
-    ~HdStPersistentBuffer();
+    /// Default constructed hints provide the most conservative set of values
+    /// such that consumers of the hints will act correctly if not optimally.
+    SdfLayerHints() = default;
 
-    /// Returns the mapped address
-    HgiBufferHandle const& GetBuffer() const { return _buffer; }
+    /// Construct hints with specific values.  Using this constructor requires
+    /// that all hint fields be specified.
+    explicit SdfLayerHints(bool mightHaveRelocates)
+        : mightHaveRelocates(mightHaveRelocates)
+    {}
 
-private:
-    Hgi* const _hgi;
-    HgiBufferHandle _buffer;
+    /// If this field is false, the layer does not contain relocates.  If
+    /// true, relocates may be present but are not guaranteed to exist.
+    bool mightHaveRelocates = true;
 };
-
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif  // PXR_IMAGING_HD_ST_PERSISTENT_BUFFER_H
+#endif

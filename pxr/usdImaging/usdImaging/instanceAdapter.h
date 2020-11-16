@@ -91,13 +91,15 @@ PXR_NAMESPACE_OPEN_SCOPE
 class UsdImagingInstanceAdapter : public UsdImagingPrimAdapter
 {
 public:
-    typedef UsdImagingPrimAdapter BaseAdapter;
+    using BaseAdapter = UsdImagingPrimAdapter;
 
     UsdImagingInstanceAdapter();
     virtual ~UsdImagingInstanceAdapter();
 
-    virtual SdfPath Populate(UsdPrim const& prim, UsdImagingIndexProxy* index,
-            UsdImagingInstancerContext const* instancerContext = NULL) override;
+    virtual SdfPath Populate(
+        UsdPrim const& prim, 
+        UsdImagingIndexProxy* index, 
+        UsdImagingInstancerContext const* instancerContext = nullptr) override;
 
     virtual bool ShouldCullChildren() const override;
 
@@ -126,7 +128,8 @@ public:
 
     virtual HdDirtyBits ProcessPropertyChange(UsdPrim const& prim,
                                               SdfPath const& cachePath,
-                                              TfToken const& propertyName) override;
+                                              TfToken const& propertyName) 
+                                                  override;
 
     virtual void ProcessPrimResync(SdfPath const& cachePath,
                                    UsdImagingIndexProxy* index) override;
@@ -167,39 +170,43 @@ public:
                                      SdfPath const& cachePath,
                                      UsdImagingIndexProxy* index) override;
 
-
-
     // ---------------------------------------------------------------------- //
     /// \name Instancing
     // ---------------------------------------------------------------------- //
 
-    virtual std::vector<VtArray<TfToken>>
-    GetInstanceCategories(UsdPrim const& prim) override;
+    std::vector<VtArray<TfToken>> GetInstanceCategories(
+        UsdPrim const& prim) override;
 
-    virtual size_t
-    SampleInstancerTransform(UsdPrim const& instancerPrim,
-                             SdfPath const& instancerPath,
-                             UsdTimeCode time,
-                             size_t maxSampleCount,
-                             float *sampleTimes,
-                             GfMatrix4d *sampleValues) override;
+    GfMatrix4d GetInstancerTransform(UsdPrim const& instancerPrim,
+                                     SdfPath const& instancerPath,
+                                     UsdTimeCode time) const override;
 
-    virtual size_t
-    SampleTransform(UsdPrim const& prim, 
-                    SdfPath const& cachePath,
-                    UsdTimeCode time, 
-                    size_t maxNumSamples, 
-                    float *sampleTimes,
-                    GfMatrix4d *sampleValues) override;
+    size_t SampleInstancerTransform(UsdPrim const& instancerPrim,
+                                    SdfPath const& instancerPath,
+                                    UsdTimeCode time,
+                                    size_t maxSampleCount,
+                                    float *sampleTimes,
+                                    GfMatrix4d *sampleValues) override;
 
-    virtual size_t
-    SamplePrimvar(UsdPrim const& usdPrim,
-                  SdfPath const& cachePath,
-                  TfToken const& key,
-                  UsdTimeCode time,
-                  size_t maxNumSamples, 
-                  float *sampleTimes,
-                  VtValue *sampleValues) override;
+    size_t SampleTransform(UsdPrim const& prim, 
+                           SdfPath const& cachePath,
+                           UsdTimeCode time, 
+                           size_t maxNumSamples, 
+                           float *sampleTimes,
+                           GfMatrix4d *sampleValues) override;
+
+    size_t SamplePrimvar(UsdPrim const& usdPrim,
+                         SdfPath const& cachePath,
+                         TfToken const& key,
+                         UsdTimeCode time,
+                         size_t maxNumSamples, 
+                         float *sampleTimes,
+                         VtValue *sampleValues) override;
+
+    TfToken GetPurpose(
+        UsdPrim const& usdPrim, 
+        SdfPath const& cachePath,
+        TfToken const& instanceInheritablePurpose) const override;
 
     PxOsdSubdivTags GetSubdivTags(UsdPrim const& usdPrim,
                                   SdfPath const& cachePath,
@@ -212,6 +219,72 @@ public:
     HdCullStyle GetCullStyle(UsdPrim const& prim,
                              SdfPath const& cachePath,
                              UsdTimeCode time) const override;
+
+    GfRange3d GetExtent(UsdPrim const& usdPrim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    bool GetVisible(UsdPrim const& usdPrim, 
+                    SdfPath const& cachePath,
+                    UsdTimeCode time) const override;
+
+    bool GetDoubleSided(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    GfMatrix4d GetTransform(UsdPrim const& prim, 
+                            SdfPath const& cachePath,
+                            UsdTimeCode time,
+                            bool ignoreRootTransform = false) const override;
+
+    SdfPath GetMaterialId(UsdPrim const& prim, 
+                          SdfPath const& cachePath, 
+                          UsdTimeCode time) const override;
+
+    HdExtComputationInputDescriptorVector
+    GetExtComputationInputs(UsdPrim const& prim,
+                            SdfPath const& cachePath,
+                            const UsdImagingInstancerContext* instancerContext)
+                                    const override;
+
+    
+    HdExtComputationOutputDescriptorVector
+    GetExtComputationOutputs(UsdPrim const& prim,
+                             SdfPath const& cachePath,
+                             const UsdImagingInstancerContext* instancerContext)
+                                    const override;
+
+    HdExtComputationPrimvarDescriptorVector
+    GetExtComputationPrimvars(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            HdInterpolation interpolation,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+    VtValue 
+    GetExtComputationInput(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+    std::string 
+    GetExtComputationKernel(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+    VtValue
+    GetInstanceIndices(UsdPrim const& instancerPrim,
+                       SdfPath const& instancerCachePath,
+                       SdfPath const& prototypeCachePath,
+                       UsdTimeCode time) const override;
+
+    VtValue Get(UsdPrim const& prim,
+                SdfPath const& cachePath,
+                TfToken const& key,
+                UsdTimeCode time) const override;
 
     // ---------------------------------------------------------------------- //
     /// \name Nested instancing support
@@ -313,6 +386,14 @@ private:
                                      SdfPath const& cachePath,
                                      UsdImagingInstancerContext* ctx) const;
 
+    // Gets the associated _ProtoPrim and instancerContext if cachePath is a 
+    // child path and returns \c true, otherwise returns \c false.
+    bool _GetProtoPrimForChild(
+            UsdPrim const& usdPrim,
+            SdfPath const& cachePath,
+            _ProtoPrim const** proto,
+            UsdImagingInstancerContext* ctx) const;
+
     // Computes the transforms for all instances corresponding to the given
     // instancer.
     struct _ComputeInstanceTransformFn;
@@ -369,23 +450,24 @@ private:
     //
     // Suppose we have:
     //    /Root
-    //        Instance_A (master: /__Master_1)
-    //        Instance_B (master: /__Master_1)
-    //    /__Master_1
-    //        AnotherInstance_A (master: /__Master_2)
-    //    /__Master_2
+    //        Instance_A (prototype: /__Prototype_1)
+    //        Instance_B (prototype: /__Prototype_1)
+    //    /__Prototype_1
+    //        AnotherInstance_A (prototype: /__Prototype_2)
+    //    /__Prototype_2
     //
-    // /__Master_2 has only one associated instance in the Usd scenegraph: 
-    // /__Master_1/AnotherInstance_A. However, imaging actually needs to draw 
-    // two instances of /__Master_2, because AnotherInstance_A is a nested 
-    // instance beneath /__Master_1, and there are two instances of /__Master_1.
+    // /__Prototype_2 has only one associated instance in the Usd scenegraph: 
+    // /__Prototype_1/AnotherInstance_A. However, imaging actually needs to draw
+    // two instances of /__Prototype_2, because AnotherInstance_A is a nested 
+    // instance beneath /__Prototype_1, and there are two instances of
+    // /__Prototype_1.
     //
     // Each instance to be drawn is addressed by the chain of instances
     // that caused it to be drawn. In the above example, the two instances 
-    // of /__Master_2 to be drawn are:
+    // of /__Prototype_2 to be drawn are:
     //
-    //  [ /Root/Instance_A, /__Master_1/AnotherInstance_A ],
-    //  [ /Root/Instance_B, /__Master_1/AnotherInstance_A ]
+    //  [ /Root/Instance_A, /__Prototype_1/AnotherInstance_A ],
+    //  [ /Root/Instance_B, /__Prototype_1/AnotherInstance_A ]
     //
     // This "instance context" describes the chain of opinions that
     // ultimately affect the final drawn instance. For example, the 
@@ -425,8 +507,8 @@ private:
     struct _InstancerData {
         _InstancerData() : numInstancesToDraw(0), refreshVariability(false) { }
 
-        // The master prim path associated with this instancer.
-        SdfPath masterPath;
+        // The prototype prim path associated with this instancer.
+        SdfPath prototypePath;
 
         // The USD material path associated with this instancer.
         SdfPath materialUsdPath;
@@ -509,26 +591,26 @@ private:
     // Hd and UsdImaging think of instancing in terms of an 'instancer' that
     // specifies a list of 'prototype' prims that are shared per instance.
     //
-    // For Usd scenegraph instancing, a master prim and its descendents
+    // For Usd scenegraph instancing, a prototype prim and its descendents
     // roughly correspond to the instancer and prototype prims. However,
     // Hd requires a different instancer and rprims for different combinations
     // of inherited attributes (material binding, draw mode, etc).
-    // This means we cannot use the Usd master prim as the instancer, because
+    // This means we cannot use the Usd prototype prim as the instancer, because
     // we can't represent this in the case where multiple Usd instances share
-    // the same master but have different bindings.
+    // the same prototype but have different bindings.
     //
-    // Instead, we use the first instance of a master with a given set of
+    // Instead, we use the first instance of a prototype with a given set of
     // inherited attributes as our instancer. For example, if /A and /B are
-    // both instances of /__Master_1 but /A and /B have different material
+    // both instances of /__Prototype_1 but /A and /B have different material
     // bindings authored on them, both /A and /B will be instancers,
     // with their own set of rprims and instance indices.
     //
-    // The below is a multimap from master path to the cache path of the
+    // The below is a multimap from prototype path to the cache path of the
     // hydra instancer. The data for the instancer is located in the
     // _InstancerDataMap.
     typedef TfHashMultiMap<SdfPath, SdfPath, SdfPath::Hash>
-        _MasterToInstancerMap;
-    _MasterToInstancerMap _masterToInstancerMap;
+        _PrototypeToInstancerMap;
+    _PrototypeToInstancerMap _prototypeToInstancerMap;
 };
 
 

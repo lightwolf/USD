@@ -171,6 +171,8 @@ enum HgiSampleCount
     HgiSampleCount1  = 1,
     HgiSampleCount4  = 4,
     HgiSampleCount16 = 16,
+
+    HgiSampleCountEnd
 };
 
 /// \enum HgiAttachmentLoadOp
@@ -274,6 +276,8 @@ enum HgiShaderStageBits : HgiBits
     HgiShaderStageTessellationControl  = 1 << 3,
     HgiShaderStageTessellationEval     = 1 << 4,
     HgiShaderStageGeometry             = 1 << 5,
+
+    HgiShaderStageCustomBitsBegin      = 1 << 6,
 };
 using HgiShaderStage = HgiBits;
 
@@ -482,6 +486,41 @@ enum HgiPrimitiveType
 
     HgiPrimitiveTypeCount
 };
+
+/// \enum HgiSubmitWaitType
+///
+/// Describes command submission wait behavior.
+///
+/// <ul>
+/// <li>HgiSubmitWaitTypeNoWait:
+///   CPU should not wait for the GPU to finish processing the cmds.</li>
+/// <li>HgiSubmitWaitTypeWaitUntilCompleted:
+///   The CPU waits ("blocked") until the GPU has consumed the cmds.</li>
+/// </ul>
+///
+enum HgiSubmitWaitType
+{
+    HgiSubmitWaitTypeNoWait = 0,
+    HgiSubmitWaitTypeWaitUntilCompleted,
+};
+
+/// \enum HgiMemoryBarrier
+///
+/// Describes what objects the memory barrier affects.
+///
+/// <ul>
+/// <li>HgiMemoryBarrierNone:
+///   No barrier (no-op).</li>
+/// <li>HgiMemoryBarrierAll:
+///   The barrier affects all memory writes and reads.</li>
+/// </ul>
+///
+enum HgiMemoryBarrierBits
+{
+    HgiMemoryBarrierNone = 0,
+    HgiMemoryBarrierAll  = 1 << 0
+};
+using HgiMemoryBarrier = HgiBits;
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

@@ -120,6 +120,12 @@ public:
     // ---------------------------------------------------------------------- //
 
     USDIMAGINGGL_API
+    VtValue Get(UsdPrim const& prim,
+                SdfPath const& cachePath,
+                TfToken const& key,
+                UsdTimeCode time) const override;
+
+    USDIMAGINGGL_API
     HdCullStyle GetCullStyle(UsdPrim const& prim,
                              SdfPath const& cachePath,
                              UsdTimeCode time) const override;
@@ -129,6 +135,32 @@ public:
                         SdfPath const& cachePath,
                         UsdTimeCode time) const override;
 
+    USDIMAGINGGL_API
+    GfRange3d GetExtent(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    USDIMAGINGGL_API
+    bool GetDoubleSided(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    USDIMAGINGGL_API
+    GfMatrix4d GetTransform(UsdPrim const& prim, 
+                            SdfPath const& cachePath,
+                            UsdTimeCode time,
+                            bool ignoreRootTransform = false) const override;
+
+    USDIMAGINGGL_API
+    SdfPath GetMaterialId(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    USDIMAGING_API
+    VtValue GetMaterialResource(UsdPrim const& prim, 
+                                SdfPath const& cachePath, 
+                                UsdTimeCode time) const override;
+  
 protected:
     USDIMAGINGGL_API
     void _RemovePrim(SdfPath const& cachePath,

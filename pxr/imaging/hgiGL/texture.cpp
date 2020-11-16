@@ -211,7 +211,7 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
     }
 
     if (!_descriptor.debugName.empty()) {
-        glObjectLabel(GL_TEXTURE, _textureId,-1, _descriptor.debugName.c_str());
+        HgiGLObjectLabel(GL_TEXTURE, _textureId, _descriptor.debugName);
     }
 
     if (desc.sampleCount == HgiSampleCount1) {
@@ -352,7 +352,7 @@ HgiGLTexture::HgiGLTexture(HgiTextureViewDesc const & desc)
         desc.layerCount);
 
     if (!desc.debugName.empty()) {
-        glObjectLabel(GL_TEXTURE, _textureId,-1, desc.debugName.c_str());
+        HgiGLObjectLabel(GL_TEXTURE, _textureId, desc.debugName);
     }
 
     glTextureParameteri(_textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -386,14 +386,7 @@ HgiGLTexture::~HgiGLTexture()
 size_t
 HgiGLTexture::GetByteSizeOfResource() const
 {
-    GfVec3i const& s = _descriptor.dimensions;
-    size_t blockWidth, blockHeight;
-    const size_t bytesPerBlock =
-        HgiGetDataSizeOfFormat(_descriptor.format, &blockWidth, &blockHeight);
-    return
-        ((s[0] + blockWidth  - 1) / blockWidth) *
-        ((s[1] + blockHeight - 1) / blockHeight) *
-        std::max(s[2], 1) * bytesPerBlock;
+    return _GetByteSizeOfResource(_descriptor);
 }
 
 uint64_t

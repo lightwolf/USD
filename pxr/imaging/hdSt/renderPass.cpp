@@ -21,8 +21,6 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/glf/glew.h"
-
 #include "pxr/imaging/hdSt/renderPass.h"
 
 #include "pxr/imaging/glf/contextCaps.h"
@@ -49,8 +47,6 @@
 
 #include "pxr/base/gf/frustum.h"
 
-#include "pxr/imaging/glf/diagnostic.h"
-
 
 // XXX We do not want to include specific HgiXX backends, but we need to do
 // this temporarily until Storm has transitioned fully to Hgi.
@@ -64,7 +60,6 @@ _ExecuteDraw(
     HdStRenderPassStateSharedPtr const& stRenderPassState,
     HdStResourceRegistrySharedPtr const& resourceRegistry)
 {
-    cmdBuffer->PrepareDraw(stRenderPassState, resourceRegistry);
     cmdBuffer->ExecuteDraw(stRenderPassState, resourceRegistry);
 }
 
@@ -109,7 +104,6 @@ HdSt_RenderPass::_Execute(HdRenderPassStateSharedPtr const &renderPassState,
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
-    GLF_GROUP_FUNCTION();
 
     // Downcast render pass state
     HdStRenderPassStateSharedPtr stRenderPassState =
@@ -127,6 +121,8 @@ HdSt_RenderPass::_Execute(HdRenderPassStateSharedPtr const &renderPassState,
         std::dynamic_pointer_cast<HdStResourceRegistry>(
         GetRenderIndex()->GetResourceRegistry());
     TF_VERIFY(resourceRegistry);
+
+    _cmdBuffer.PrepareDraw(stRenderPassState, resourceRegistry);
 
     // Create graphics work to render into aovs.
     const HgiGraphicsCmdsDesc desc =
@@ -178,7 +174,6 @@ void
 HdSt_RenderPass::_PrepareDrawItems(TfTokenVector const& renderTags)
 {
     HD_TRACE_FUNCTION();
-    GLF_GROUP_FUNCTION();
 
     HdChangeTracker const &tracker = GetRenderIndex()->GetChangeTracker();
     HdRprimCollection const &collection = GetRprimCollection();
@@ -219,7 +214,6 @@ void
 HdSt_RenderPass::_PrepareCommandBuffer(TfTokenVector const& renderTags)
 {
     HD_TRACE_FUNCTION();
-    GLF_GROUP_FUNCTION();
 
     // -------------------------------------------------------------------
     // SCHEDULE PREPARATION

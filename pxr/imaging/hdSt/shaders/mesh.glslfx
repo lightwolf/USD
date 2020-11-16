@@ -353,7 +353,7 @@ void emit(int index, vec4 Peye, vec3 Neye,
     EmitVertex();
 }
 
-vec4 ComputeSelectionOffset();
+vec4 ComputeSelectionOffset(); // selection.glslfx
 
 void main(void)
 {
@@ -693,9 +693,11 @@ void main(void)
 
     color = ApplyEdgeColor(color, patchCoord);
 
+#ifdef HD_MATERIAL_TAG_MASKED   
     if (ShouldDiscardByAlpha(color)) {
         discard;
     }
+#endif
 
     RenderOutput(vec4(Peye, 1), Neye, color, patchCoord);
 }

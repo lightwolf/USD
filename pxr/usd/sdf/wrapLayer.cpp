@@ -258,6 +258,9 @@ _ExtractFileFormatArguments(
 static std::string
 _Repr(const SdfLayerHandle &self)
 {
+    if (!self) {
+        return "<expired " + TF_PY_REPR_PREFIX + "Layer instance>";
+    }
     return TF_PY_REPR_PREFIX + "Find(" + TfPyRepr(self->GetIdentifier()) + ")";
 }
 
@@ -483,6 +486,12 @@ _FindOrOpenRelativeToLayer(
 
 using Py_SdfLayerTraversalFunctionSig = void(const SdfPath&);
 
+// Just for testing purposes.
+static void _TestTakeOwnership(SdfLayerRefPtr layerRef)
+{
+    // do nothing
+}
+
 } // anonymous namespace 
 
 void wrapLayer()
@@ -501,6 +510,8 @@ void wrapLayer()
     def("ComputeAssetPathRelativeToLayer", &SdfComputeAssetPathRelativeToLayer,
         ( arg("anchor"),
           arg("assetPath")));
+
+    def("_TestTakeOwnership", &_TestTakeOwnership);
 
     scope s = class_<This,
                      ThisHandle,
@@ -865,6 +876,10 @@ void wrapLayer()
                           return_value_policy<TfPySequenceToList>()),
             "Return unique list of asset paths of external references for\n"
             "given layer.")
+
+        .def("GetExternalAssetDependencies",
+             make_function(&This::GetExternalAssetDependencies,
+                           return_value_policy<TfPySequenceToList>()))
 
         .add_property("permissionToSave", &This::PermissionToSave, 
               "Return true if permitted to be saved, false otherwise.\n")

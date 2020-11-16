@@ -257,7 +257,7 @@ public:
     /// \name Computations 
     // ---------------------------------------------------------------------- //
     USDIMAGING_API
-    virtual void InvokeComputation(SdfPath const& computationPath,
+    virtual void InvokeComputation(SdfPath const& cachePath,
                                    HdExtComputationContext* context);
 
     // ---------------------------------------------------------------------- //
@@ -269,16 +269,24 @@ public:
     virtual std::vector<VtArray<TfToken>>
     GetInstanceCategories(UsdPrim const& prim);
 
+    /// Get the instancer transform for the given prim.
+    /// \see HdSceneDelegate::GetInstancerTransform()
+    USDIMAGING_API
+    virtual GfMatrix4d GetInstancerTransform(
+        UsdPrim const& instancerPrim,
+        SdfPath const& instancerPath,
+        UsdTimeCode time) const;
+
     /// Sample the instancer transform for the given prim.
     /// \see HdSceneDelegate::SampleInstancerTransform()
     USDIMAGING_API
-    virtual size_t
-    SampleInstancerTransform(UsdPrim const& instancerPrim,
-                             SdfPath const& instancerPath,
-                             UsdTimeCode time,
-                             size_t maxNumSamples,
-                             float *sampleTimes,
-                             GfMatrix4d *sampleValues);
+    virtual size_t SampleInstancerTransform(
+        UsdPrim const& instancerPrim,
+        SdfPath const& instancerPath,
+        UsdTimeCode time,
+        size_t maxNumSamples,
+        float *sampleTimes,
+        GfMatrix4d *sampleValues);
 
     /// Sample the primvar for the given prim.
     /// \see HdSceneDelegate::SamplePrimvar()
@@ -390,14 +398,15 @@ public:
         SdfPath const& cachePath,
         UsdTimeCode time) const;
 
-    /// Returns the purpose token for \p prim. If an \p instancerContext is 
-    /// provided and the prim doesn't have an explicitly authored or inherited 
-    /// purpose, it may inherit the instancerContext's purpose if the instance
-    /// has an explicit purpose.
+    /// Returns the purpose token for \p prim. If a non-empty \p
+    /// instanceInheritablePurpose is specified and the prim doesn't have an 
+    /// explicitly authored or inherited purpose, it may inherit the 
+    /// instancer's purpose if the instance has an explicit purpose.
     USDIMAGING_API
-    TfToken GetPurpose(
+    virtual TfToken GetPurpose(
         UsdPrim const& prim, 
-        UsdImagingInstancerContext const* instancerContext) const;
+        SdfPath const& cachePath,
+        TfToken const& instanceInheritablePurpose) const;
 
     /// Returns the purpose token for \p prim, but only if it is inheritable 
     /// by child prims (i.e. it is an explicitly authored purpose on the prim
@@ -410,8 +419,10 @@ public:
     /// pre-computed cache of prim transforms. Requesting transforms at
     /// incoherent times is currently inefficient.
     USDIMAGING_API
-    GfMatrix4d GetTransform(UsdPrim const& prim, UsdTimeCode time,
-                            bool ignoreRootTransform = false) const;
+    virtual GfMatrix4d GetTransform(UsdPrim const& prim, 
+                                    SdfPath const& cachePath,
+                                    UsdTimeCode time,
+                                    bool ignoreRootTransform = false) const;
 
     /// Samples the transform for the given prim.
     USDIMAGING_API
@@ -464,6 +475,81 @@ public:
                                 SdfPath const& cachePath,
                                 UsdTimeCode time) const;
 
+    /// Reads the extent from the given prim. If the extent is not authored,
+    /// an empty GfRange3d is returned, the extent will not be computed.
+    USDIMAGING_API
+    virtual GfRange3d GetExtent(UsdPrim const& prim, 
+                                SdfPath const& cachePath, 
+                                UsdTimeCode time) const;
+
+    /// Reads double-sided from the given prim. If not authored, returns false
+    USDIMAGING_API
+    virtual bool GetDoubleSided(UsdPrim const& prim, 
+                                SdfPath const& cachePath, 
+                                UsdTimeCode time) const;
+
+    USDIMAGING_API
+    virtual SdfPath GetMaterialId(UsdPrim const& prim, 
+                                  SdfPath const& cachePath, 
+                                  UsdTimeCode time) const;
+
+    USDIMAGING_API
+    virtual VtValue GetMaterialResource(UsdPrim const& prim, 
+                                  SdfPath const& cachePath, 
+                                  UsdTimeCode time) const;
+
+    // ---------------------------------------------------------------------- //
+    /// \name ExtComputations
+    // ---------------------------------------------------------------------- //
+    USDIMAGING_API
+    virtual const TfTokenVector &GetExtComputationSceneInputNames(
+        SdfPath const& cachePath) const;
+
+    USDIMAGING_API
+    virtual HdExtComputationInputDescriptorVector
+    GetExtComputationInputs(UsdPrim const& prim,
+                            SdfPath const& cachePath,
+                            const UsdImagingInstancerContext* instancerContext)
+                                    const;
+
+    USDIMAGING_API
+    virtual HdExtComputationOutputDescriptorVector
+    GetExtComputationOutputs(UsdPrim const& prim,
+                             SdfPath const& cachePath,
+                             const UsdImagingInstancerContext* instancerContext)
+                                    const;
+
+    USDIMAGING_API
+    virtual HdExtComputationPrimvarDescriptorVector
+    GetExtComputationPrimvars(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            HdInterpolation interpolation,
+            const UsdImagingInstancerContext* instancerContext) const;
+
+    USDIMAGING_API
+    virtual VtValue 
+    GetExtComputationInput(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext) const;
+
+    USDIMAGING_API
+    virtual std::string 
+    GetExtComputationKernel(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            const UsdImagingInstancerContext* instancerContext) const;
+
+    USDIMAGING_API
+    virtual VtValue
+    GetInstanceIndices(UsdPrim const& instancerPrim,
+                       SdfPath const& instancerCachePath,
+                       SdfPath const& prototypeCachePath,
+                       UsdTimeCode time) const;
+
     // ---------------------------------------------------------------------- //
     /// \name Render Index Compatibility
     // ---------------------------------------------------------------------- //
@@ -511,8 +597,8 @@ protected:
     // XXX: Transitional API
     // Returns the instance proxy prim path for a USD-instanced prim, given the
     // instance chain leading to that prim. The paths are sorted from more to
-    // less local; the first path is the prim path (possibly in master), then
-    // instance paths (possibly in master); the last path is the prim or
+    // less local; the first path is the prim path (possibly in prototype), then
+    // instance paths (possibly in prototype); the last path is the prim or
     // instance path in the scene.
     USDIMAGING_API
     SdfPath _GetPrimPathFromInstancerChain(
@@ -593,18 +679,17 @@ protected:
         HdPrimvarDescriptorVector* vec,
         TfToken const& name) const;
 
-    // Convenience method for computing a primvar. THe primvar will only be
-    // added to the list in the valueCache if there is no primvar of the same
+    // Convenience method for computing a primvar. The primvar will only be
+    // added to the list of prim desc if there is no primvar of the same
     // name already present.  Thus, "local" primvars should be merged before
     // inherited primvars.
     USDIMAGING_API
-    void _ComputeAndMergePrimvar(UsdPrim const& prim,
-                                 SdfPath const& cachePath,
-                                 UsdGeomPrimvar const& primvar,
-                                 UsdTimeCode time,
-                                 UsdImagingValueCache* valueCache,
-                                 HdInterpolation *interpOverride = nullptr)
-                                 const;
+    void _ComputeAndMergePrimvar(
+        UsdPrim const& prim,
+        UsdGeomPrimvar const& primvar,
+        UsdTimeCode time,
+        HdPrimvarDescriptorVector* primvarDescs,
+        HdInterpolation *interpOverride = nullptr) const;
 
     // Returns true if the property name has the "primvars:" prefix.
     USDIMAGING_API

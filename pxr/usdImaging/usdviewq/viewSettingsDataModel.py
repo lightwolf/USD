@@ -85,6 +85,11 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
     # emitted when any view setting which may affect the rendered image changes
     signalVisibleSettingChanged = QtCore.Signal()
 
+    # emitted when autoClipping changes value, so that clients can initialize
+    # it efficiently.  This signal will be emitted *before* 
+    # signalVisibleSettingChanged when autoClipping changes.
+    signalAutoComputeClippingPlanesChanged = QtCore.Signal()
+
     # emitted when any aspect of the defaultMaterial changes
     signalDefaultMaterialChanged = QtCore.Signal()
 
@@ -131,7 +136,14 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
         self._enableSceneLights = self.stateProperty("enableSceneLights", default=True)
         self._cullBackfaces = self.stateProperty("cullBackfaces", default=False)
         self._showInactivePrims = self.stateProperty("showInactivePrims", default=True)
-        self._showAllMasterPrims = self.stateProperty("showAllMasterPrims", default=False)
+
+        showAllMasterPrims = self.stateProperty("showAllMasterPrims", default=False)
+        self._showAllPrototypePrims = self.stateProperty("showAllPrototypePrims", default=False)
+        # XXX: For backwards compatibility, we use the "showAllMasterPrims"
+        # saved state to drive the new "showAllPrototypePrims" state. We
+        # can remove "showAllMasterPrims" in a later release.
+        self._showAllPrototypePrims = showAllMasterPrims
+
         self._showUndefinedPrims = self.stateProperty("showUndefinedPrims", default=False)
         self._showAbstractPrims = self.stateProperty("showAbstractPrims", default=False)
         self._rolloverPrimInfo = self.stateProperty("rolloverPrimInfo", default=False)
@@ -184,7 +196,8 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
         state["enableSceneLights"] = self._enableSceneLights
         state["cullBackfaces"] = self._cullBackfaces
         state["showInactivePrims"] = self._showInactivePrims
-        state["showAllMasterPrims"] = self._showAllMasterPrims
+        state["showAllPrototypePrims"] = self._showAllPrototypePrims
+        state["showAllMasterPrims"] = self._showAllPrototypePrims
         state["showUndefinedPrims"] = self._showUndefinedPrims
         state["showAbstractPrims"] = self._showAbstractPrims
         state["rolloverPrimInfo"] = self._rolloverPrimInfo
@@ -342,6 +355,7 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
     @visibleViewSetting
     def autoComputeClippingPlanes(self, value):
         self._autoComputeClippingPlanes = value
+        self.signalAutoComputeClippingPlanesChanged.emit()
 
     @property
     def showBBoxPlayback(self):
@@ -434,13 +448,13 @@ class ViewSettingsDataModel(QtCore.QObject, StateSource):
         self._showInactivePrims = value
 
     @property
-    def showAllMasterPrims(self):
-        return self._showAllMasterPrims
+    def showAllPrototypePrims(self):
+        return self._showAllPrototypePrims
 
-    @showAllMasterPrims.setter
+    @showAllPrototypePrims.setter
     @invisibleViewSetting
-    def showAllMasterPrims(self, value):
-        self._showAllMasterPrims = value
+    def showAllPrototypePrims(self, value):
+        self._showAllPrototypePrims = value
 
     @property
     def showUndefinedPrims(self):

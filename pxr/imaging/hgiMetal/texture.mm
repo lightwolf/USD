@@ -44,7 +44,7 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
     MTLTextureUsage usage = MTLTextureUsageUnknown;
 
     if (desc.initialData && desc.pixelsByteSize > 0) {
-        resourceOptions = hgi->GetCapabilities().defaultStorageMode;
+        resourceOptions = MTLResourceStorageModeManaged;
     }
 
     MTLPixelFormat mtlFormat = HgiMetalConversions::GetPixelFormat(desc.format);
@@ -152,13 +152,17 @@ HgiMetalTexture::HgiMetalTexture(HgiMetal *hgi, HgiTextureDesc const & desc)
             }
             else {
                 const uint32_t depth = mipInfo.dimensions[2];
-                [_textureId
-                    replaceRegion:MTLRegionMake3D(0, 0, 0, width, height, depth)
-                      mipmapLevel:0
-                            slice:0
-                        withBytes:initialData + mipInfo.byteOffset
-                      bytesPerRow:desc.pixelsByteSize / height / width
-                    bytesPerImage:desc.pixelsByteSize / depth];
+                const size_t imageBytes = mipInfo.byteSize / depth;
+                for (size_t d = 0; d < depth; d++) {
+                    const size_t offset = d * imageBytes;
+                    [_textureId
+                        replaceRegion:MTLRegionMake3D(0, 0, d, width, height, 1)
+                          mipmapLevel:mip
+                                slice:0
+                            withBytes:initialData + mipInfo.byteOffset + offset
+                          bytesPerRow:imageBytes / height
+                        bytesPerImage:0];
+                }
             }
         }
     }
@@ -202,14 +206,7 @@ HgiMetalTexture::~HgiMetalTexture()
 size_t
 HgiMetalTexture::GetByteSizeOfResource() const
 {
-    GfVec3i const& s = _descriptor.dimensions;
-    size_t blockWidth, blockHeight;
-    const size_t bytesPerBlock =
-        HgiGetDataSizeOfFormat(_descriptor.format, &blockWidth, &blockHeight);
-    return
-        ((s[0] + blockWidth  - 1) / blockWidth) *
-        ((s[1] + blockHeight - 1) / blockHeight) *
-        std::max(s[2], 1) * bytesPerBlock;
+    return _GetByteSizeOfResource(_descriptor);
 }
 
 uint64_t

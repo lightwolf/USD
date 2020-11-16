@@ -46,9 +46,15 @@
 
 #include "pxr/imaging/hio/glslfx.h"
 
+#include "pxr/base/tf/envSetting.h"
+#include "pxr/base/arch/hash.h"
+
 #include <algorithm>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+TF_DEFINE_ENV_SETTING(HDST_ENABLE_SHARED_VERTEX_PRIMVAR, 1,
+                      "Enable sharing of vertex primvar");
 
 // -----------------------------------------------------------------------------
 // Primvar descriptor filtering utilities
@@ -177,7 +183,7 @@ HdStIsValidBAR(HdBufferArrayRangeSharedPtr const& range)
 bool
 HdStCanSkipBARAllocationOrUpdate(
     HdBufferSourceSharedPtrVector const& sources,
-    HdComputationSharedPtrVector const& computations,
+    HdStComputationSharedPtrVector const& computations,
     HdBufferArrayRangeSharedPtr const& curRange,
     HdDirtyBits dirtyBits)
 {
@@ -203,7 +209,7 @@ HdStCanSkipBARAllocationOrUpdate(
     HdDirtyBits dirtyBits)
 {
     return HdStCanSkipBARAllocationOrUpdate(
-        sources, HdComputationSharedPtrVector(), curRange, dirtyBits);
+        sources, HdStComputationSharedPtrVector(), curRange, dirtyBits);
 }
 
 HdBufferSpecVector
@@ -342,6 +348,35 @@ HdStUpdateDrawItemBAR(
     // Note: This should happen at the end since curRange is a reference to
     // the BAR at the drawCoordIndex.
     sharedData->barContainer.Set(drawCoordIndex, newRange);
+}
+
+bool HdStIsPrimvarExistentAndValid(
+    HdRprim *prim,
+    HdSceneDelegate *delegate,
+    HdPrimvarDescriptorVector const& primvars,
+    TfToken const& primvarName)
+{
+    SdfPath const& id = prim->GetId();
+    
+    for (const HdPrimvarDescriptor& pv: primvars) {
+        if (pv.name == primvarName) {
+            VtValue value = delegate->Get(id, pv.name);
+
+            if (value.IsHolding<std::string>() ||
+                value.IsHolding<VtStringArray>()) {
+                return false;
+            }
+
+            if (value.IsArrayValued() && value.GetArraySize() == 0) {
+                // Catch empty arrays
+                return false;
+            }
+            
+            return (!value.IsEmpty());
+        }
+    }
+
+    return false;
 }
 
 // -----------------------------------------------------------------------------
@@ -650,6 +685,58 @@ void HdStProcessTopologyVisibility(
 
     resourceRegistry->AddSources(
         drawItem->GetTopologyVisibilityRange(), std::move(sources));
+}
+
+bool
+HdStIsEnabledSharedVertexPrimvar()
+{
+    static bool enabled =
+        (TfGetEnvSetting(HDST_ENABLE_SHARED_VERTEX_PRIMVAR) == 1);
+    return enabled;
+}
+
+uint64_t
+HdStComputeSharedPrimvarId(
+    uint64_t baseId,
+    HdBufferSourceSharedPtrVector const &sources,
+    HdStComputationSharedPtrVector const &computations)
+{
+    size_t primvarId = baseId;
+    for (HdBufferSourceSharedPtr const &bufferSource : sources) {
+        size_t sourceId = bufferSource->ComputeHash();
+        primvarId = ArchHash64((const char*)&sourceId,
+                               sizeof(sourceId), primvarId);
+
+        if (bufferSource->HasPreChainedBuffer()) {
+            HdBufferSourceSharedPtr src = bufferSource->GetPreChainedBuffer();
+
+            while (src) {
+                size_t chainedSourceId = bufferSource->ComputeHash();
+                primvarId = ArchHash64((const char*)&chainedSourceId,
+                                       sizeof(chainedSourceId), primvarId);
+
+                src = src->GetPreChainedBuffer();
+            }
+        }
+    }
+
+    HdBufferSpecVector bufferSpecs;
+    HdStGetBufferSpecsFromCompuations(computations, &bufferSpecs);
+
+    return TfHash::Combine(primvarId, bufferSpecs);
+}
+
+void 
+HdStGetBufferSpecsFromCompuations(
+    HdStComputationSharedPtrVector const& computations,
+    HdBufferSpecVector *bufferSpecs) 
+{
+    for (auto const &compQueuePair : computations) {
+        HdComputationSharedPtr const& comp = compQueuePair.first;
+        if (comp->IsValid()) {
+            comp->GetBufferSpecs(bufferSpecs);
+        }
+    }
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

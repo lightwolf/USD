@@ -105,6 +105,7 @@ HdxOitRenderTask::Execute(HdTaskContext* ctx)
 
     HdxOitBufferAccessor oitBufferAccessor(ctx);
 
+    oitBufferAccessor.RequestOitBuffers();
     oitBufferAccessor.InitializeOitBuffersIfNecessary();
 
     HdRenderPassStateSharedPtr renderPassState = _GetRenderPassState(ctx);
@@ -153,6 +154,10 @@ HdxOitRenderTask::Execute(HdTaskContext* ctx)
     extendedState->SetRenderPassShader(_oitOpaqueRenderPassShader);
     renderPassState->SetEnableDepthMask(true);
     renderPassState->SetColorMask(HdRenderPassState::ColorMaskRGBA);
+
+    // We resolve the AOVs just before rendering any OIT geometry, so
+    // avoid using the multisampled AOVs.
+    renderPassState->SetUseAovMultiSample(false);
     HdxRenderTask::Execute(ctx);
 
     //

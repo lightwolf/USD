@@ -33,6 +33,7 @@ pxr_library(glf
         garch
         gf
         hf
+        hio
         js
         plug
         tf
@@ -58,6 +59,7 @@ pxr_library(glf
         contextCaps
         diagnostic
         drawTarget
+        field3DTextureDataBase
         glew
         glContext
         glRawContext
