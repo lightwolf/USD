@@ -192,7 +192,6 @@ UsdImagingPointInstancerAdapter::_Populate(UsdPrim const& prim,
     // {instance=X} from the path, so usd can find the prim.
     index->InsertInstancer(
         instancerCachePath,
-        parentInstancerCachePath,
         _GetPrim(instancerCachePath.GetAbsoluteRootOrPrimPath()),
         instancerContext ? instancerContext->instancerAdapter
                          : UsdImagingPrimAdapterSharedPtr());
@@ -586,7 +585,7 @@ UsdImagingPointInstancerAdapter::UpdateForTime(UsdPrim const& prim,
                                UsdImagingInstancerContext const* 
                                    instancerContext) const
 {
-    UsdImagingValueCache* valueCache = _GetValueCache();
+    UsdImagingPrimvarDescCache* primvarDescCache = _GetPrimvarDescCache();
 
     if (IsChildPath(cachePath)) {
         // Allow the prototype's adapter to update, if there's anything left
@@ -615,7 +614,7 @@ UsdImagingPointInstancerAdapter::UpdateForTime(UsdPrim const& prim,
             UsdGeomPointInstancer instancer(prim);
 
             HdPrimvarDescriptorVector& vPrimvars = 
-                valueCache->GetPrimvars(cachePath);
+                primvarDescCache->GetPrimvars(cachePath);
 
             // PERFORMANCE: It would be nice to track variability of individual
             // primvars separately, since uniform values will  needlessly be
@@ -1234,8 +1233,6 @@ UsdImagingPointInstancerAdapter::GetScenePrimPath(
         // of one of the instancers.  If it's a UsdGeomPointInstancer, we can
         // look it up directly, and get the parent path that way. Otherwise,
         // we need to loop all instancers.
-        // XXX: A prim adapter "GetInstancerId()" function would be super
-        // useful here.
         _InstancerDataMap::const_iterator it =
             _instancerData.find(cachePath);
         if (it != _instancerData.end()) {
@@ -1313,6 +1310,10 @@ UsdImagingPointInstancerAdapter::GetScenePrimPath(
     if (parentInstancerUsdPrim) {
         UsdImagingPrimAdapterSharedPtr parentAdapter =
             _GetPrimAdapter(parentInstancerUsdPrim);
+        if (!TF_VERIFY(parentAdapter, "%s",
+                       parentPath.GetAbsoluteRootOrPrimPath().GetText())) {
+            return SdfPath();
+        }
         fqInstancerPath =
             parentAdapter->GetScenePrimPath(instancerPath, parentIndex,
                                             instancerContext);
@@ -1422,6 +1423,26 @@ UsdImagingPointInstancerAdapter::GetInstancerTransform(
         return GetRelativeInstancerTransform(parentInstancerCachePath, 
                                              instancerPath, 
                                              time);
+    }
+}
+
+/*virtual*/
+SdfPath
+UsdImagingPointInstancerAdapter::GetInstancerId(
+    UsdPrim const& usdPrim,
+    SdfPath const& cachePath) const
+{
+    if (IsChildPath(cachePath)) {
+        // If this is called on behalf of an rprim, the rprim's name will be
+        // /path/to/instancer.name_of_proto, so just take the parent path.
+        return cachePath.GetParentPath();
+    } else if (_InstancerData const* instrData =
+            TfMapLookupPtr(_instancerData, cachePath)) {
+        // Otherwise, look up the parent in the instancer data.
+        return instrData->parentInstancerCachePath;
+    } else {
+        TF_CODING_ERROR("Unexpected path <%s>", cachePath.GetText());
+        return SdfPath::EmptyPath();
     }
 }
 

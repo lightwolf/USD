@@ -21,7 +21,7 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/glf/glew.h"
+#include "pxr/imaging/garch/glApi.h"
 
 #include "pxr/imaging/hdSt/glfTextureCpuData.h"
 
@@ -258,14 +258,10 @@ _GetHgiFormatAndConversionFunction(
             *hgiFormat = HgiFormatUNorm8Vec4srgb;
             break;
         case HioFormatFloat16Vec3:
-            // RGB (48bit) is not supported on MTL, so we need to convert it.
-            *conversionFunction = _ConvertRGBToRGBA<GfHalf, 1>;
-            *hgiFormat = HgiFormatFloat16Vec4;
+            *hgiFormat = HgiFormatFloat16Vec3;
             break;
         case HioFormatFloat32Vec3:
-            // RGB (96bit) is not supported on MTL, so we need to convert it.
-            *conversionFunction = _ConvertRGBToRGBA<float, 1>;
-            *hgiFormat = HgiFormatFloat32Vec4;
+            *hgiFormat = HgiFormatFloat32Vec3;
             break;
         case HioFormatSNorm8Vec3:
         case HioFormatUInt16Vec3:
@@ -363,7 +359,7 @@ HdStGlfTextureCpuData::HdStGlfTextureCpuData(
     //   by modern graphics APIs)
     // - Pre-multiply alpha.
 
-    const HioFormat hioFormat = textureData->GetHioFormat();
+    const HioFormat hioFormat = textureData->GetFormat();
 
     _ConversionFunction conversionFunction = nullptr;
     _GetHgiFormatAndConversionFunction(hioFormat,
@@ -388,7 +384,8 @@ HdStGlfTextureCpuData::HdStGlfTextureCpuData(
 
     const std::vector<HgiMipInfo> mipInfos = HgiGetMipInfos(
         _textureDesc.format,
-        _textureDesc.dimensions);
+        _textureDesc.dimensions,
+        _textureDesc.layerCount);
 
     // How many mipmaps to use from the file.
     unsigned int numGivenMipmaps = 1;

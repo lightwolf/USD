@@ -290,6 +290,15 @@ UsdImagingPrimAdapter::GetInstancerTransform(
 }
 
 /*virtual*/
+SdfPath
+UsdImagingPrimAdapter::GetInstancerId(
+    UsdPrim const& usdPrim,
+    SdfPath const& cachePath) const
+{
+    return SdfPath::EmptyPath();
+}
+
+/*virtual*/
 size_t
 UsdImagingPrimAdapter::SamplePrimvar(
     UsdPrim const& usdPrim,
@@ -477,10 +486,10 @@ UsdImagingPrimAdapter::IsChildPath(SdfPath const& path) const
     return path.IsPropertyPath();
 }
 
-UsdImagingValueCache* 
-UsdImagingPrimAdapter::_GetValueCache() const
+UsdImagingPrimvarDescCache* 
+UsdImagingPrimAdapter::_GetPrimvarDescCache() const
 {
-    return &_delegate->_valueCache; 
+    return &_delegate->_primvarDescCache; 
 }
 
 GfMatrix4d 
@@ -825,7 +834,7 @@ UsdImagingPrimAdapter::_ProcessNonPrefixedPrimvarPropertyChange(
     }
 
     HdPrimvarDescriptorVector& primvarDescs =
-        _GetValueCache()->GetPrimvars(cachePath);  
+        _GetPrimvarDescCache()->GetPrimvars(cachePath);  
     
     PrimvarChange changeType =
         _ProcessPrimvarChange(primvarOnPrim, primvarInterp,
@@ -867,7 +876,7 @@ UsdImagingPrimAdapter::_ProcessPrefixedPrimvarPropertyChange(
     // Determine if primvar is in the value cache.
     TfToken primvarName = UsdGeomPrimvar::StripPrimvarsName(propertyName);
     HdPrimvarDescriptorVector& primvarDescs =
-        _GetValueCache()->GetPrimvars(cachePath);  
+        _GetPrimvarDescCache()->GetPrimvars(cachePath);  
     
     PrimvarChange changeType = _ProcessPrimvarChange(primvarOnPrim,
                                  hdInterpOnPrim,

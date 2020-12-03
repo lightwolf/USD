@@ -21,7 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/glf/glew.h"
+#include "pxr/imaging/garch/glApi.h"
+
 #include "pxr/imaging/hdSt/glConversions.h"
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/staticTokens.h"
@@ -54,6 +55,11 @@ static const HioFormat FORMAT_DESC[] =
     HioFormatFloat32Vec2,   // HdFormatFloat32Vec2,
     HioFormatFloat32Vec3,   // HdFormatFloat32Vec3,
     HioFormatFloat32Vec4,   // HdFormatFloat32Vec4,
+
+    HioFormatUInt16,        // HdFormatUInt16,
+    HioFormatUInt16Vec2,    // HdFormatUInt16Vec2,
+    HioFormatUInt16Vec3,    // HdFormatUInt16Vec3,
+    HioFormatUInt16Vec4,    // HdFormatUInt16Vec4,
 
     HioFormatInt32,         // HdFormatInt32,
     HioFormatInt32Vec2,     // HdFormatInt32Vec2,

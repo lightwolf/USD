@@ -112,7 +112,13 @@ HdStResourceRegistry::HdStResourceRegistry(Hgi * const hgi)
 {
 }
 
-HdStResourceRegistry::~HdStResourceRegistry() = default;
+HdStResourceRegistry::~HdStResourceRegistry()
+{
+    // XXX Ideally all the HdInstanceRegistry would get destroy here and
+    // they cleanup all GPU resources. Since that mechanism isn't in place
+    // yet, we call GarbageCollect to emulate this behavior.
+    GarbageCollect();
+}
 
 void HdStResourceRegistry::InvalidateShaderRegistry()
 {
@@ -135,6 +141,10 @@ void HdStResourceRegistry::ReloadResource(TfToken const& resourceType,
         HioGlslfxSharedPtr glslfxSharedPtr = glslfxInstance.GetValue();
         glslfxSharedPtr.reset(new HioGlslfx(path));
         glslfxInstance.SetValue(glslfxSharedPtr);
+    } else if (resourceType == HdResourceTypeTokens->texture) {
+        HdSt_TextureObjectRegistry *const reg = 
+            _textureHandleRegistry->GetTextureObjectRegistry();
+        reg->MarkTextureFilePathDirty(TfToken(path));
     }
 }
 
@@ -887,6 +897,10 @@ HdStResourceRegistry::_Commit()
         _uniformSsboAggregationStrategy->Flush();
         _singleAggregationStrategy->Flush();
 
+        // Make sure the writes are visible to computations that follow
+        if (_blitCmds) {
+            _blitCmds->MemoryBarrier(HgiMemoryBarrierAll);
+        }
         SubmitBlitWork();
     }
 
@@ -1169,7 +1183,11 @@ HdStResourceRegistry::_TallyResourceAllocation(VtDictionary *result) const
 
     // Texture Resources
     {
-        size_t textureResourceMemory = 0;
+        HdSt_TextureObjectRegistry *const textureObjectRegistry =
+            _textureHandleRegistry->GetTextureObjectRegistry();
+
+        size_t textureResourceMemory =
+            textureObjectRegistry->GetTotalTextureMemory();
 
         for (auto const & it: _textureResourceRegistry) {
             HdStTextureResourceSharedPtr const & texResource = it.second.value;
@@ -1229,5 +1247,13 @@ HdStResourceRegistry::AllocateTextureObject(
             
 }    
 
+void
+HdStResourceRegistry::SetMemoryRequestForTextureType(
+    const HdTextureType textureType,
+    const size_t memoryRequest)
+{
+    _textureHandleRegistry->SetMemoryRequestForTextureType(
+        textureType, memoryRequest);
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE

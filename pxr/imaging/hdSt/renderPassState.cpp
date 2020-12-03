@@ -21,7 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/glf/glew.h"
+#include "pxr/imaging/garch/glApi.h"
+
 #include "pxr/imaging/glf/diagnostic.h"
 
 #include "pxr/imaging/hdSt/bufferArrayRange.h"
@@ -391,14 +392,13 @@ HdStRenderPassState::Bind()
         glDisable(GL_BLEND);
     }
 
-    if (!_alphaToCoverageUseDefault) {
-        if (_alphaToCoverageEnabled) {
-            glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-            glEnable(GL_SAMPLE_ALPHA_TO_ONE);
-        } else {
-            glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-        }
+    if (_alphaToCoverageEnabled) {
+        glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+        glEnable(GL_SAMPLE_ALPHA_TO_ONE);
+    } else {
+        glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     }
+    
     glEnable(GL_PROGRAM_POINT_SIZE);
     GLint glMaxClipPlanes;
     glGetIntegerv(GL_MAX_CLIP_PLANES, &glMaxClipPlanes);
@@ -454,6 +454,24 @@ HdStRenderPassState::Unbind()
 
     glColorMask(true, true, true, true);
     glDepthMask(true);
+}
+
+void
+HdStRenderPassState::SetCameraFramingState(GfMatrix4d const &worldToViewMatrix,
+                                           GfMatrix4d const &projectionMatrix,
+                                           GfVec4d const &viewport,
+                                           ClipPlanesVector const & clipPlanes)
+{
+    if (_camera) {
+        // If a camera handle was set, reset it.
+        _camera = nullptr;
+    }
+
+    _worldToViewMatrix = worldToViewMatrix;
+    _projectionMatrix = projectionMatrix;
+    _viewport = GfVec4f((float)viewport[0], (float)viewport[1],
+                        (float)viewport[2], (float)viewport[3]);
+    _clipPlanes = clipPlanes;
 }
 
 size_t

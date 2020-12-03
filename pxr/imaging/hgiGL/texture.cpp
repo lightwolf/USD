@@ -21,7 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include <GL/glew.h>
+#include "pxr/imaging/garch/glApi.h"
+
 #include "pxr/imaging/hgiGL/diagnostic.h"
 #include "pxr/imaging/hgiGL/conversions.h"
 #include "pxr/imaging/hgiGL/texture.h"
@@ -64,11 +65,20 @@ _GlTextureSubImageND(
     const GLint level,
     const GfVec3i &offsets,
     const GfVec3i &dimensions,
+    const uint32_t layerCount,
     const GLenum format,
     const GLenum type,
     const void * pixels)
 {
     switch(textureType) {
+    case HgiTextureType1D:
+        glTextureSubImage1D(texture,
+                            level,
+                            offsets[0],
+                            dimensions[0],
+                            format,
+                            type,
+                            pixels);
     case HgiTextureType2D:
         glTextureSubImage2D(texture,
                             level,
@@ -83,6 +93,15 @@ _GlTextureSubImageND(
                             level,
                             offsets[0], offsets[1], offsets[2],
                             dimensions[0], dimensions[1], dimensions[2],
+                            format,
+                            type,
+                            pixels);
+        break;
+    case HgiTextureType2DArray:
+        glTextureSubImage3D(texture,
+                            level,
+                            offsets[0], offsets[1], offsets[2],
+                            dimensions[0], dimensions[1], layerCount,
                             format,
                             type,
                             pixels);
@@ -164,11 +183,6 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
     : HgiTexture(desc)
     , _textureId(0)
 {
-    if (desc.layerCount > 1) {
-        // XXX Further below we are missing support for layered textures.
-        TF_CODING_ERROR("XXX Missing implementation for texture arrays");
-    }
-
     GLenum glInternalFormat = 0;
     GLenum glFormat = 0;
     GLenum glPixelType = 0;
@@ -244,6 +258,7 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
                 HgiGetMipInfos(
                     desc.format,
                     desc.dimensions,
+                    desc.layerCount,
                     desc.pixelsByteSize);
             const size_t mipLevels = std::min(
                 mipInfos.size(), size_t(desc.mipLevels));
@@ -270,6 +285,7 @@ HgiGLTexture::HgiGLTexture(HgiTextureDesc const & desc)
                         mip,
                         /*offsets*/GfVec3i(0),
                         mipInfo.dimensions,
+                        desc.layerCount,
                         glFormat,
                         glPixelType,
                         initialData + mipInfo.byteOffset);

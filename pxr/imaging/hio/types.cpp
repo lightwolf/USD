@@ -24,9 +24,75 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hio/types.h"
 #include "pxr/base/gf/half.h"
+#include "pxr/base/gf/vec3i.h"
 #include "pxr/base/tf/iterator.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+
+// A few random format validations to make sure the HioFormat switch stays
+// aligned with the HioFormat table.
+constexpr bool _CompileTimeValidateHioFormatSwitch() {
+    return (HioFormatCount == 46 &&
+            HioFormatUNorm8 == 0 &&
+            HioFormatFloat32 == 12 &&
+            HioFormatUInt32 == 28 &&
+            HioFormatBC6FloatVec3 == 40 &&
+            HioFormatBC1UNorm8Vec4 == 44) ? true : false;
+}
+
+static_assert(_CompileTimeValidateHioFormatSwitch(),
+              "switch in HioTypes out of sync with HioFormat enum");
+
+static HioFormat _hioFormats[][4] = {
+    { HioFormatUNorm8, HioFormatUNorm8Vec2,
+      HioFormatUNorm8Vec3, HioFormatUNorm8Vec4 },
+    { HioFormatUNorm8srgb, HioFormatUNorm8Vec2srgb,
+      HioFormatUNorm8Vec3srgb, HioFormatUNorm8Vec4srgb },
+    { HioFormatSNorm8, HioFormatSNorm8Vec2,
+      HioFormatSNorm8Vec3, HioFormatSNorm8Vec4 },
+    { HioFormatUInt16, HioFormatUInt16Vec2,
+      HioFormatUInt16Vec3, HioFormatUInt16Vec4 },
+    { HioFormatInt16, HioFormatInt16Vec2,
+      HioFormatInt16Vec3, HioFormatInt16Vec4 },
+    { HioFormatUInt32, HioFormatUInt32Vec2,
+      HioFormatUInt32Vec3, HioFormatUInt32Vec4 },
+    { HioFormatInt32, HioFormatInt32Vec2,
+      HioFormatInt32Vec3, HioFormatInt32Vec4 },
+    { HioFormatFloat16, HioFormatFloat16Vec2,
+      HioFormatFloat16Vec3, HioFormatFloat16Vec4 },
+    { HioFormatFloat32, HioFormatFloat32Vec2,
+      HioFormatFloat32Vec3, HioFormatFloat32Vec4 },
+    { HioFormatDouble64, HioFormatDouble64Vec2,
+      HioFormatDouble64Vec3, HioFormatDouble64Vec4 },
+};
+
+static_assert(
+    TfArraySize(_hioFormats) == HioTypeCount,
+    "_hioFormats array in HioUtils out of sync with "
+    "HioColorChannelType enum");
+
+HioFormat
+HioGetFormat(uint32_t nchannels,
+             HioType type,
+             bool isSRGB)
+{
+    if (type >= HioTypeCount) {
+        TF_CODING_ERROR("Invalid type");
+        return HioFormatInvalid;
+    }
+
+    if (nchannels == 0 || nchannels > 4) {
+        TF_CODING_ERROR("Invalid channel count");
+        return HioFormatInvalid;
+    }
+    
+    if (isSRGB && type == HioTypeUnsignedByte) {
+        type = HioTypeUnsignedByteSRGB;
+    }
+
+    return _hioFormats[type][nchannels - 1];
+}
 
 HioType 
 HioGetHioType(HioFormat format)
@@ -44,6 +110,8 @@ HioGetHioType(HioFormat format)
         
         case HioFormatBC7UNorm8Vec4:
         case HioFormatBC7UNorm8Vec4srgb:
+        case HioFormatBC1UNorm8Vec4:
+        case HioFormatBC3UNorm8Vec4:
             return HioTypeUnsignedByte;
 
         case HioFormatSNorm8:
@@ -157,6 +225,8 @@ HioGetComponentCount(HioFormat format)
         case HioFormatUNorm8Vec4srgb:
         case HioFormatBC7UNorm8Vec4:
         case HioFormatBC7UNorm8Vec4srgb:
+        case HioFormatBC1UNorm8Vec4:
+        case HioFormatBC3UNorm8Vec4:
             return 4;
         case HioFormatInvalid:
         case HioFormatCount:
@@ -168,80 +238,34 @@ HioGetComponentCount(HioFormat format)
 }
 
 size_t
-HioGetDataSizeOfType(HioFormat format)
+HioGetDataSizeOfType(HioType type)
 {
-    switch (format) {
-        case HioFormatUNorm8:
-        case HioFormatUNorm8Vec2:
-        case HioFormatUNorm8Vec3:
-        case HioFormatUNorm8Vec4:
-
-        case HioFormatUNorm8srgb:
-        case HioFormatUNorm8Vec2srgb:
-        case HioFormatUNorm8Vec3srgb:
-        case HioFormatUNorm8Vec4srgb:
-
-        case HioFormatBC7UNorm8Vec4:
-        case HioFormatBC7UNorm8Vec4srgb:
-            return sizeof(unsigned char);
-
-        case HioFormatSNorm8:
-        case HioFormatSNorm8Vec2:
-        case HioFormatSNorm8Vec3:
-        case HioFormatSNorm8Vec4:
-            return sizeof(signed char);
-
-        case HioFormatFloat16:
-        case HioFormatFloat16Vec2:
-        case HioFormatFloat16Vec3:
-        case HioFormatFloat16Vec4:
-            return sizeof(GfHalf);
-
-        case HioFormatFloat32:
-        case HioFormatFloat32Vec2:
-        case HioFormatFloat32Vec3:
-        case HioFormatFloat32Vec4:
-        case HioFormatBC6FloatVec3:
-        case HioFormatBC6UFloatVec3:
-            return sizeof(float);
-
-        case HioFormatDouble64:
-        case HioFormatDouble64Vec2:
-        case HioFormatDouble64Vec3:
-        case HioFormatDouble64Vec4:
-            return sizeof(double);
-
-        case HioFormatUInt16:
-        case HioFormatUInt16Vec2:
-        case HioFormatUInt16Vec3:
-        case HioFormatUInt16Vec4:
-            return sizeof(unsigned short);
-
-        case HioFormatInt16:
-        case HioFormatInt16Vec2:
-        case HioFormatInt16Vec3:
-        case HioFormatInt16Vec4:
-            return sizeof(signed short);
-
-        case HioFormatUInt32:
-        case HioFormatUInt32Vec2:
-        case HioFormatUInt32Vec3:
-        case HioFormatUInt32Vec4:
-            return sizeof(unsigned int);
-
-        case HioFormatInt32:
-        case HioFormatInt32Vec2:
-        case HioFormatInt32Vec3:
-        case HioFormatInt32Vec4:
-            return sizeof(int);
-
-        case HioFormatInvalid:
-        case HioFormatCount:
-            TF_CODING_ERROR("Unsupported format");
+    switch (type) {
+        case HioTypeCount:
+            return 0;
+        case HioTypeUnsignedByte:
+        case HioTypeSignedByte:
+        case HioTypeUnsignedByteSRGB:
             return 1;
+        case HioTypeUnsignedShort:
+        case HioTypeSignedShort:
+        case HioTypeHalfFloat:
+            return 2;
+        case HioTypeUnsignedInt:
+        case HioTypeInt:
+        case HioTypeFloat:
+            return 4;
+        case HioTypeDouble:
+            return 8;
     }
     TF_CODING_ERROR("Missing Format");
     return 1;
+}
+
+size_t
+HioGetDataSizeOfType(HioFormat format)
+{
+    return HioGetDataSizeOfType(HioGetHioType(format));
 }
 
 size_t
@@ -321,6 +345,8 @@ HioGetDataSizeOfFormat(HioFormat format,
         case HioFormatBC6UFloatVec3:
         case HioFormatBC7UNorm8Vec4:
         case HioFormatBC7UNorm8Vec4srgb:
+        case HioFormatBC1UNorm8Vec4:
+        case HioFormatBC3UNorm8Vec4:
             if (blockWidth) {
                 *blockWidth = 4;
             }
@@ -345,6 +371,8 @@ HioIsCompressed(HioFormat format)
         case HioFormatBC6UFloatVec3:
         case HioFormatBC7UNorm8Vec4:
         case HioFormatBC7UNorm8Vec4srgb:
+        case HioFormatBC1UNorm8Vec4:
+        case HioFormatBC3UNorm8Vec4:
             return true;
         default:
             return false;

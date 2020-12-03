@@ -16,6 +16,11 @@ if (OPENSUBDIV_HAS_GLSL_COMPUTE)
     add_definitions(-DOPENSUBDIV_HAS_GLSL_COMPUTE)
 endif()
 
+set(optionalPrivateClasses "")
+if (${PXR_BUILD_MATERIALX_PLUGIN})
+    list(APPEND optionalPrivateClasses materialXFilter)
+endif()
+
 pxr_library(hdSt
     LIBRARIES
         hio
@@ -26,11 +31,9 @@ pxr_library(hdSt
         sdr
         tf
         trace
-        ${GLEW_LIBRARY}
         ${OPENSUBDIV_LIBRARIES}
 
     INCLUDE_DIRS
-        ${GLEW_INCLUDE_DIR}
         ${OPENSUBDIV_INCLUDE_DIR}
 
     PUBLIC_CLASSES
@@ -113,9 +116,9 @@ pxr_library(hdSt
         basisCurvesShaderKey
         basisCurvesTopology
         codeGen
-        computeShader
         cullingShaderKey
         drawBatch
+        extCompComputeShader
         imageShaderShaderKey
         immediateDrawBatch
         indirectDrawBatch
@@ -130,10 +133,10 @@ pxr_library(hdSt
         subdivision
         subdivision3
         triangulate
-        unitTestDelegate
         unitTestHelper
         volumeShader
         volumeShaderKey
+        ${optionalPrivateClasses}
 
     RESOURCE_FILES
         plugInfo.json
@@ -162,6 +165,9 @@ pxr_library(hdSt
         shaders/terminals.glslfx
         shaders/visibility.glslfx
         shaders/volume.glslfx
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 if (X11_FOUND OR APPLE)

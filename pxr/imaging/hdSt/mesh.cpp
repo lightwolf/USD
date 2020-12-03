@@ -65,7 +65,6 @@
 
 #include "pxr/base/vt/value.h"
 
-#include <iostream>
 #include <limits>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -87,9 +86,8 @@ namespace {
     constexpr HdStComputeQueue _RefineNormalsCompQueue = HdStComputeQueueThree;
 }
 
-HdStMesh::HdStMesh(SdfPath const& id,
-                   SdfPath const& instancerId)
-    : HdMesh(id, instancerId)
+HdStMesh::HdStMesh(SdfPath const& id)
+    : HdMesh(id)
     , _topology()
     , _vertexAdjacency()
     , _topologyId(0)
@@ -1464,8 +1462,7 @@ HdStMesh::_UpdateDrawItem(HdSceneDelegate *sceneDelegate,
     _UpdateVisibility(sceneDelegate, dirtyBits);
 
     /* MATERIAL SHADER (may affect subsequent primvar population) */
-    if ((*dirtyBits & (HdChangeTracker::DirtyInstancer |
-                       HdChangeTracker::NewRepr)) ||
+    if ((*dirtyBits & HdChangeTracker::NewRepr) ||
         HdChangeTracker::IsAnyPrimvarDirty(*dirtyBits, id)) {
         drawItem->SetMaterialShader(_GetMaterialShader(this, sceneDelegate));
     }
@@ -1520,6 +1517,14 @@ HdStMesh::_UpdateDrawItem(HdSceneDelegate *sceneDelegate,
         _displayOpacity = false;
     }
 
+    /* INSTANCE PRIMVARS */
+    _UpdateInstancer(sceneDelegate, dirtyBits);
+    HdStUpdateInstancerData(sceneDelegate->GetRenderIndex(),
+            this, drawItem, &_sharedData, *dirtyBits);
+    _displayOpacity = _displayOpacity ||
+            HdStIsInstancePrimvarExistentAndValid(
+            sceneDelegate->GetRenderIndex(), this, HdTokens->displayOpacity);
+
     /* CONSTANT PRIMVARS, TRANSFORM, EXTENT AND PRIMID */
     if (HdStShouldPopulateConstantPrimvars(dirtyBits, id)) {
         HdPrimvarDescriptorVector constantPrimvars =
@@ -1538,25 +1543,9 @@ HdStMesh::_UpdateDrawItem(HdSceneDelegate *sceneDelegate,
         }
 
         // Also want to check existence of displayOpacity primvar
-        _displayOpacity = HdStIsPrimvarExistentAndValid(this, sceneDelegate, 
+        _displayOpacity = _displayOpacity ||
+            HdStIsPrimvarExistentAndValid(this, sceneDelegate, 
             constantPrimvars, HdTokens->displayOpacity);
-    }
-
-    /* INSTANCE PRIMVARS */
-    if (!GetInstancerId().IsEmpty()) {
-        HdStInstancer *instancer = static_cast<HdStInstancer*>(
-            sceneDelegate->GetRenderIndex().GetInstancer(GetInstancerId()));
-        if (TF_VERIFY(instancer)) {
-            instancer->PopulateDrawItem(this, drawItem,
-                                        &_sharedData, *dirtyBits);
-
-            HdPrimvarDescriptorVector primvars =
-                sceneDelegate->GetPrimvarDescriptors(instancer->GetId(),
-                                        HdInterpolationInstance);
-
-            _displayOpacity = HdStIsPrimvarExistentAndValid(this, sceneDelegate, 
-                primvars, HdTokens->displayOpacity);
-        }
     }
 
     /* VERTEX PRIMVARS */
@@ -1724,6 +1713,10 @@ HdStMesh::_UpdateDrawItemGeometricShader(HdSceneDelegate *sceneDelegate,
         // If the gometric shader changes, we need to do a deep validation of
         // batches, so they can be rebuilt if necessary.
         renderIndex.GetChangeTracker().MarkBatchesDirty();
+
+        TF_DEBUG(HD_RPRIM_UPDATED).Msg(
+            "%s: Marking all batches dirty to trigger deep validation because"
+            " the geometric shader was updated.\n", GetId().GetText());
     }
 }
 
@@ -1874,8 +1867,9 @@ HdStMesh::_UpdateRepr(HdSceneDelegate *sceneDelegate,
     }
 
     if (TfDebug::IsEnabled(HD_RPRIM_UPDATED)) {
-        std::cout << "HdStMesh::GetRepr " << GetId()
-                  << " Repr = " << reprToken << "\n";
+        TfDebug::Helper().Msg(
+            "HdStMesh::_UpdateRepr for %s : Repr = %s\n",
+            GetId().GetText(), reprToken.GetText());
         HdChangeTracker::DumpDirtyBits(*dirtyBits);
     }
 
@@ -1974,11 +1968,8 @@ HdStMesh::GetInitialDirtyBitsMask() const
         | HdChangeTracker::DirtyTopology
         | HdChangeTracker::DirtyTransform
         | HdChangeTracker::DirtyVisibility
+        | HdChangeTracker::DirtyInstancer;
         ;
-
-    if (!GetInstancerId().IsEmpty()) {
-        mask |= HdChangeTracker::DirtyInstancer;
-    }
 
     return mask;
 }

@@ -41,7 +41,6 @@ pxr_library(glf
         sdf
         ${Boost_PYTHON_LIBRARY}
         ${OPENGL_gl_LIBRARY}
-        ${OPENGL_glu_LIBRARY}
         ${GLEW_LIBRARY}
         ${X11_LIBRARIES}
         ${optionalLibs}
@@ -63,8 +62,6 @@ pxr_library(glf
         glew
         glContext
         glRawContext
-        image
-        imageRegistry
         info
         ptexTexture
         simpleLight
@@ -90,16 +87,9 @@ pxr_library(glf
     PUBLIC_HEADERS
         api.h
         fieldTextureData.h
-        
-    PRIVATE_HEADERS
-        rankedTypeMap.h
-        stb/stb_image.h
-        stb/stb_image_resize.h
-        stb/stb_image_write.h
 
     CPPFILES
         ${optionalCppFiles}
-        stbImage.cpp
 
     PYTHON_CPPFILES
         moduleDeps.cpp
@@ -125,4 +115,7 @@ pxr_library(glf
         shaders/ptexTexture.glslfx
         shaders/pcfShader.glslfx
         shaders/simpleLighting.glslfx
+
+    DOXYGEN_FILES
+        overview.dox
 )
