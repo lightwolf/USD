@@ -22,36 +22,18 @@
 // language governing permissions and limitations under the Apache License.
 //
 #include "pxr/imaging/hdSt/materialXShaderGen.h"
+#include "pxr/imaging/hdSt/materialXFilter.h"
+#include "pxr/base/tf/stringUtils.h"
 
 #include <MaterialXCore/Value.h>
 #include <MaterialXGenShader/Shader.h>
 #include <MaterialXGenShader/ShaderGenerator.h>
+#include <MaterialXGenShader/Syntax.h>
 
 namespace mx = MaterialX;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
-static const std::string GlslfxHeaderString = 
-R"(-- glslfx version 0.1
-
-// File Generated with HdStMaterialXShaderGen.
-
--- configuration
-{
-    "techniques": {
-        "default": {
-            "surfaceShader": { 
-                "source": [ "MaterialX.Surface" ]
-            }
-        }
-    }
-}
-
--- glsl MaterialX.Surface
-
-
-)";
 
 static const std::string MxHdTangentString = 
 R"(
@@ -107,8 +89,15 @@ R"(#if NUM_LIGHTS > 0
 #endif
 )";
 
-HdStMaterialXShaderGen::HdStMaterialXShaderGen() : GlslShaderGenerator() 
+HdStMaterialXShaderGen::HdStMaterialXShaderGen(
+    MxHdInfo const& mxHdInfo)
+    : GlslShaderGenerator(), 
+      _mxHdTextureMap(mxHdInfo.textureMap),
+      _mxHdPrimvarMap(mxHdInfo.primvarMap),
+      _materialTag(mxHdInfo.materialTag)
 {
+    _defaultTexcoordName = (mxHdInfo.defaultTexcoordName == mx::EMPTY_STRING) ?
+                            "st" : mxHdInfo.defaultTexcoordName;
 }
 
 // Based on GlslShaderGenerator::generate()
@@ -140,11 +129,71 @@ HdStMaterialXShaderGen::_EmitGlslfxShader(
     mx::GenContext& mxContext,
     mx::ShaderStage& mxStage) const
 {
-    emitString(GlslfxHeaderString, mxStage);
+    _EmitGlslfxHeader(mxStage);
     _EmitMxFunctions(mxGraph, mxContext, mxStage);
     _EmitMxSurfaceShader(mxGraph, mxContext, mxStage);
 }
 
+void 
+HdStMaterialXShaderGen::_EmitGlslfxHeader(mx::ShaderStage& mxStage) const
+{
+    // Glslfx version and configuration
+    emitLine("-- glslfx version 0.1", mxStage, false);
+    emitLineBreak(mxStage);
+    emitComment("File Generated with HdStMaterialXShaderGen.", mxStage);
+    emitLineBreak(mxStage);
+    emitString(
+        R"(-- configuration)" "\n"
+        R"({)" "\n", mxStage);
+
+    // insert materialTag metadata
+    {
+        emitString(R"(    "metadata": {)" "\n", mxStage);
+        std::string line;
+        line += "        \"materialTag\": \"" + _materialTag + "\"\n";
+        emitString(line, mxStage);
+        emitString(R"(    }, )""\n", mxStage);
+    }
+
+    // insert primvar information if needed
+    if (!_mxHdPrimvarMap.empty()) {
+        emitString(R"(    "attributes": {)" "\n", mxStage);
+        std::string line; unsigned int i = 0;
+        for (auto primvarPair : _mxHdPrimvarMap) {
+            line += "        \"" + primvarPair.first + "\": {\n";
+            line += "            \"type\": \"" + primvarPair.second + "\"\n";
+            line += "        }";
+            line += (i < _mxHdPrimvarMap.size() - 1) ? ",\n" : "\n";
+            i++;
+        }
+        emitString(line, mxStage);
+        emitString(R"(    }, )""\n", mxStage);
+    }
+    // insert texture information if needed
+    if (!_mxHdTextureMap.empty()) {
+        emitString(R"(    "textures": {)" "\n", mxStage);
+        std::string line; unsigned int i = 0;
+        for (auto texturePair : _mxHdTextureMap) {
+            line += "        \"" + texturePair.second + "\": {\n        }";
+            line += (i < _mxHdTextureMap.size() - 1) ? ",\n" : "\n";
+            i++;
+        }
+        emitString(line, mxStage);
+        emitString(R"(    }, )""\n", mxStage);
+    }
+    emitString(
+        R"(    "techniques": {)" "\n"
+        R"(        "default": {)" "\n"
+        R"(            "surfaceShader": { )""\n"
+        R"(                "source": [ "MaterialX.Surface" ])""\n"
+        R"(            })""\n"
+        R"(        })""\n"
+        R"(    })""\n"
+        R"(})" "\n\n", mxStage);
+    emitLine("-- glsl MaterialX.Surface", mxStage, false);
+    emitLineBreak(mxStage);
+    emitLineBreak(mxStage);
+}
 
 // Similar to GlslShaderGenerator::emitPixelStage() with alterations and 
 // additions to match Pxr's codeGen
@@ -155,7 +204,7 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
     mx::ShaderStage& mxStage) const
 {
     // Add global constants and type definitions
-    emitInclude("pbrlib/" + mx::GlslShaderGenerator::LANGUAGE 
+    emitInclude("pbrlib/" + mx::GlslShaderGenerator::TARGET 
                 + "/lib/mx_defines.glsl", mxContext, mxStage);
     emitLine("#if NUM_LIGHTS > 0", mxStage, false);
     emitLine("#define MAX_LIGHT_SOURCES NUM_LIGHTS", mxStage, false);
@@ -172,7 +221,7 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
     const mx::VariableBlock& constants = mxStage.getConstantBlock();
     if (!constants.empty()) {
         emitVariableDeclarations(constants, _syntax->getConstantQualifier(),
-                                 mx::ShaderGenerator::SEMICOLON, 
+                                 mx::Syntax::SEMICOLON, 
                                  mxContext, mxStage, false);
         emitLineBreak(mxStage);
     }
@@ -185,8 +234,7 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
         if (!uniforms.empty() && uniforms.getName() != mx::HW::LIGHT_DATA) {
             emitComment("Uniform block: " + uniforms.getName(), mxStage);
             emitVariableDeclarations(uniforms, mx::EMPTY_STRING, 
-                                     mx::ShaderGenerator::SEMICOLON,
-                                     mxContext, mxStage);
+                                     mx::Syntax::SEMICOLON, mxContext, mxStage);
             emitLineBreak(mxStage);
         }
     }
@@ -205,7 +253,7 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
         emitLine("struct " + lightData.getName(), mxStage, false);
         emitScopeBegin(mxStage);
         emitVariableDeclarations(lightData, mx::EMPTY_STRING, 
-                                 mx::ShaderGenerator::SEMICOLON, 
+                                 mx::Syntax::SEMICOLON, 
                                  mxContext, mxStage, false);
         emitScopeEnd(mxStage, true);
         emitLineBreak(mxStage);
@@ -226,10 +274,10 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
         emitLine("struct " + mxVertexDataName, mxStage, false);
         emitScopeBegin(mxStage);
         emitVariableDeclarations(vertexData, mx::EMPTY_STRING,
-                                 mx::ShaderGenerator::SEMICOLON, 
+                                 mx::Syntax::SEMICOLON, 
                                  mxContext, mxStage, false);
         emitScopeEnd(mxStage, false, false);
-        emitString(mx::ShaderGenerator::SEMICOLON, mxStage);
+        emitString(mx::Syntax::SEMICOLON, mxStage);
         emitLineBreak(mxStage);
 
         // Add the vd declaration
@@ -242,32 +290,16 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
     }
 
     // Emit common math functions
-    emitInclude("pbrlib/" + mx::GlslShaderGenerator::LANGUAGE 
+    emitInclude("pbrlib/" + mx::GlslShaderGenerator::TARGET 
                 + "/lib/mx_math.glsl", mxContext, mxStage);
     emitLineBreak(mxStage);
 
-    // Emit texture sampling code
-    if (mxGraph.hasClassification(mx::ShaderNode::Classification::CONVOLUTION2D)) {
-        emitInclude("stdlib/" + mx::GlslShaderGenerator::LANGUAGE 
-                    + "/lib/mx_sampling.glsl", mxContext, mxStage);
-        emitLineBreak(mxStage);
-    }
-
     // Emit lighting and shadowing code
     if (lighting) {
-
-        // XXX Emitting missing include for sampling the Prefilter Texture.
-        // Can remove this when using MaterialX v1.38
-        if (mxContext.getOptions().hwSpecularEnvironmentMethod == 
-            mx::HwSpecularEnvironmentMethod::SPECULAR_ENVIRONMENT_PREFILTER) {
-
-            emitInclude("pbrlib/" + mx::GlslShaderGenerator::LANGUAGE
-                + "/lib/mx_microfacet_specular.glsl", mxContext, mxStage);
-        }
         emitSpecularEnvironment(mxContext, mxStage);
     }
     if (shadowing) {
-        emitInclude("pbrlib/" + mx::GlslShaderGenerator::LANGUAGE 
+        emitInclude("pbrlib/" + mx::GlslShaderGenerator::TARGET 
                     + "/lib/mx_shadow.glsl", mxContext, mxStage);
     }
 
@@ -275,7 +307,7 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
     if (mxContext.getOptions().hwDirectionalAlbedoMethod == 
             mx::HwDirectionalAlbedoMethod::DIRECTIONAL_ALBEDO_TABLE ||
         mxContext.getOptions().hwWriteAlbedoTable) {
-        emitInclude("pbrlib/" + mx::GlslShaderGenerator::LANGUAGE 
+        emitInclude("pbrlib/" + mx::GlslShaderGenerator::TARGET 
                     + "/lib/mx_table.glsl", mxContext, mxStage);
         emitLineBreak(mxStage);
     }
@@ -284,12 +316,12 @@ HdStMaterialXShaderGen::_EmitMxFunctions(
     // depending on the vertical flip flag.
     if (mxContext.getOptions().fileTextureVerticalFlip) {
         _tokenSubstitutions[mx::ShaderGenerator::T_FILE_TRANSFORM_UV] = 
-            "stdlib/" + mx::GlslShaderGenerator::LANGUAGE +
+            "stdlib/" + mx::GlslShaderGenerator::TARGET +
             "/lib/mx_transform_uv_vflip.glsl";
     }
     else {
         _tokenSubstitutions[mx::ShaderGenerator::T_FILE_TRANSFORM_UV] = 
-            "stdlib/" + mx::GlslShaderGenerator::LANGUAGE + 
+            "stdlib/" + mx::GlslShaderGenerator::TARGET + 
             "/lib/mx_transform_uv.glsl";
     }
 
@@ -418,8 +450,8 @@ HdStMaterialXShaderGen::_EmitMxInitFunction(
     // Add the vd declaration that translates HdVertexData -> MxVertexData
     std::string mxVertexDataName = "mx" + vertexData.getName();
     _EmitMxVertexDataDeclarations(vertexData, mxVertexDataName, 
-                                 vertexData.getInstance(),
-                                 mx::ShaderGenerator::COMMA, mxStage);
+                                  vertexData.getInstance(), 
+                                  mx::Syntax::COMMA, mxStage);
     emitLineBreak(mxStage);
 
     // Initialize the Indirect Light Textures
@@ -429,6 +461,16 @@ HdStMaterialXShaderGen::_EmitMxInitFunction(
     emitLine("u_envRadianceMips = textureQueryLevels(u_envRadiance)", mxStage);
     emitLine("#endif", mxStage, false);
     emitLineBreak(mxStage);
+
+    // Initialize MaterialX Texture samplers with HdGetSampler equivalents
+    if (!_mxHdTextureMap.empty()) {
+        emitComment("Initialize Material Textures", mxStage);
+        for (auto texturePair : _mxHdTextureMap) {
+            emitLine(texturePair.first + "_file = "
+                    "HdGetSampler_" + texturePair.second + "()", mxStage);
+        }
+        emitLineBreak(mxStage);
+    }
 
     // Gather Direct light data from Hydra and apply the Hydra transformation 
     // matrix to the environment map matrix (u_envMatrix) to account for the
@@ -456,8 +498,11 @@ HdStMaterialXShaderGen::_EmitMxVertexDataDeclarations(
     std::string line = mxVertexDataVariable + " = " + mxVertexDataName + "(";
 
     for (size_t i = 0; i < block.size(); ++i) {
-        line += _EmitMxVertexDataLine(block[i]);
-        line += i < block.size() - 1 ? separator : "";
+        line += _EmitMxVertexDataLine(block[i], separator);
+        // remove the separator from the last data line
+        if (i == block.size() - 1) {
+            line = line.substr(0, line.size() - separator.size());
+        }
     }
     // add ending )
     line += ")";
@@ -467,7 +512,8 @@ HdStMaterialXShaderGen::_EmitMxVertexDataDeclarations(
 
 std::string
 HdStMaterialXShaderGen::_EmitMxVertexDataLine(
-    const mx::ShaderPort* variable) const
+    const mx::ShaderPort* variable,
+    std::string const& separator) const
 {
     // Connect the mxVertexData variable with the appropriate pxr variable
     // making sure to convert the Hd data (viewSpace) to Mx data (worldSpace)
@@ -476,33 +522,56 @@ HdStMaterialXShaderGen::_EmitMxVertexDataLine(
     if (mxVariableName.compare(mx::HW::T_POSITION_WORLD) == 0) {
 
         // Convert to WorldSpace position
-        hdVariableDef = "vec3(HdGet_worldToViewInverseMatrix() * Peye)";
+        hdVariableDef = "vec3(HdGet_worldToViewInverseMatrix() * Peye)"
+                        + separator;
     }
     else if (mxVariableName.compare(mx::HW::T_NORMAL_WORLD) == 0) {
 
         // Convert to WorldSpace normal (calculated in MxHdTangentString)
-        hdVariableDef = "normalWorld";
+        hdVariableDef = "normalWorld" + separator;
     }
     else if (mxVariableName.compare(mx::HW::T_TANGENT_WORLD) == 0) {
 
         // Calculated in MxHdTangentString
-        hdVariableDef = "tangentWorld";
+        hdVariableDef = "tangentWorld" + separator;
     }
     else if (mxVariableName.compare(mx::HW::T_POSITION_OBJECT) == 0) {
 
-        hdVariableDef  = "HdGet_points()";
+        hdVariableDef  = "HdGet_points()" + separator;
     }
-    // XXX textCoords - textures not yet supported
-    // else if (mxVariableName.compare(mx::HW::T_IN_TEXCOORD)) {
-    //
-    //     fprintf(stderr, "TextureCoords (%s)\n"), mxVariableName.c_str());
-    //     hdVariableDef ;
-    // }
+    else if (mxVariableName.compare(0, mx::HW::T_TEXCOORD.size(), 
+                                    mx::HW::T_TEXCOORD) == 0) {
+        
+        // Wrap initialization inside #ifdef in case the object does not have 
+        // the st primvar
+        hdVariableDef = TfStringPrintf("\n"
+                "    #ifdef HD_HAS_%s\n"
+                "        HdGet_%s(),\n"
+                "    #else\n"
+                "        vec2(0.0),\n"
+                "    #endif\n        ", 
+                _defaultTexcoordName.c_str(), _defaultTexcoordName.c_str());
+    }
+    else if (mxVariableName.compare(0, mx::HW::T_IN_GEOMPROP.size(), 
+                                    mx::HW::T_IN_GEOMPROP) == 0) {
+        // Wrap initialization inside #ifdef in case the object does not have 
+        // the geomprop primvar
+        // Note: variable name format: 'T_IN_GEOMPROP_geomPropName';
+        const std::string geompropName = mxVariableName.substr(
+                                            mx::HW::T_IN_GEOMPROP.size());
+        hdVariableDef = TfStringPrintf("\n"
+                "    #ifdef HD_HAS%s\n"
+                "        HdGet%s(),\n"
+                "    #else\n"
+                "        vec2(0.0),\n"
+                "    #endif\n        ", 
+                geompropName.c_str(), geompropName.c_str());
+    }
     else {
         const std::string valueStr = variable->getValue() 
             ? _syntax->getValue(variable->getType(), *variable->getValue(), true)
             : _syntax->getDefaultValue(variable->getType(), true);
-        hdVariableDef += valueStr.empty() ? mx::EMPTY_STRING : valueStr;
+        hdVariableDef = valueStr.empty() ? mx::EMPTY_STRING : valueStr + separator;
     }
 
     return hdVariableDef.empty() ? mx::EMPTY_STRING : hdVariableDef;

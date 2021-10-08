@@ -164,15 +164,28 @@ bool
 {% endif %}
 
 /* virtual */
-UsdSchemaKind {{ cls.cppClassName }}::_GetSchemaKind() const {
+UsdSchemaKind {{ cls.cppClassName }}::_GetSchemaKind() const
+{
     return {{ cls.cppClassName }}::schemaKind;
 }
-
-/* virtual */
-UsdSchemaKind {{ cls.cppClassName }}::_GetSchemaType() const {
-    return {{ cls.cppClassName }}::schemaType;
-}
 {% if cls.isAppliedAPISchema %}
+
+/* static */
+bool
+{% if not cls.isMultipleApply %}
+{{ cls.cppClassName }}::CanApply(
+    const UsdPrim &prim, std::string *whyNot)
+{% else %}
+{{ cls.cppClassName }}::CanApply(
+    const UsdPrim &prim, const TfToken &name, std::string *whyNot)
+{% endif %}
+{
+{% if cls.isMultipleApply %}
+    return prim.CanApplyAPI<{{ cls.cppClassName }}>(name, whyNot);
+{% else %}
+    return prim.CanApplyAPI<{{ cls.cppClassName }}>(whyNot);
+{% endif %}
+}
 
 /* static */
 {{ cls.cppClassName }}
@@ -183,23 +196,6 @@ UsdSchemaKind {{ cls.cppClassName }}::_GetSchemaType() const {
 {% endif %}
 {
 {% if cls.isMultipleApply %}
-    // Ensure that the instance name is valid.
-    TfTokenVector tokens = SdfPath::TokenizeIdentifierAsTokens(name);
-
-    if (tokens.empty()) {
-        TF_CODING_ERROR("Invalid {{ cls.usdPrimTypeName }} name '%s'.", 
-                        name.GetText());
-        return {{ cls.cppClassName }}();
-    }
-
-    const TfToken &baseName = tokens.back();
-    if (IsSchemaPropertyBaseName(baseName)) {
-        TF_CODING_ERROR("Invalid {{ cls.usdPrimTypeName }} name '%s'. "
-                        "The base-name '%s' is a schema property name.", 
-                        name.GetText(), baseName.GetText());
-        return {{ cls.cppClassName }}();
-    }
-
     if (prim.ApplyAPI<{{ cls.cppClassName }}>(name)) {
         return {{ cls.cppClassName }}(prim, name);
     }

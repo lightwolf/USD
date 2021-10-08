@@ -50,6 +50,7 @@ pxr_library(usdGeom
         scope
         sphere
         subset
+        visibilityAPI
         xform
         xformable
         xformOp
@@ -94,6 +95,7 @@ pxr_library(usdGeom
         wrapSphere.cpp
         wrapSubset.cpp
         wrapTokens.cpp
+        wrapVisibilityAPI.cpp
         wrapXform.cpp
         wrapXformCache.cpp
         wrapXformable.cpp
@@ -111,6 +113,9 @@ pxr_library(usdGeom
     DOXYGEN_FILES
         overview.dox
         snippets.dox
+        images/USDCurveBasisMatrix.png
+        images/USDCurveHydra.png
+        images/USDCurvePrimvars.png
 )
 
 pxr_test_scripts(
@@ -272,6 +277,13 @@ pxr_register_test(testUsdGeomMesh
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdGeomMesh"
     EXPECTED_RETURN_CODE 0
 )
+
+pxr_register_test(testUsdGeomMetrics
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdGeomMetrics"
+    EXPECTED_RETURN_CODE 0
+)
+
 
 pxr_register_test(testUsdGeomSubset
     PYTHON

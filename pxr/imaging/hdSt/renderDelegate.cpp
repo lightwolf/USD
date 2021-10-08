@@ -25,6 +25,7 @@
 #include "pxr/imaging/hdSt/renderDelegate.h"
 
 #include "pxr/imaging/hdSt/basisCurves.h"
+#include "pxr/imaging/hdSt/drawItemsCache.h"
 #include "pxr/imaging/hdSt/drawTarget.h"
 #include "pxr/imaging/hdSt/extComputation.h"
 #include "pxr/imaging/hdSt/field.h"
@@ -82,10 +83,18 @@ const TfTokenVector HdStRenderDelegate::SUPPORTED_SPRIM_TYPES =
     HdPrimTypeTokens->extComputation,
     HdPrimTypeTokens->material,
     HdPrimTypeTokens->domeLight,
+    HdPrimTypeTokens->cylinderLight,
+    HdPrimTypeTokens->diskLight,
+    HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->rectLight,
     HdPrimTypeTokens->simpleLight,
     HdPrimTypeTokens->sphereLight
 };
+
+TF_DEFINE_PRIVATE_TOKENS(
+    _tokens,
+    (mtlx)
+);
 
 using HdStResourceRegistryWeakPtr =  std::weak_ptr<HdStResourceRegistry>;
 
@@ -169,6 +178,7 @@ HdStRenderDelegate::HdStRenderDelegate(HdRenderSettingsMap const& settingsMap)
     : HdRenderDelegate(settingsMap)
     , _hgi(nullptr)
     , _renderParam(std::make_unique<HdStRenderParam>())
+    , _drawItemsCache(std::make_unique<HdSt_DrawItemsCache>())
 {
     // Initialize the settings and settings descriptors.
     _settingDescriptors = {
@@ -309,7 +319,7 @@ HdRenderPassSharedPtr
 HdStRenderDelegate::CreateRenderPass(HdRenderIndex *index,
                         HdRprimCollection const& collection)
 {
-    return HdRenderPassSharedPtr(new HdSt_RenderPass(index, collection));
+    return std::make_shared<HdSt_RenderPass>(index, collection);
 }
 
 HdRenderPassStateSharedPtr
@@ -371,6 +381,9 @@ HdStRenderDelegate::CreateSprim(TfToken const& typeId,
     } else if (typeId == HdPrimTypeTokens->domeLight ||
                 typeId == HdPrimTypeTokens->simpleLight ||
                 typeId == HdPrimTypeTokens->sphereLight ||
+                typeId == HdPrimTypeTokens->diskLight ||
+                typeId == HdPrimTypeTokens->distantLight ||
+                typeId == HdPrimTypeTokens->cylinderLight ||
                 typeId == HdPrimTypeTokens->rectLight) {
         return new HdStLight(sprimId, typeId);
     } else {
@@ -394,6 +407,9 @@ HdStRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     } else if (typeId == HdPrimTypeTokens->domeLight ||
                 typeId == HdPrimTypeTokens->simpleLight ||
                 typeId == HdPrimTypeTokens->sphereLight ||
+                typeId == HdPrimTypeTokens->diskLight ||
+                typeId == HdPrimTypeTokens->distantLight ||
+                typeId == HdPrimTypeTokens->cylinderLight ||
                 typeId == HdPrimTypeTokens->rectLight) {
         return new HdStLight(SdfPath::EmptyPath(), typeId);
     } else {
@@ -448,13 +464,14 @@ HdStRenderDelegate::DestroyBprim(HdBprim *bPrim)
 HdSprim *
 HdStRenderDelegate::_CreateFallbackMaterialPrim()
 {
-    HioGlslfxSharedPtr glslfx(
-        new HioGlslfx(HdStPackageFallbackSurfaceShader()));
+    HioGlslfxSharedPtr glslfx =
+        std::make_shared<HioGlslfx>(HdStPackageFallbackMaterialNetworkShader());
 
-    HdStSurfaceShaderSharedPtr fallbackShaderCode(new HdStGLSLFXShader(glslfx));
+    HdSt_MaterialNetworkShaderSharedPtr fallbackShaderCode =
+        std::make_shared<HdStGLSLFXShader>(glslfx);
 
     HdStMaterial *material = new HdStMaterial(SdfPath::EmptyPath());
-    material->SetSurfaceShader(fallbackShaderCode);
+    material->SetMaterialNetworkShader(fallbackShaderCode);
 
     return material;
 }
@@ -488,6 +505,8 @@ HdStRenderDelegate::CommitResources(HdChangeTracker *tracker)
     // see bug126621. currently dispatch buffers need to be released
     //                more frequently than we expect.
     _resourceRegistry->GarbageCollectDispatchBuffers();
+
+    _drawItemsCache->GarbageCollect();
 }
 
 bool
@@ -499,7 +518,21 @@ HdStRenderDelegate::IsSupported()
 TfTokenVector
 HdStRenderDelegate::GetShaderSourceTypes() const
 {
+#ifdef PXR_MATERIALX_SUPPORT_ENABLED
+    return {HioGlslfxTokens->glslfx, _tokens->mtlx};
+#else
     return {HioGlslfxTokens->glslfx};
+#endif
+}
+
+TfTokenVector
+HdStRenderDelegate::GetMaterialRenderContexts() const
+{
+#ifdef PXR_MATERIALX_SUPPORT_ENABLED
+    return {HioGlslfxTokens->glslfx, _tokens->mtlx};
+#else
+    return {HioGlslfxTokens->glslfx};
+#endif
 }
 
 bool
@@ -508,10 +541,10 @@ HdStRenderDelegate::IsPrimvarFilteringNeeded() const
     return true;
 }
 
-TfToken 
-HdStRenderDelegate::GetMaterialNetworkSelector() const
+HdStDrawItemsCachePtr
+HdStRenderDelegate::GetDrawItemsCache() const
 {
-    return HioGlslfxTokens->glslfx;
+    return _drawItemsCache.get();
 }
 
 Hgi*

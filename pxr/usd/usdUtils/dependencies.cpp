@@ -325,10 +325,16 @@ _FileAnalyzer::_RemapRefOrPayload(const RefOrPayloadType &refOrPayload)
 void
 _FileAnalyzer::_ProcessPayloads(const SdfPrimSpecHandle &primSpec)
 {
-    SdfPayloadsProxy payloadList = primSpec->GetPayloadList();
-    payloadList.ModifyItemEdits(std::bind(
-        &_FileAnalyzer::_RemapRefOrPayload<SdfPayload, _DepType::Payload>, 
-        this, std::placeholders::_1));
+    if (_remapPathFunc) {
+        primSpec->GetPayloadList().ModifyItemEdits(std::bind(
+            &_FileAnalyzer::_RemapRefOrPayload<SdfPayload, _DepType::Payload>, 
+            this, std::placeholders::_1));
+    } else {
+        for (SdfPayload const& payload:
+             primSpec->GetPayloadList().GetAddedOrExplicitItems()) {
+            _ProcessDependency(payload.GetAssetPath(), _DepType::Payload);
+        }
+    }
 }
 
 void
@@ -516,10 +522,16 @@ _FileAnalyzer::_ProcessMetadata(const SdfPrimSpecHandle &primSpec)
 void
 _FileAnalyzer::_ProcessReferences(const SdfPrimSpecHandle &primSpec)
 {
-    SdfReferencesProxy refList = primSpec->GetReferenceList();
-    refList.ModifyItemEdits(std::bind(
-        &_FileAnalyzer::_RemapRefOrPayload<SdfReference, _DepType::Reference>, 
-        this, std::placeholders::_1));
+    if (_remapPathFunc) {
+        primSpec->GetReferenceList().ModifyItemEdits(std::bind(
+            &_FileAnalyzer::_RemapRefOrPayload<SdfReference,
+            _DepType::Reference>, this, std::placeholders::_1));
+    } else {
+        for (SdfReference const& reference:
+            primSpec->GetReferenceList().GetAddedOrExplicitItems()) {
+            _ProcessDependency(reference.GetAssetPath(), _DepType::Reference);
+        }
+    }
 }
 
 void
@@ -602,13 +614,18 @@ public:
 
         std::string rootFilePath = resolver.Resolve(assetPath.GetAssetPath());
 
-        // Ensure that the resolved path is not empty and can be localized to 
-        // a physical location on disk.
-        if (rootFilePath.empty() ||
-            !ArGetResolver().FetchToLocalResolvedPath(assetPath.GetAssetPath(),
+        // Ensure that the resolved path is not empty.
+        if (rootFilePath.empty()) {
+            return;
+        }
+
+#if AR_VERSION == 1
+        // ... and can be localized to a physical location on disk.
+        if (!ArGetResolver().FetchToLocalResolvedPath(assetPath.GetAssetPath(),
                     rootFilePath)) {
             return;
         }
+#endif
 
         const auto remapAssetPathFunc = 
             [&layerDependenciesMap, &dirRemapper, &destDir, &rootFilePath, 
@@ -699,6 +716,7 @@ public:
                     continue;
                 } 
 
+#if AR_VERSION == 1
                 // Ensure that the resolved path can be fetched to a physical 
                 // location on disk.
                 if (!ArGetResolver().FetchToLocalResolvedPath(refAssetPath, 
@@ -708,6 +726,7 @@ public:
                         refAssetPath.c_str(), resolvedRefFilePath.c_str());
                     continue;
                 }
+#endif
 
                 // Check if this dependency must skipped.
                 if (std::find(dependenciesToSkip.begin(), 
@@ -891,15 +910,18 @@ _AssetLocalizer::_RemapAssetPath(const std::string &refPath,
                 SdfComputeAssetPathRelativeToLayer(layer, refPath);
         const std::string refFilePath = resolver.Resolve(refAssetPath);
 
+        bool resolveOk = !refFilePath.empty();
+#if AR_VERSION == 1
         // Ensure that the resolved path can be fetched to a physical 
         // location on disk.
-        if (!refFilePath.empty() && 
-            ArGetResolver().FetchToLocalResolvedPath(refAssetPath, 
-                                                     refFilePath)) {
+        resolveOk = resolveOk &&
+            resolver.FetchToLocalResolvedPath(refAssetPath, refFilePath);
+#endif
+
+        if (resolveOk) {
             result = refFilePath;
         } else {
-            // Failed to resolve or fetch-to-local asset path, hence retain the 
-            // reference as is.
+            // Failed to resolve, hence retain the reference as is.
             result = refAssetPath;
         }
     }

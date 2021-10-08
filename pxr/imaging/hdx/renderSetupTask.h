@@ -112,12 +112,9 @@ private:
     // and preferred).
     GfVec4d _viewport;
     HdRenderPassAovBindingVector _aovBindings;
+    HdRenderPassAovBindingVector _aovInputBindings;
 
-    static HdStShaderCodeSharedPtr _overrideShader;
-
-    static void _CreateOverrideShader();
-
-    void _SetRenderpassAndOverrideShadersForStorm(
+    void _SetRenderpassShadersForStorm(
         HdxRenderTaskParams const& params,
         HdStRenderPassState *renderPassState);
 
@@ -148,6 +145,7 @@ struct HdxRenderTaskParams
         , alphaThreshold(0.0)
         , enableSceneMaterials(true)
         , enableSceneLights(true)
+        , enableClipping(true)
         // Selection/Masking params
         , maskColor(1.0f, 0.0f, 0.0f, 1.0f)
         , indicatorColor(0.0f, 1.0f, 0.0f, 1.0f)
@@ -175,6 +173,7 @@ struct HdxRenderTaskParams
         , blendConstantColor(0.0f, 0.0f, 0.0f, 0.0f)
         , blendEnable(false)
         , enableAlphaToCoverage(true)
+        , useAovMultiSample(true)
         , resolveAovMultiSample(true)
         // Camera framing and viewer state
         , viewport(0.0)
@@ -197,6 +196,7 @@ struct HdxRenderTaskParams
     float alphaThreshold;
     bool enableSceneMaterials;
     bool enableSceneLights;
+    bool enableClipping;
 
     // Selection/Masking params
     GfVec4f maskColor;
@@ -207,6 +207,7 @@ struct HdxRenderTaskParams
     // XXX: As a transitional API, if this is empty it indicates the renderer
     // should write color and depth to the GL framebuffer.
     HdRenderPassAovBindingVector aovBindings;
+    HdRenderPassAovBindingVector aovInputBindings;
 
     // ---------------------------------------------------------------------- //
     // Render pipeline state for rasterizers.
@@ -241,6 +242,10 @@ struct HdxRenderTaskParams
 
     // AlphaToCoverage
     bool enableAlphaToCoverage;
+
+    // If true (default), render into the multi-sampled AOVs (rather than
+    // the resolved AOVs).
+    bool useAovMultiSample;
 
     // If true (default), multi-sampled AOVs will be resolved at the end of a
     // render pass.

@@ -106,6 +106,7 @@ pxr_test_scripts(
     testenv/testPcpRegressionBugs_bug90706.py
     testenv/testPcpRegressionBugs_bug92955.py
     testenv/testPcpRegressionBugs_bug101300.py
+    testenv/testPcpResolvedPathChange.py
     testenv/testPcpStreamingLayerReload.py
     testenv/testPcpCompositionResults.py
 )
@@ -292,6 +293,11 @@ pxr_install_test_dir(
 pxr_install_test_dir(
     SRC testenv/testPcpRegressionBugs_bug101300.testenv
     DEST testPcpRegressionBugs_bug101300
+)
+
+pxr_install_test_dir(
+    SRC testenv/testPcpRegressionBugs_USD-6755.testenv
+    DEST testPcpRegressionBugs_USD-6755
 )
 
 pxr_install_test_dir(
@@ -1702,11 +1708,25 @@ pxr_register_test(testPcpRegressionBugs_bug101300
     EXPECTED_RETURN_CODE 0
 )
 
+pxr_register_test(testPcpRegressionBugs_USD-6755
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testPcpCompositionResults --errorFile compositionErrors.txt root.sdf" 
+    STDOUT_REDIRECT compositionResults.txt
+    DIFF_COMPARE compositionResults.txt compositionErrors.txt
+    EXPECTED_RETURN_CODE 0
+)
+
 pxr_register_test(testPcpRegressionBugs_case1
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testPcpCompositionResults case1/root.sdf"
     STDOUT_REDIRECT compositionResults_case1.txt
     DIFF_COMPARE  compositionResults_case1.txt
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testPcpResolvedPathChange
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testPcpResolvedPathChange"
     EXPECTED_RETURN_CODE 0
 )
 

@@ -126,9 +126,17 @@ public:
     void SetRenderOutputSettings(TfToken const& name,
                                  HdAovDescriptor const& desc);
 
-    // Get parameters for an AOV.
+    /// Get parameters for an AOV.
     HDX_API
     HdAovDescriptor GetRenderOutputSettings(TfToken const& name) const;
+
+    /// The destination API (e.g., OpenGL, see hgiInterop for details) and
+    /// framebuffer that the AOVs are presented into. The framebuffer
+    /// is a VtValue that encoding a framebuffer in a destination API
+    /// specific way.
+    /// E.g., a uint32_t (aka GLuint) for framebuffer object for OpenGL.
+    HDX_API
+    void SetPresentationOutput(TfToken const &api, VtValue const &framebuffer);
 
     /// -------------------------------------------------------
     /// Lighting API
@@ -260,14 +268,15 @@ private:
     // to the tasks, _CreateCamera() should be called first.
     void _CreateRenderGraph();
 
-    void _CreateCamera();
     void _CreateLightingTask();
     void _CreateShadowTask();
+    SdfPath _CreateSkydomeTask();
     SdfPath _CreateRenderTask(TfToken const& materialTag);
     void _CreateOitResolveTask();
     void _CreateSelectionTask();
     void _CreateColorizeSelectionTask();
     void _CreateColorCorrectionTask();
+    void _CreateVisualizeAovTask();
     void _CreatePickTask();
     void _CreatePickFromRenderBufferTask();
     void _CreateAovInputTask();
@@ -285,9 +294,9 @@ private:
     bool _SelectionEnabled() const;
     bool _ColorizeSelectionEnabled() const;
     bool _ColorCorrectionEnabled() const;
+    bool _VisualizeAovEnabled() const;
     bool _ColorizeQuantizationEnabled() const;
     bool _AovsSupported() const;
-    bool _CamerasSupported() const;
     bool _UsingAovs() const;
 
     // Helper function for renderbuffer management.
@@ -295,7 +304,11 @@ private:
     SdfPath _GetAovPath(TfToken const& aov) const;
     SdfPathVector _GetAovEnabledTasks() const;
 
-    // Helper function to set the parameters of a light, get a particular light 
+    // Helper functions to set up the lighting state for the built-in lights
+    bool _SupportBuiltInLightTypes();
+    void _SetBuiltInLightingState(GlfSimpleLightingContextPtr const& src);
+
+    // Helper functions to set the parameters of a light, get a particular light 
     // in the scene, replace and remove Sprims from the scene 
     void _SetParameters(SdfPath const& pathName, GlfSimpleLight const& light);
     GlfSimpleLight _GetLightAtId(size_t const& pathIdx);
@@ -343,8 +356,6 @@ private:
         // HdSceneDelegate interface
         VtValue Get(SdfPath const& id, TfToken const& key) override;
         GfMatrix4d GetTransform(SdfPath const& id) override;
-        VtValue GetCameraParamValue(SdfPath const& id, 
-                                    TfToken const& key) override;
         VtValue GetLightParamValue(SdfPath const& id, 
                                    TfToken const& paramName) override;
         bool IsEnabled(TfToken const& option) const override;
@@ -359,6 +370,7 @@ private:
         _ValueCacheMap _valueCacheMap;
     };
     _Delegate _delegate;
+    std::unique_ptr<class HdxFreeCameraSceneDelegate> _freeCameraSceneDelegate;
 
     // Generated tasks.
     SdfPath _simpleLightTaskId;
@@ -369,12 +381,11 @@ private:
     SdfPath _selectionTaskId;
     SdfPath _colorizeSelectionTaskId;
     SdfPath _colorCorrectionTaskId;
+    SdfPath _visualizeAovTaskId;
     SdfPath _pickTaskId;
     SdfPath _pickFromRenderBufferTaskId;
     SdfPath _presentTaskId;
 
-    // Generated camera (for the default/free cam)
-    SdfPath _freeCamId;
     // Current active camera
     SdfPath _activeCameraId;
     

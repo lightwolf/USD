@@ -30,7 +30,6 @@
 #include "pxr/imaging/hdSt/renderPassState.h"
 #include "pxr/imaging/hdSt/renderPassShader.h"
 #include "pxr/imaging/hdSt/geometricShader.h"
-#include "pxr/imaging/hdSt/surfaceShader.h"
 #include "pxr/imaging/hdSt/glslfxShader.h"
 #include "pxr/imaging/hdSt/immediateDrawBatch.h"
 #include "pxr/imaging/hdSt/package.h"
@@ -68,8 +67,8 @@ HdSt_ImageShaderRenderPass::HdSt_ImageShaderRenderPass(
 {
     _sharedData.instancerLevels = 0;
     _sharedData.rprimID = SdfPath("/imageShaderRenderPass");
-    _immediateBatch = HdSt_DrawBatchSharedPtr(
-        new HdSt_ImmediateDrawBatch(&_drawItemInstance));
+    _immediateBatch = 
+        std::make_shared<HdSt_ImmediateDrawBatch>(&_drawItemInstance);
 
     HdStRenderDelegate* renderDelegate =
         static_cast<HdStRenderDelegate*>(index->GetRenderDelegate());
@@ -109,7 +108,7 @@ HdSt_ImageShaderRenderPass::_SetupVertexPrimvarBAR(
 }
 
 void
-HdSt_ImageShaderRenderPass::_Prepare(TfTokenVector const &renderTags)
+HdSt_ImageShaderRenderPass::SetupFullscreenTriangleDrawItem()
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
@@ -195,11 +194,6 @@ HdSt_ImageShaderRenderPass::_Execute(
     }
 
     stRenderPassState->Unbind();
-}
-
-void
-HdSt_ImageShaderRenderPass::_MarkCollectionDirty()
-{
 }
 
 

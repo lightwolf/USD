@@ -172,7 +172,7 @@ HdStSimpleLightingShader::BindResources(const int program,
     _bindingMap->AssignSamplerUnitsToProgram(program);
     _lightingContext->BindSamplers(_bindingMap);
 
-    HdSt_TextureBinder::BindResources(binder, false, _namedTextureHandles);
+    HdSt_TextureBinder::BindResources(binder, _namedTextureHandles);
 
     binder.BindShaderResources(this);
 }
@@ -187,7 +187,7 @@ HdStSimpleLightingShader::UnbindResources(const int program,
     //
     _lightingContext->UnbindSamplers(_bindingMap);
 
-    HdSt_TextureBinder::UnbindResources(binder, false, _namedTextureHandles);
+    HdSt_TextureBinder::UnbindResources(binder, _namedTextureHandles);
 }
 
 /*virtual*/
@@ -271,7 +271,19 @@ _GetResolvedDomeLightEnvironmentFilePath(
     const GlfSimpleLightVector & lights = ctx->GetLights();
     for (auto it = lights.rbegin(); it != lights.rend(); ++it) {
         if (it->IsDomeLight()) {
-            return it->GetDomeLightTextureFile().GetResolvedPath();
+            const SdfAssetPath &path = it->GetDomeLightTextureFile();
+            const std::string &assetPath = path.GetAssetPath();
+            if (assetPath.empty()) {
+                TF_WARN("Dome light has no texture asset path.");
+                return empty;
+            }
+
+            const std::string &resolvedPath = path.GetResolvedPath();
+            if (resolvedPath.empty()) {
+                TF_WARN("Texture asset path '%s' for dome light could not be resolved.",
+                        assetPath.c_str());
+            }
+            return resolvedPath;
         }
     }
 
@@ -317,7 +329,6 @@ _MakeNamedTextureHandle(
             HdTextureType::Uv,
             samplerParameters,
             /* memoryRequest = */ 0,
-            /* createBindlessHandle = */ false,
             shader);
 
     return { name,
@@ -373,7 +384,6 @@ HdStSimpleLightingShader::AllocateTextureHandles(HdSceneDelegate *const delegate
             HdTextureType::Uv,
             envSamplerParameters,
             /* targetMemory = */ 0,
-            /* createBindlessHandle = */ false,
             shared_from_this());
 
     _namedTextureHandles = {
@@ -435,7 +445,10 @@ HdStSimpleLightingShader::AddResourcesFromTextures(ResourceContext &ctx) const
         return;
     }
     const HgiTexture * const srcTexture = srcTextureObject->GetTexture().Get();
-    if (!TF_VERIFY(srcTexture)) {
+    if (!srcTexture) {
+        TF_WARN(
+            "Invalid texture for dome light environment map at %s",
+            srcTextureObject->GetTextureIdentifier().GetFilePath().GetText());
         return;
     }
     const GfVec3i srcDim = srcTexture->GetDescriptor().dimensions;

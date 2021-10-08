@@ -27,7 +27,7 @@
 #include "pxr/imaging/hgi/hgi.h"
 #include "pxr/imaging/hgi/texture.h"
 #include "pxr/imaging/hgiInterop/opengl.h"
-
+#include "pxr/base/vt/value.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -136,6 +136,7 @@ void
 HgiInteropOpenGL::CompositeToInterop(
     HgiTextureHandle const &color,
     HgiTextureHandle const &depth,
+    VtValue const &framebuffer,
     GfVec4i const &compRegion)
 {
     if (!ARCH_UNLIKELY(color)) {
@@ -164,6 +165,16 @@ HgiInteropOpenGL::CompositeToInterop(
         glPushDebugGroup(GL_DEBUG_SOURCE_THIRD_PARTY, 0, -1, "Interop");
     }
 #endif
+    
+    if (!framebuffer.IsEmpty()) {
+        if (framebuffer.IsHolding<uint32_t>()) {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,
+                              framebuffer.UncheckedGet<uint32_t>());
+        } else {
+            TF_CODING_ERROR(
+                "dstFramebuffer must hold uint32_t when targeting OpenGL");
+        }
+    }
 
     GLint restoreActiveTexture = 0;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &restoreActiveTexture);

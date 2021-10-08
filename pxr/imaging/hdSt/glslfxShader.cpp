@@ -30,7 +30,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 
 HdStGLSLFXShader::HdStGLSLFXShader(HioGlslfxSharedPtr const& glslfx)
- : HdStSurfaceShader()
+ : HdSt_MaterialNetworkShader()
     , _glslfx(glslfx)
 {
     _SetSource(HdShaderTokens->fragmentShader, _glslfx->GetSurfaceSource());
@@ -44,7 +44,8 @@ HdStGLSLFXShader::~HdStGLSLFXShader()
 void
 HdStGLSLFXShader::Reload()
 {
-    HioGlslfxSharedPtr newGlslFx(new HioGlslfx(_glslfx->GetFilePath()));
+    HioGlslfxSharedPtr newGlslFx =
+        std::make_shared<HioGlslfx>(_glslfx->GetFilePath());
 
     if (newGlslFx->IsValid())
     {

@@ -118,12 +118,14 @@ bool operator==(const HdMaterialRelationship& lhs,
            lhs.inputName  == rhs.inputName;
 }
 
+
 bool operator==(const HdMaterialNode& lhs, const HdMaterialNode& rhs)
 {
     return lhs.path == rhs.path &&
            lhs.identifier == rhs.identifier &&
            lhs.parameters == rhs.parameters;
 }
+
 
 bool operator==(const HdMaterialNetwork& lhs, const HdMaterialNetwork& rhs) 
 {

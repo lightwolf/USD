@@ -8,9 +8,17 @@
             "ResourcePath": "@TEST_PLUG_INFO_RESOURCE_PATH@",
             "Info": {
                 "Types": {
-                    "_TestURIResolver": {
+                    "_TestURIResolverBase": {
                         "bases": ["ArResolver"],
+                        "implementsContexts": true
+                    },
+                    "_TestURIResolver": {
+                        "bases": ["_TestURIResolverBase"],
                         "uriSchemes": ["test"]
+                    },
+                    "_TestOtherURIResolver": {
+                        "bases": ["_TestURIResolverBase"],
+                        "uriSchemes": ["test_other"]
                     }
                 }
             }

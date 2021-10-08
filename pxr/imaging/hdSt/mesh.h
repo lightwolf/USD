@@ -103,10 +103,17 @@ protected:
                 bool * isFirstInstance,
                 HdStResourceRegistrySharedPtr const &resourceRegistry) const;
 
-    bool _UseQuadIndices(const HdRenderIndex &renderIndex,
-                         HdSt_MeshTopologySharedPtr const & topology) const;
+    bool _MaterialHasPtex(const HdRenderIndex &renderIndex, 
+                          const SdfPath &materialId) const;
 
-    bool _UseLimitRefinement(const HdRenderIndex &renderIndex) const;
+    bool _UseQuadIndices(const HdRenderIndex &renderIndex,
+                         const HdSt_MeshTopologySharedPtr &topology) const;
+
+    bool _MaterialHasLimitSurface(const HdRenderIndex &renderIndex, 
+                                  const SdfPath &materialId) const;
+
+    bool _UseLimitRefinement(const HdRenderIndex &renderIndex,
+                             const HdMeshTopology &topology) const;
 
     bool _UseSmoothNormals(HdSt_MeshTopologySharedPtr const& topology) const;
 
@@ -116,54 +123,198 @@ protected:
                          HdRenderParam *renderParam,
                          HdStDrawItem *drawItem,
                          HdDirtyBits *dirtyBits,
+                         const TfToken &reprToken,
+                         const HdReprSharedPtr &repr,
                          const HdMeshReprDesc &desc,
                          bool requireSmoothNormals,
-                         bool requireFlatNormals);
+                         bool requireFlatNormals,
+                         int geomSubsetDescIndex);
 
     void _UpdateDrawItemGeometricShader(HdSceneDelegate *sceneDelegate,
                                         HdRenderParam *renderParam,
                                         HdStDrawItem *drawItem,
-                                        const HdMeshReprDesc &desc);
+                                        const HdMeshReprDesc &desc,
+                                        const SdfPath &materialId);
 
     void _UpdateShadersForAllReprs(HdSceneDelegate *sceneDelegate,
                                    HdRenderParam *renderParam,
-                                   bool updateMaterialShader,
+                                   bool updateMaterialNetworkShader,
                                    bool updateGeometricShader);
+    
+    void _UpdateMaterialTagsForAllReprs(HdSceneDelegate *sceneDelegate,
+                                        HdRenderParam *renderParam);
 
     void _PopulateTopology(HdSceneDelegate *sceneDelegate,
                            HdRenderParam *renderParam,
                            HdStDrawItem *drawItem,
                            HdDirtyBits *dirtyBits,
-                           const HdMeshReprDesc &desc);
+                           const TfToken &reprToken,
+                           const HdReprSharedPtr &repr,
+                           const HdMeshReprDesc &desc,
+                           int geomSubsetDescIndex);
 
+    void _UpdateDrawItemsForGeomSubsets(HdSceneDelegate *sceneDelegate,
+                                        HdRenderParam *renderParam,
+                                        HdStDrawItem *drawItem,
+                                        const TfToken &reprToken,
+                                        const HdReprSharedPtr &repr,
+                                        const HdGeomSubsets &geomSubsets,
+                                        size_t oldNumGeomSubsets);
+    
+    void _CreateTopologyRangeForGeomSubset(
+        HdStResourceRegistrySharedPtr resourceRegistry,
+        HdChangeTracker &changeTracker, 
+        HdRenderParam *renderParam, 
+        HdDrawItem *drawItem, 
+        const TfToken &indexToken,
+        HdBufferSourceSharedPtr indicesSource, 
+        HdBufferSourceSharedPtr fvarIndicesSource, 
+        HdBufferSourceSharedPtr geomSubsetFaceIndicesHelperSource,
+        const VtIntArray &faceIndices,
+        bool refined);
+
+    void _GatherFaceVaryingTopologies(HdSceneDelegate *sceneDelegate,
+                                      const HdReprSharedPtr &repr,
+                                      const HdMeshReprDesc &desc,
+                                      HdStDrawItem *drawItem,
+                                      int geomSubsetDescIndex,
+                                      HdDirtyBits *dirtyBits,
+                                      const SdfPath &id,
+                                      HdSt_MeshTopologySharedPtr topology);
+    
     void _PopulateAdjacency(
         HdStResourceRegistrySharedPtr const &resourceRegistry);
-
+        
     void _PopulateVertexPrimvars(HdSceneDelegate *sceneDelegate,
                                  HdRenderParam *renderParam,
+                                 const HdReprSharedPtr &repr,
+                                 const HdMeshReprDesc &desc,
                                  HdStDrawItem *drawItem,
+                                 int geomSubsetDescIndex,
                                  HdDirtyBits *dirtyBits,
                                  bool requireSmoothNormals);
 
     void _PopulateFaceVaryingPrimvars(HdSceneDelegate *sceneDelegate,
                                       HdRenderParam *renderParam,
+                                      const HdReprSharedPtr &repr,
+                                      const HdMeshReprDesc &desc,
                                       HdStDrawItem *drawItem,
-                                      HdDirtyBits *dirtyBits,
-                                      const HdMeshReprDesc &desc);
+                                      int geomSubsetDescIndex,
+                                      HdDirtyBits *dirtyBits);
 
     void _PopulateElementPrimvars(HdSceneDelegate *sceneDelegate,
                                   HdRenderParam *renderParam,
+                                  const HdReprSharedPtr &repr,
+                                  const HdMeshReprDesc &desc,
                                   HdStDrawItem *drawItem,
+                                  int geomSubsetDescIndex,
                                   HdDirtyBits *dirtyBits,
                                   bool requireFlatNormals);
 
     int _GetRefineLevelForDesc(const HdMeshReprDesc &desc) const;
 
+    // Helper class for meshes to keep track of the topologies of their
+    // face-varying primvars. The face-varying topologies are later passed to 
+    // the OSD refiner in an order that will correspond to their face-varying 
+    // channel number. We keep a vector of only the topologies in use, paired
+    // with their associated primvar names.
+    class _FvarTopologyTracker 
+    {
+    public:
+        const TopologyToPrimvarVector & GetTopologyToPrimvarVector() const {
+            return _topologies;
+        } 
+
+        // Add a primvar and its corresponding toplogy to the tracker
+        void AddOrUpdateTopology(const TfToken &primvar, 
+                                 const VtIntArray &topology) {
+            for (size_t i = 0; i < _topologies.size(); ++i) {
+                // Found existing topology
+                if (_topologies[i].first == topology) {
+
+                    if (std::find(_topologies[i].second.begin(),
+                        _topologies[i].second.end(),
+                        primvar) == _topologies[i].second.end()) {
+                        // Topology does not have that primvar assigned
+                        RemovePrimvar(primvar);
+                        _topologies[i].second.push_back(primvar);
+                    } 
+                    return;
+                } 
+            }
+
+            // Found new topology
+            RemovePrimvar(primvar);
+            _topologies.push_back(
+                std::pair<VtIntArray, std::vector<TfToken>>(
+                    topology, {primvar}));
+        }
+
+        // Remove a primvar from the tracker.
+        void RemovePrimvar(const TfToken &primvar) {
+            for (size_t i = 0; i < _topologies.size(); ++i) {
+                _topologies[i].second.erase(std::find(
+                    _topologies[i].second.begin(),
+                    _topologies[i].second.end(),
+                    primvar), _topologies[i].second.end());
+
+                }
+        }
+
+        // Remove unused topologies (topologies with no associated primvars), as
+        // we do not want to build stencil tables for them.
+        void RemoveUnusedTopologies() {
+            _topologies.erase(std::remove_if(
+                _topologies.begin(), _topologies.end(), NoPrimvars), 
+                _topologies.end());
+        }
+
+        // Get the face-varying channel given a primvar name. If the primvar is 
+        // not in the tracker, returns -1.
+        int GetChannelFromPrimvar(const TfToken &primvar) const {
+            for (size_t i = 0; i < _topologies.size(); ++i) {
+                if (std::find(_topologies[i].second.begin(),
+                              _topologies[i].second.end(),
+                               primvar) != 
+                    _topologies[i].second.end()) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // Return a vector of all the face-varying topologies.
+        std::vector<VtIntArray> GetFvarTopologies() const {
+            std::vector<VtIntArray> fvarTopologies;
+            for (const auto& it : _topologies) {
+                fvarTopologies.push_back(it.first);
+            }
+            return fvarTopologies;
+        }
+
+        size_t GetNumTopologies() const {
+            return _topologies.size();
+        }
+
+    private:
+        // Helper function that returns true if a <topology, primvar vector> has
+        // no primvars.
+        static bool NoPrimvars(const std::pair<VtIntArray, std::vector<TfToken>>
+                               &topology) {
+            return topology.second.empty();
+        }
+
+        TopologyToPrimvarVector _topologies;
+    };
+
 private:
     enum DrawingCoord {
         HullTopology = HdDrawingCoord::CustomSlotsBegin,
         PointsTopology,
-        InstancePrimvar // has to be at the very end
+        FreeSlot // If the mesh topology has geom subsets, we might place
+                 // them here as geom subsets are processed before instance 
+                 // primvars. The instance primvars will follow after. If there
+                 // are no geom subsets, instance primvars start here.
     };
 
     enum DirtyBits : HdDirtyBits {
@@ -194,6 +345,8 @@ private:
                                    // the prim was created
     bool _displayOpacity : 1;
     bool _occludedSelectionShowsThrough : 1;
+
+    std::unique_ptr<_FvarTopologyTracker> _fvarTopologyTracker;
 };
 
 

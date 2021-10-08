@@ -232,6 +232,9 @@ UsdImagingInstanceAdapter::_Populate(UsdPrim const& prim,
         // Allocate hydra prototype prims for the prims in the USD prototype.
         // -------------------------------------------------------------- //
 
+        // We do not need _GetDisplayPredicateForPrototypes here because
+        // the regular display predicate works properly with native instancing
+        // prototypes.
         UsdPrimRange range(prototypePrim, _GetDisplayPredicate());
         int protoID = 0;
         int primCount = 0;
@@ -440,7 +443,6 @@ UsdImagingInstanceAdapter::_Populate(UsdPrim const& prim,
             // Ask hydra to do a full refresh on this instancer.
             index->MarkInstancerDirty(depInstancerPath,
                     HdChangeTracker::DirtyPrimvar |
-                    HdChangeTracker::DirtyTransform |
                     HdChangeTracker::DirtyInstanceIndex);
 
             // Tell UsdImaging to re-run TrackVariability.
@@ -1258,8 +1260,11 @@ UsdImagingInstanceAdapter::ProcessPropertyChange(UsdPrim const& prim,
         _ProtoPrim const& proto = _GetProtoPrim(prim.GetPath(),
                                                     cachePath,
                                                     &instancerContext);
-        if (!TF_VERIFY(proto.adapter, "%s", cachePath.GetText())) {
-            return HdChangeTracker::AllDirty;
+        if (!proto.adapter) {
+            // Note: if we can't find the correct prototype, it may have been
+            // removed by a previous property update, so we can't treat it
+            // as an error.  Instead, we just return Clean.
+            return HdChangeTracker::Clean;
         }
 
         UsdPrim protoPrim = _GetPrim(proto.path);
@@ -1267,6 +1272,12 @@ UsdImagingInstanceAdapter::ProcessPropertyChange(UsdPrim const& prim,
             protoPrim, cachePath, propertyName);
 
         return dirtyBits;
+    }
+
+    // Purpose changes to instances mean we need to resync everything, since
+    // purpose is part of the native instance population state.
+    if (propertyName == UsdGeomTokens->purpose) {
+        return HdChangeTracker::AllDirty;
     }
 
     // Transform changes to instance prims end up getting folded into the
@@ -1639,7 +1650,8 @@ UsdImagingInstanceAdapter::SamplePrimvar(
     UsdTimeCode time,
     size_t maxNumSamples, 
     float *sampleTimes, 
-    VtValue *sampleValues)
+    VtValue *sampleValues,
+    VtIntArray *sampleIndices)
 {
     HD_TRACE_FUNCTION();
 
@@ -1659,7 +1671,7 @@ UsdImagingInstanceAdapter::SamplePrimvar(
         }
         return proto.adapter->SamplePrimvar(
             _GetPrim(proto.path), cachePath, key, time,  
-            maxNumSamples, sampleTimes, sampleValues);
+            maxNumSamples, sampleTimes, sampleValues, sampleIndices);
     }
 
     GfInterval interval = _GetCurrentTimeSamplingInterval();
@@ -2000,7 +2012,8 @@ VtValue
 UsdImagingInstanceAdapter::Get(UsdPrim const& usdPrim, 
                                SdfPath const& cachePath,
                                TfToken const &key,
-                               UsdTimeCode time) const
+                               UsdTimeCode time,
+                               VtIntArray *outIndices) const
 {
     TRACE_FUNCTION();
 
@@ -2013,7 +2026,7 @@ UsdImagingInstanceAdapter::Get(UsdPrim const& usdPrim,
             return VtValue();
         }
         return proto.adapter->Get(
-                _GetPrim(proto.path), cachePath, key, time);
+                _GetPrim(proto.path), cachePath, key, time, outIndices);
     } else if (_InstancerData const* instrData =
         TfMapLookupPtr(_instancerData, usdPrim.GetPath())) {
 
@@ -2034,7 +2047,7 @@ UsdImagingInstanceAdapter::Get(UsdPrim const& usdPrim,
         }
             
     }
-    return BaseAdapter::Get(usdPrim, cachePath, key, time);
+    return BaseAdapter::Get(usdPrim, cachePath, key, time, outIndices);
 }
 
 void
@@ -2153,8 +2166,13 @@ UsdImagingInstanceAdapter::_GetProtoPrim(SdfPath const& instancerPath,
             }
         }
     }
-    if (!TF_VERIFY(r, "instancer = %s, cachePath = %s",
-                      instancerPath.GetText(), cachePath.GetText())) {
+
+    if (!r) {
+        // Note: for some callers, like ProcessPropertyChange, it's possible
+        // for this call to fail when trying to process property changes on
+        // things that have already been removed from the instancer map by
+        // a previous change.  Callers that expect this call to succeed should
+        // TF_VERIFY(r->adapter).
         return EMPTY;
     }
 
@@ -2440,6 +2458,10 @@ UsdImagingInstanceAdapter::GetScenePrimPath(
             cachePath.GetAbsoluteRootOrPrimPath(),
             cachePath, &instancerContext);
 
+        if (!proto.adapter) {
+            return SdfPath();
+        }
+
         _InstancerData const* instrData =
             TfMapLookupPtr(_instancerData, instancerContext.instancerCachePath);
         if (!instrData) {
@@ -2593,6 +2615,11 @@ struct UsdImagingInstanceAdapter::_PopulateInstanceSelectionFn
                 instanceIndices.push_back(i);
                 break;
             }
+        }
+
+        // If we're not currently drawing this instance, there's nothing to do.
+        if (instanceIndices.empty()) {
+            return true;
         }
 
         if (selectionCount == selectionPathVec.size()) {
@@ -2774,6 +2801,11 @@ UsdImagingInstanceAdapter::GetVolumeFieldDescriptors(
         UsdImagingInstancerContext instancerContext;
         _ProtoPrim const& proto = _GetProtoPrim(usdPrim.GetPath(),
                                                     id, &instancerContext);
+
+        if (!TF_VERIFY(proto.adapter, "%s", usdPrim.GetPath().GetText())) {
+            return HdVolumeFieldDescriptorVector();
+        }
+
         return proto.adapter->GetVolumeFieldDescriptors(
             _GetPrim(proto.path), id, time);
     }

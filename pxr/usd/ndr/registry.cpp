@@ -23,12 +23,12 @@
 //
 
 #include "pxr/pxr.h"
-#include "pxr/base/tf/instantiateSingleton.h"
 #include "pxr/base/tf/pathUtils.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/type.h"
 #include "pxr/base/trace/trace.h"
 #include "pxr/base/work/loops.h"
+#include "pxr/base/work/withScopedParallelism.h"
 #include "pxr/usd/ar/resolver.h"
 #include "pxr/usd/ndr/debugCodes.h"
 #include "pxr/usd/ndr/discoveryPlugin.h"
@@ -67,7 +67,7 @@ NdrRegistry_ValidateProperty(
     std::string* errorMessage)
 {
     const VtValue& defaultValue = property->GetDefaultValue();
-    const SdfTypeIndicator sdfTypeIndicator = property->GetTypeAsSdfType();
+    const NdrSdfTypeIndicator sdfTypeIndicator = property->GetTypeAsSdfType();
     const SdfValueTypeName sdfType = sdfTypeIndicator.first;
 
     // We allow default values to be unspecified, but if they aren't empty, then
@@ -284,12 +284,6 @@ NdrRegistry::NdrRegistry()
 NdrRegistry::~NdrRegistry()
 {
     // nothing yet
-}
-
-NdrRegistry&
-NdrRegistry::GetInstance()
-{
-    return TfSingleton<NdrRegistry>::GetInstance();
 }
 
 void
@@ -833,18 +827,28 @@ NdrRegistry::GetNodesByFamily(const TfToken& family, NdrVersionFilter filter)
         }
     }
 
-    // Do the parsing
-    WorkParallelForN(_discoveryResults.size(),
-        [&](size_t begin, size_t end) {
-            for (size_t i = begin; i < end; ++i) {
-                const NdrNodeDiscoveryResult& dr = _discoveryResults.at(i);
-                if (_MatchesFamilyAndFilter(dr, family, filter)) {
-                    _InsertNodeIntoCache(dr);
-                }
-            }
-        }
-    );
+    // Do the parsing. We need to release the Python GIL here to avoid
+    // deadlocks since the code running in the worker threads may call into
+    // Python and try to take the GIL when loading plugins. We also need
+    // to use scoped parallelism to ensure we don't pick up other tasks
+    // during the call to WorkParallelForN that may reenter this function
+    // and also deadlock.
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
 
+        WorkWithScopedParallelism([&]() {
+            WorkParallelForN(_discoveryResults.size(),
+                [&](size_t begin, size_t end) {
+                    for (size_t i = begin; i < end; ++i) {
+                        const NdrNodeDiscoveryResult& dr = _discoveryResults.at(i);
+                        if (_MatchesFamilyAndFilter(dr, family, filter)) {
+                            _InsertNodeIntoCache(dr);
+                        }
+                    }
+                });
+            }
+        );
+    }
     // Expose the concurrent map as a normal vector to the outside world
     return _GetNodeMapAsNodePtrVec(family, filter);
 }

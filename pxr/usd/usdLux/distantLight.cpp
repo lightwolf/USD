@@ -34,7 +34,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_REGISTRY_FUNCTION(TfType)
 {
     TfType::Define<UsdLuxDistantLight,
-        TfType::Bases< UsdLuxLight > >();
+        TfType::Bases< UsdLuxNonboundableLightBase > >();
     
     // Register the usd prim typename as an alias under UsdSchemaBase. This
     // enables one to call
@@ -75,13 +75,9 @@ UsdLuxDistantLight::Define(
 }
 
 /* virtual */
-UsdSchemaKind UsdLuxDistantLight::_GetSchemaKind() const {
+UsdSchemaKind UsdLuxDistantLight::_GetSchemaKind() const
+{
     return UsdLuxDistantLight::schemaKind;
-}
-
-/* virtual */
-UsdSchemaKind UsdLuxDistantLight::_GetSchemaType() const {
-    return UsdLuxDistantLight::schemaType;
 }
 
 /* static */
@@ -158,12 +154,13 @@ const TfTokenVector&
 UsdLuxDistantLight::GetSchemaAttributeNames(bool includeInherited)
 {
     static TfTokenVector localNames = {
+        UsdLuxTokens->lightShaderId,
         UsdLuxTokens->inputsAngle,
         UsdLuxTokens->inputsIntensity,
     };
     static TfTokenVector allNames =
         _ConcatenateAttributeNames(
-            UsdLuxLight::GetSchemaAttributeNames(true),
+            UsdLuxNonboundableLightBase::GetSchemaAttributeNames(true),
             localNames);
 
     if (includeInherited)

@@ -33,9 +33,12 @@
 #include "pxr/usd/sdf/propertySpec.h"
 #include "pxr/usd/sdf/relationshipSpec.h"
 #include "pxr/base/tf/hash.h"
-#include "pxr/base/tf/hashmap.h"
+
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+class UsdPrim;
 
 /// Class representing the builtin definition of a prim given the schemas 
 /// registered in the schema registry. It provides access to the the builtin 
@@ -205,6 +208,51 @@ public:
     USD_API
     std::string GetPropertyDocumentation(const TfToken &propName) const;
 
+    /// Copies the contents of this prim definition to a prim spec on the 
+    /// given \p layer at the given \p path. This includes the entire property
+    /// spec for each of this definition's built-in properties as well as all of
+    /// this definition's prim metadata. 
+    /// 
+    /// If the prim definition represents a concrete prim type, the type name 
+    /// of the prim spec is set to the the type name of this prim definition. 
+    /// Otherwise the type name is set to empty. The 'apiSchemas' metadata
+    /// on the prim spec will always be explicitly set to the combined list 
+    /// of all API schemas applied to this prim definition, i.e. the list 
+    /// returned by UsdPrimDefinition::GetAppliedAPISchemas. Note that if this 
+    /// prim definition is an API schema prim definition 
+    /// (see UsdSchemaRegistry::FindAppliedAPIPrimDefinition) then 'apiSchemas'
+    /// will be empty as this prim definition does not "have" an applied API 
+    /// because instead it "is" an applied API.
+    /// 
+    /// If there is no prim spec at the given \p path, a new prim spec is 
+    /// created at that path with the specifier \p newSpecSpecifier. Any 
+    /// necessary ancestor specs will be created as well but they will always 
+    /// be created as overs. If a spec does exist at \p path, then all of its 
+    /// properties and 
+    /// \ref UsdSchemaRegistry::IsDisallowedField "schema allowed metadata" are 
+    /// cleared before it is populated from the prim definition.
+    USD_API
+    bool FlattenTo(const SdfLayerHandle &layer, 
+                   const SdfPath &path,
+                   SdfSpecifier newSpecSpecifier = SdfSpecifierOver) const;
+
+    /// \overload
+    /// Copies the contents of this prim definition to a prim spec at the 
+    /// current edit target for a prim with the given \p name under the prim 
+    /// \p parent.
+    USD_API
+    UsdPrim FlattenTo(const UsdPrim &parent, 
+                      const TfToken &name,
+                      SdfSpecifier newSpecSpecifier = SdfSpecifierOver) const;
+
+    /// \overload
+    /// Copies the contents of this prim definition to a prim spec at the 
+    /// current edit target for the given \p prim.
+    USD_API
+    UsdPrim FlattenTo(const UsdPrim &prim, 
+                      SdfSpecifier newSpecSpecifier = SdfSpecifierOver) const;
+
+
 private:
     // Only the UsdSchemaRegistry can construct prim definitions.
     friend class UsdSchemaRegistry;
@@ -256,7 +304,10 @@ private:
 
     UsdPrimDefinition() = default;
 
-    UsdPrimDefinition(const SdfPrimSpecHandle &primSpec, bool isAPISchema);
+    // Constructor that initializes the prim definition with prim path of 
+    // the primary prim spec of this definition's schema type in the schematics.
+    // This does not populate any of the properties of the prim definition.
+    UsdPrimDefinition(const SdfPath &schematicsPrimPath, bool isAPISchema);
 
     // Access to the schema registry's schematics.
     const SdfLayerRefPtr &_GetSchematics() const {
@@ -268,33 +319,22 @@ private:
 
     // Helpers for constructing the prim definition.
     USD_API
-    void _SetPrimSpec(const SdfPrimSpecHandle &primSpec, 
-                      bool providesPrimMetadata);
+    void _ComposePropertiesFromPrimSpec(
+        const SdfPrimSpecHandle &weakerPrimSpec, 
+        const std::string &propPrefix = "");
 
     USD_API
-    void _ApplyPropertiesFromPrimDef(const UsdPrimDefinition &primDef, 
-                                     const std::string &propPrefix = "");
+    void _ComposePropertiesFromPrimDef(
+        const UsdPrimDefinition &weakerPrimDef, 
+        const std::string &propPrefix = "");
 
-    void _AddProperty(const TfToken &name, const SdfPath &schemaPath) 
-    {
-        // Adds the property name with schema path to the prim def. This makes 
-        // sure we overwrite the original property path with the new path if it 
-        // already exists, but makes sure we don't end up with duplicate names 
-        // in the property names list.
-        auto it = _propPathMap.insert(std::make_pair(name, schemaPath));
-        if (it.second) {
-            _properties.push_back(name);
-        } else {
-            it.first->second = schemaPath;
-        }
-    }
-
-    SdfPrimSpecHandle _primSpec;
+    // Path to the prim in the schematics for this prim definition.
+    SdfPath _schematicsPrimPath;
 
     // Map for caching the paths to each property spec in the schematics by 
     // property name.
     using _PrimTypePropNameToPathMap = 
-        TfHashMap<TfToken, SdfPath, TfToken::HashFunctor>;
+        std::unordered_map<TfToken, SdfPath, TfToken::HashFunctor>;
     _PrimTypePropNameToPathMap _propPathMap;
     TfTokenVector _appliedAPISchemas;
 

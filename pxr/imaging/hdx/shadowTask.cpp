@@ -32,10 +32,7 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 
 
-#include "pxr/imaging/hdSt/glConversions.h"
-#include "pxr/imaging/hdSt/glslfxShader.h"
 #include "pxr/imaging/hdSt/light.h"
-#include "pxr/imaging/hdSt/package.h"
 #include "pxr/imaging/hdSt/renderPass.h"
 #include "pxr/imaging/hdSt/renderPassShader.h"
 #include "pxr/imaging/hdSt/renderPassState.h"
@@ -46,13 +43,11 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-HdStShaderCodeSharedPtr HdxShadowTask::_overrideShader;
-
 bool
 _HasDrawItems(HdRenderPassSharedPtr pass)
 {
     HdSt_RenderPass *hdStRenderPass = static_cast<HdSt_RenderPass*>(pass.get());
-    return hdStRenderPass && hdStRenderPass->GetDrawItemCount() > 0;
+    return hdStRenderPass && hdStRenderPass->HasDrawItems();
 }
 
 HdxShadowTask::HdxShadowTask(HdSceneDelegate* delegate, SdfPath const& id)
@@ -238,7 +233,8 @@ HdxShadowTask::Sync(HdSceneDelegate* delegate,
 
         GfVec2i shadowMapRes = shadows->GetShadowMapSize(shadowMapId);
 
-        // Move the camera to the correct position to take the shadow map
+        // Set camera framing based on the shadow map's, which is computed in
+        // HdxSimpleLightTask.
         _renderPassStates[passId]->SetCameraFramingState( 
             shadows->GetViewMatrix(shadowMapId), 
             shadows->GetProjectionMatrix(shadowMapId),
@@ -260,7 +256,6 @@ HdxShadowTask::Prepare(HdTaskContext* ctx,
 
     for(size_t passId = 0; passId < _passes.size(); passId++) {
         _renderPassStates[passId]->Prepare(resourceRegistry);
-        _passes[passId]->Prepare(GetRenderTags());
     }
 }
 
@@ -319,36 +314,6 @@ HdxShadowTask::GetRenderTags() const
 }
 
 void
-HdxShadowTask::_CreateOverrideShader()
-{
-    static std::mutex shaderCreateLock;
-
-    if (!_overrideShader) {
-        std::lock_guard<std::mutex> lock(shaderCreateLock);
-        if (!_overrideShader) {
-            _overrideShader =
-                std::make_shared<HdStGLSLFXShader>(
-                    std::make_shared<HioGlslfx>(
-                        HdStPackageFallbackSurfaceShader()));
-        }
-    }
-}
-
-void
-HdxShadowTask::_SetHdStRenderPassState(HdxShadowTaskParams const &params,
-    HdStRenderPassState *renderPassState)
-{
-    if (params.enableSceneMaterials) {
-        renderPassState->SetOverrideShader(HdStShaderCodeSharedPtr());
-    } else {
-        if (!_overrideShader) {
-            _CreateOverrideShader();
-        }
-        renderPassState->SetOverrideShader(_overrideShader);
-    }
-}
-
-void
 HdxShadowTask::_UpdateDirtyParams(HdStRenderPassStateSharedPtr &renderPassState,
     HdxShadowTaskParams const &params)
 {
@@ -358,7 +323,7 @@ HdxShadowTask::_UpdateDirtyParams(HdStRenderPassStateSharedPtr &renderPassState,
 
     if (HdStRenderPassState* extendedState =
             dynamic_cast<HdStRenderPassState*>(renderPassState.get())) {
-        _SetHdStRenderPassState(params, extendedState);
+        extendedState->SetUseSceneMaterials(params.enableSceneMaterials);
     }
 }
 
@@ -380,15 +345,7 @@ std::ostream& operator<<(std::ostream& out, const HdxShadowTaskParams& pv)
         << pv.depthBiasSlopeFactor << " "
         << pv.depthFunc << " "
         << pv.cullStyle << " "
-        << pv.camera << " "
-        << pv.viewport << " "
         ;
-        TF_FOR_ALL(it, pv.lightIncludePaths) {
-            out << *it;
-        }
-        TF_FOR_ALL(it, pv.lightExcludePaths) {
-            out << *it;
-        }
     return out;
 }
 
@@ -404,11 +361,7 @@ bool operator==(const HdxShadowTaskParams& lhs, const HdxShadowTaskParams& rhs)
             lhs.depthBiasConstantFactor == rhs.depthBiasConstantFactor  && 
             lhs.depthBiasSlopeFactor == rhs.depthBiasSlopeFactor        && 
             lhs.depthFunc == rhs.depthFunc                              && 
-            lhs.cullStyle == rhs.cullStyle                              && 
-            lhs.camera == rhs.camera                                    && 
-            lhs.viewport == rhs.viewport                                && 
-            lhs.lightIncludePaths == rhs.lightIncludePaths              && 
-            lhs.lightExcludePaths == rhs.lightExcludePaths
+            lhs.cullStyle == rhs.cullStyle
             ;
 }
 

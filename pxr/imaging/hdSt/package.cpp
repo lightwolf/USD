@@ -79,9 +79,9 @@ HdStPackageFallbackLightingShader()
 }
 
 TfToken
-HdStPackageFallbackSurfaceShader()
+HdStPackageFallbackMaterialNetworkShader()
 {
-    static TfToken s = _GetShaderPath("fallbackSurface.glslfx");
+    static TfToken s = _GetShaderPath("fallbackMaterialNetwork.glslfx");
     return s;
 }
 
@@ -89,13 +89,6 @@ TfToken
 HdStPackageFallbackVolumeShader()
 {
     static TfToken s = _GetShaderPath("fallbackVolume.glslfx");
-    return s;
-}
-
-TfToken
-HdStPackageLightingIntegrationShader()
-{
-    static TfToken s = _GetShaderPath("lightingIntegrationShader.glslfx");
     return s;
 }
 

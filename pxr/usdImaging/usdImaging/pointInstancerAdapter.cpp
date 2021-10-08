@@ -232,13 +232,6 @@ UsdImagingPointInstancerAdapter::_Populate(UsdPrim const& prim,
         _PopulatePrototype(protoIndex, instrData, protoRootPrim, index, &ctx);
     }
 
-    // Make sure we populate instancer data to the value cache the first time
-    // through UpdateForTime.
-    index->MarkInstancerDirty(instancerCachePath,
-        HdChangeTracker::DirtyTransform |
-        HdChangeTracker::DirtyPrimvar |
-        HdChangeTracker::DirtyInstanceIndex);
-
     return instancerCachePath;
 }
 
@@ -255,7 +248,8 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
     size_t instantiatedPrimCount = 0;
 
     std::vector<UsdPrimRange> treeStack;
-    treeStack.push_back(UsdPrimRange(protoRootPrim, _GetDisplayPredicate()));
+    treeStack.push_back(
+        UsdPrimRange(protoRootPrim, _GetDisplayPredicateForPrototypes()));
     while (!treeStack.empty()) {
         if (!treeStack.back()) {
             treeStack.pop_back();
@@ -277,7 +271,8 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
         // XXX: Should we delegate to instanceAdapter here?
         if (iter->IsInstance()) {
             UsdPrim prototype = iter->GetPrototype();
-            UsdPrimRange prototypeRange(prototype, _GetDisplayPredicate());
+            UsdPrimRange prototypeRange(
+                prototype, _GetDisplayPredicateForPrototypes());
             treeStack.push_back(prototypeRange);
 
             // Make sure to register a dependency on this instancer with the
@@ -385,7 +380,7 @@ UsdImagingPointInstancerAdapter::_PopulatePrototype(
                     populatePrim = _GetPrim(instancerChain.at(1));
                 }
 
-                SdfPath const& materialId = GetMaterialUsdPath(populatePrim);
+                SdfPath const& materialId = GetMaterialUsdPath(instanceProxyPrim);
                 TfToken const& drawMode = GetModelDrawMode(instanceProxyPrim);
                 TfToken const& inheritablePurpose = 
                     GetInheritablePurpose(instanceProxyPrim);
@@ -1630,7 +1625,8 @@ UsdImagingPointInstancerAdapter::SamplePrimvar(
     UsdTimeCode time, 
     size_t maxNumSamples, 
     float *sampleTimes, 
-    VtValue *sampleValues)
+    VtValue *sampleValues,
+    VtIntArray *sampleIndices)
 {
     HD_TRACE_FUNCTION();
 
@@ -1645,7 +1641,7 @@ UsdImagingPointInstancerAdapter::SamplePrimvar(
         UsdPrim protoPrim = _GetProtoUsdPrim(proto);
         return proto.adapter->SamplePrimvar(
             protoPrim, cachePath, key, time,
-            maxNumSamples, sampleTimes, sampleValues);
+            maxNumSamples, sampleTimes, sampleValues, sampleIndices);
     } else {
         // Map Hydra-PI transform keys to their USD equivalents.
         TfToken usdKey = key;
@@ -1658,7 +1654,7 @@ UsdImagingPointInstancerAdapter::SamplePrimvar(
         }
         return UsdImagingPrimAdapter::SamplePrimvar(
             usdPrim, cachePath, usdKey, time,
-            maxNumSamples, sampleTimes, sampleValues);
+            maxNumSamples, sampleTimes, sampleValues, sampleIndices);
     }
 }
 
@@ -1834,7 +1830,16 @@ UsdImagingPointInstancerAdapter::GetMaterialId(UsdPrim const& usdPrim,
         // Delegate to prototype adapter and USD prim.
         _ProtoPrim const& proto = _GetProtoPrim(usdPrim.GetPath(), cachePath);
         UsdPrim protoPrim = _GetProtoUsdPrim(proto);
-        return proto.adapter->GetMaterialId(protoPrim, cachePath, time);
+        SdfPath materialId =
+            proto.adapter->GetMaterialId(protoPrim, cachePath, time);
+        if (!materialId.IsEmpty()) {
+            return materialId;
+        }
+        // If the child prim doesn't have a material ID, see if there's
+        // an instancer material path...
+        UsdPrim instanceProxyPrim = _GetPrim(_GetPrimPathFromInstancerChain(
+                    proto.paths));
+        return GetMaterialUsdPath(instanceProxyPrim);
     }
     return BaseAdapter::GetMaterialId(usdPrim, cachePath, time);
 }
@@ -1844,7 +1849,8 @@ VtValue
 UsdImagingPointInstancerAdapter::Get(UsdPrim const& usdPrim,
                                      SdfPath const& cachePath,
                                      TfToken const& key,
-                                     UsdTimeCode time) const
+                                     UsdTimeCode time,
+                                     VtIntArray *outIndices) const
 {
     TRACE_FUNCTION();
 
@@ -1852,7 +1858,7 @@ UsdImagingPointInstancerAdapter::Get(UsdPrim const& usdPrim,
         // Delegate to prototype adapter and USD prim.
         _ProtoPrim const& proto = _GetProtoPrim(usdPrim.GetPath(), cachePath);
         UsdPrim protoPrim = _GetProtoUsdPrim(proto);
-        return proto.adapter->Get(protoPrim, cachePath, key, time);
+        return proto.adapter->Get(protoPrim, cachePath, key, time, outIndices);
 
     } else  if (_InstancerData const* instrData =
                 TfMapLookupPtr(_instancerData, cachePath)) {
@@ -1869,20 +1875,7 @@ UsdImagingPointInstancerAdapter::Get(UsdPrim const& usdPrim,
             UsdGeomPointInstancer instancer(usdPrim);
             VtQuathArray orientations;
             if (instancer.GetOrientationsAttr().Get(&orientations, time)) {
-                // convert to Vec4Array that hydra instancer requires.
-                // Also note that hydra's instancer takes GfQuaterion layout
-                // (real, imaginary) which differs from GfQuath's
-                // (imaginary, real)
-                VtVec4fArray rotations;
-                rotations.reserve(orientations.size());
-                for (const GfQuath& orientation : orientations) {
-                    rotations.push_back(
-                        GfVec4f(orientation.GetReal(),
-                                orientation.GetImaginary()[0],
-                                orientation.GetImaginary()[1],
-                                orientation.GetImaginary()[2]));
-                }
-                return VtValue(rotations);
+                return VtValue(orientations);
             }
 
         } else if (key == _tokens->scale) {
@@ -1896,14 +1889,19 @@ UsdImagingPointInstancerAdapter::Get(UsdPrim const& usdPrim,
             UsdGeomPrimvarsAPI primvars(usdPrim);
             if (UsdGeomPrimvar pv = primvars.GetPrimvar(key)) {
                 VtValue value;
-                if (pv.ComputeFlattened(&value, time)) {
+                if (outIndices) {
+                    if (pv && pv.Get(&value, time)) {
+                        pv.GetIndices(outIndices, time);
+                        return value;
+                    }
+                } else if (pv && pv.ComputeFlattened(&value, time)) {
                     return value;
                 }
             }
         }
     }
 
-    return BaseAdapter::Get(usdPrim, cachePath, key, time);
+    return BaseAdapter::Get(usdPrim, cachePath, key, time, outIndices);
 }
 
 /*virtual*/

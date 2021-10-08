@@ -47,6 +47,7 @@ PXR_NAMESPACE_OPEN_SCOPE
     (quadrangulateDouble)
 
 #define HDST_TOKENS                             \
+    (constantLighting)                          \
     (packedSmoothNormals)                       \
     (smoothNormals)                             \
     (packedFlatNormals)                         \
@@ -57,10 +58,37 @@ PXR_NAMESPACE_OPEN_SCOPE
     (translation)                               \
     (sRGB)                                      \
     (raw)                                       \
-    ((colorSpaceAuto, "auto"))
+    ((_double, "double"))                       \
+    ((_float, "float"))                         \
+    ((_int, "int"))                             \
+    ((colorSpaceAuto, "auto"))                  \
+    (fvarIndices)                               \
+    (fvarPatchParam)                            \
+    (coarseFaceIndex)                           \
+    (processedFaceCounts)                       \
+    (processedFaceIndices)                      \
+    (geomSubsetFaceIndices)
 
-#define HDST_LIGHT_TOKENS                       \
-    (color)
+#define HDST_TEXTURE_TOKENS                     \
+    (wrapS)                                     \
+    (wrapT)                                     \
+    (wrapR)                                     \
+    (black)                                     \
+    (clamp)                                     \
+    (mirror)                                    \
+    (repeat)                                    \
+    (useMetadata)                               \
+    (minFilter)                                 \
+    (magFilter)                                 \
+    (linear)                                    \
+    (nearest)                                   \
+    (linearMipmapLinear)                        \
+    (linearMipmapNearest)                       \
+    (nearestMipmapLinear)                       \
+    (nearestMipmapNearest)
+
+#define HDST_RENDER_BUFFER_TOKENS                       \
+    ((stormMsaaSampleCount, "storm:msaaSampleCount"))
 
 #define HDST_RENDER_SETTINGS_TOKENS             \
     (enableTinyPrimCulling)                     \
@@ -90,14 +118,21 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 #define HDST_PERF_TOKENS                        \
     (copyBufferGpuToGpu)                        \
-    (copyBufferCpuToGpu)
+    (copyBufferCpuToGpu)                        \
+    (drawItemsCacheHit)                         \
+    (drawItemsCacheMiss)                        \
+    (drawItemsCacheStale)                       \
+    (drawItemsFetched)
 
 TF_DECLARE_PUBLIC_TOKENS(HdStGLSLProgramTokens, HDST_API,
                          HDST_GLSL_PROGRAM_TOKENS);
 
 TF_DECLARE_PUBLIC_TOKENS(HdStTokens, HDST_API, HDST_TOKENS);
 
-TF_DECLARE_PUBLIC_TOKENS(HdStLightTokens, HDST_API, HDST_LIGHT_TOKENS);
+TF_DECLARE_PUBLIC_TOKENS(HdStTextureTokens, HDST_API, HDST_TEXTURE_TOKENS);
+
+TF_DECLARE_PUBLIC_TOKENS(HdStRenderBufferTokens, HDST_API,
+                         HDST_RENDER_BUFFER_TOKENS);
 
 TF_DECLARE_PUBLIC_TOKENS(HdStRenderSettingsTokens, HDST_API,
                          HDST_RENDER_SETTINGS_TOKENS);

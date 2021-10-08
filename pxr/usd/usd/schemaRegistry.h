@@ -33,7 +33,8 @@
 
 #include "pxr/base/tf/hash.h"
 #include "pxr/base/tf/singleton.h"
-#include "pxr/base/tf/hashmap.h"
+
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -199,13 +200,48 @@ public:
     ///
     /// This function returns the separated schema type name and instance name 
     /// component tokens if possible, otherwise it returns the \p apiSchemaName 
-    /// as the type name and an empty instance name.
+    /// as the type name and an empty instance name. 
+    ///
+    /// Note that no validation is done on the returned tokens. Clients are
+    /// advised to use GetTypeFromSchemaTypeName() to validate the typeName 
+    /// token.
     ///
     /// \sa UsdPrim::AddAppliedSchema(const TfToken&) const
     /// \sa UsdPrim::GetAppliedSchemas() const
     USD_API
-    static std::pair<TfToken, TfToken> GetTypeAndInstance(
+    static std::pair<TfToken, TfToken> GetTypeNameAndInstance(
             const TfToken &apiSchemaName);
+
+    /// Returns true if the given \p instanceName is an allowed instance name
+    /// for the multiple apply API schema named \p apiSchemaName. 
+    /// 
+    /// Any instance name that matches the name of a property provided by the 
+    /// API schema is disallowed and will return false. If the schema type
+    /// has plugin metadata that specifies allowed instance names, then only
+    /// those specified names are allowed for the schema type.
+    /// If the instance name is empty or the API is not a multiple apply schema,
+    /// this will return false.
+    USD_API
+    static bool IsAllowedAPISchemaInstanceName(
+        const TfToken &apiSchemaName,
+        const TfToken &instanceName);
+
+    /// Returns a list of prim type names that the given \p apiSchemaName can
+    /// only be applied to. 
+    /// 
+    /// A non-empty list indicates that the API schema can only be applied to 
+    /// prim that are or derive from prim type names in the list. If the list
+    /// is empty, the API schema can be applied to prims of any type.
+    /// 
+    /// If a non-empty \p instanceName is provided, this will first look for
+    /// a list of "can only apply to" names specific to that instance of the API
+    /// schema and return that if found. If a list is not found for the specific
+    /// instance, it will fall back to looking for a "can only apply to" list
+    /// for just the schema name itself.
+    USD_API
+    static const TfTokenVector &GetAPISchemaCanOnlyApplyToTypeNames(
+        const TfToken &apiSchemaName, 
+        const TfToken &instanceName = TfToken());
 
     /// Returns a map of the names of all registered auto apply API schemas
     /// to the list of type names each is registered to be auto applied to.
@@ -216,7 +252,22 @@ public:
     /// include derived types of the listed types, the type lists returned by 
     /// this function do not. 
     USD_API
-    static std::map<TfToken, TfTokenVector> GetAutoApplyAPISchemas();
+    static const std::map<TfToken, TfTokenVector> &GetAutoApplyAPISchemas();
+
+    /// Collects all the additional auto apply schemas that can be defined in 
+    /// a plugin through "AutoApplyAPISchemas" metadata and adds the mappings
+    /// to \p autoApplyAPISchemas. 
+    /// 
+    /// These are separate from the auto-apply schemas that are built in to the 
+    /// applied API schema types themselves and can be defined in any plugin to 
+    /// map any applied API schema to any concrete prim type.
+    ///
+    /// Note that GetAutoApplyAPISchemas will already include API schemas 
+    /// collected from this method; this function is provided for clients that
+    /// may want to collect just these plugin API schema mappings.
+    USD_API
+    static void CollectAddtionalAutoApplyAPISchemasFromPlugins(
+        std::map<TfToken, TfTokenVector> *autoApplyAPISchemas);
 
     /// Returns the namespace prefix that is prepended to all properties of
     /// the given \p multiApplyAPISchemaName.
@@ -229,7 +280,7 @@ public:
     /// it is not.
     const UsdPrimDefinition* FindConcretePrimDefinition(
         const TfToken &typeName) const {
-        auto it = _concreteTypedPrimDefinitions.find(typeName);
+        const auto it = _concreteTypedPrimDefinitions.find(typeName);
         return it != _concreteTypedPrimDefinitions.end() ? it->second : nullptr;
     }
 
@@ -238,8 +289,17 @@ public:
     /// it is not.
     const UsdPrimDefinition *FindAppliedAPIPrimDefinition(
         const TfToken &typeName) const {
-        auto it = _appliedAPIPrimDefinitions.find(typeName);
-        return it != _appliedAPIPrimDefinitions.end() ? it->second : nullptr;
+        // Check the single apply API schemas first then check for multiple
+        // apply schemas. This function will most often be used to find a 
+        // single apply schema's prim definition as the prim definitions for
+        // multiple apply schemas aren't generally useful.
+        const auto it = _singleApplyAPIPrimDefinitions.find(typeName);
+        if (it != _singleApplyAPIPrimDefinitions.end()) {
+            return it->second;
+        }
+        const auto multiIt = _multiApplyAPIPrimDefinitions.find(typeName);
+        return multiIt != _multiApplyAPIPrimDefinitions.end() ? 
+            multiIt->second.primDef : nullptr;
     }
 
     /// Returns the empty prim definition.
@@ -276,29 +336,42 @@ private:
 
     UsdSchemaRegistry();
 
-    // Functions for backwards compatibility which old generated schemas. If
-    // usdGenSchema has not been run to regenerate schemas so that the schema
-    // kind is designated in the plugInfo, these functions are used to inquire
-    // about kind through the registered prim definitions.
-    bool _HasConcretePrimDefinition(const TfToken& primType) const;
-    bool _HasAppliedAPIPrimDefinition(const TfToken& apiSchemaType) const;
-    bool _HasMultipleApplyAPIPrimDefinition(const TfToken& apiSchemaType) const;
+    // For the given full API schema name (which may be "type:instance" for 
+    // multiple apply API schemas), finds and returns the prim definition for 
+    // the API schema type. If the API schema is an instance of a multiple 
+    // apply API, the full prefix that will be prepended to all properties 
+    // when the schema is applied will be set in propertyPrefix.
+    const UsdPrimDefinition *_FindAPIPrimDefinitionByFullName(
+        const TfToken &apiSchemaName, std::string *propertyPrefix) const;
 
-    void _FindAndAddPluginSchema();
+    void _ComposeAPISchemasIntoPrimDefinition(
+        UsdPrimDefinition *primDef, 
+        const TfTokenVector &appliedAPISchemas) const;
 
-    void _ApplyAPISchemasToPrimDefinition(
-        UsdPrimDefinition *primDef, const TfTokenVector &appliedAPISchemas) const;
+    // Private class for helping initialize the schema registry. Defined 
+    // entirely in the implementation. Declared here for private access to the
+    // registry.
+    class _SchemaDefInitHelper;
+
+    // Multiple apply API schema definitions want to be stored along with the
+    // their schema's property namespace prefix which is required to correctly
+    // apply them.
+    struct _MultipleApplyAPIDefinition {
+        UsdPrimDefinition *primDef = nullptr;
+        TfToken propertyNamespace;
+    };
+    using _TypeNameToMultipleApplyAPIDefinitionMap = std::unordered_map<
+        TfToken, _MultipleApplyAPIDefinition, TfToken::HashFunctor>;
+
+    using _TypeNameToPrimDefinitionMap = std::unordered_map<
+        TfToken, UsdPrimDefinition *, TfToken::HashFunctor>;
 
     SdfLayerRefPtr _schematics;
-    typedef TfHashMap<TfToken, UsdPrimDefinition *, 
-                      TfToken::HashFunctor> _TypeNameToPrimDefinitionMap;
 
     _TypeNameToPrimDefinitionMap _concreteTypedPrimDefinitions;
-    _TypeNameToPrimDefinitionMap _appliedAPIPrimDefinitions;
+    _TypeNameToPrimDefinitionMap _singleApplyAPIPrimDefinitions;
+    _TypeNameToMultipleApplyAPIDefinitionMap _multiApplyAPIPrimDefinitions;
     UsdPrimDefinition *_emptyPrimDefinition;
-
-    TfHashMap<TfToken, TfToken, TfToken::HashFunctor> 
-        _multipleApplyAPISchemaNamespaces;
 
     VtDictionary _fallbackPrimTypes;
 
@@ -306,6 +379,17 @@ private:
 };
 
 USD_API_TEMPLATE_CLASS(TfSingleton<UsdSchemaRegistry>);
+
+// Utility function for extracting the metadata about applying API schemas from
+// the plugin metadata for the schema's type. It is useful for certain clients
+// to be able to access this plugin data in the same way that the 
+// UsdSchemaRegistry does.
+void Usd_GetAPISchemaPluginApplyToInfoForType(
+    const TfType &apiSchemaType,
+    const TfToken &apiSchemaName,
+    std::map<TfToken, TfTokenVector> *autoApplyAPISchemasMap,
+    TfHashMap<TfToken, TfTokenVector, TfHash> *canOnlyApplyAPISchemasMap,
+    TfHashMap<TfToken, TfToken::Set, TfHash> *allowedInstanceNamesMap);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

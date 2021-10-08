@@ -31,6 +31,7 @@
 #include "pxr/imaging/hdSt/drawItemInstance.h"
 #include "pxr/imaging/hdSt/geometricShader.h"
 #include "pxr/imaging/hdSt/glslProgram.h"
+#include "pxr/imaging/hdSt/materialNetworkShader.h"
 #include "pxr/imaging/hdSt/indirectDrawBatch.h"
 #include "pxr/imaging/hdSt/renderPassState.h"
 #include "pxr/imaging/hdSt/resourceRegistry.h"
@@ -51,7 +52,6 @@
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/envSetting.h"
 #include "pxr/base/tf/getenv.h"
-#include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/staticTokens.h"
 
 #include <iostream>
@@ -219,7 +219,7 @@ HdSt_IndirectDrawBatch::IsEnabledGPUInstanceFrustumCulling()
 }
 
 static int
-_GetElementOffset(HdStBufferArrayRangeSharedPtr const& range)
+_GetElementOffset(HdBufferArrayRangeSharedPtr const& range)
 {
     return range? range->GetElementOffset() : 0;
 }
@@ -374,68 +374,53 @@ HdSt_IndirectDrawBatch::_CompileBatch(
         // index buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            indexBar_ = drawItem->GetTopologyRange();
-        HdStBufferArrayRangeSharedPtr indexBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(indexBar_);
+            indexBar = drawItem->GetTopologyRange();
 
         //
         // topology visibility buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            topVisBar_ = drawItem->GetTopologyVisibilityRange();
-        HdStBufferArrayRangeSharedPtr topVisBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(topVisBar_);
+            topVisBar = drawItem->GetTopologyVisibilityRange();
 
         //
         // element (per-face) buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            elementBar_ = drawItem->GetElementPrimvarRange();
-        HdStBufferArrayRangeSharedPtr elementBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(elementBar_);
+            elementBar = drawItem->GetElementPrimvarRange();
 
         //
         // vertex attrib buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            vertexBar_ = drawItem->GetVertexPrimvarRange();
-        HdStBufferArrayRangeSharedPtr vertexBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(vertexBar_);
+            vertexBar = drawItem->GetVertexPrimvarRange();
 
         //
         // varying buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            varyingBar_ = drawItem->GetVaryingPrimvarRange();
-        HdStBufferArrayRangeSharedPtr varyingBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(varyingBar_);
+            varyingBar = drawItem->GetVaryingPrimvarRange();
 
         //
         // constant buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            constantBar_ = drawItem->GetConstantPrimvarRange();
-        HdStBufferArrayRangeSharedPtr constantBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(constantBar_);
+            constantBar = drawItem->GetConstantPrimvarRange();
 
         //
         // face varying buffer data
         //
         HdBufferArrayRangeSharedPtr const &
-            fvarBar_ = drawItem->GetFaceVaryingPrimvarRange();
-        HdStBufferArrayRangeSharedPtr fvarBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(fvarBar_);
+            fvarBar = drawItem->GetFaceVaryingPrimvarRange();
 
         //
         // instance buffer data
         //
         int instanceIndexWidth = instancerNumLevels + 1;
-        std::vector<HdStBufferArrayRangeSharedPtr> instanceBars(instancerNumLevels);
+        std::vector<HdBufferArrayRangeSharedPtr>
+                instanceBars(instancerNumLevels);
         for (size_t i = 0; i < instancerNumLevels; ++i) {
             HdBufferArrayRangeSharedPtr const &
-                ins_ = drawItem->GetInstancePrimvarRange(i);
-            HdStBufferArrayRangeSharedPtr ins =
-                std::static_pointer_cast<HdStBufferArrayRange>(ins_);
+                ins = drawItem->GetInstancePrimvarRange(i);
 
             instanceBars[i] = ins;
         }
@@ -444,17 +429,13 @@ HdSt_IndirectDrawBatch::_CompileBatch(
         // instance indices
         //
         HdBufferArrayRangeSharedPtr const &
-            instanceIndexBar_ = drawItem->GetInstanceIndexRange();
-        HdStBufferArrayRangeSharedPtr instanceIndexBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(instanceIndexBar_);
+            instanceIndexBar = drawItem->GetInstanceIndexRange();
 
         //
         // shader parameter
         //
         HdBufferArrayRangeSharedPtr const &
-            shaderBar_ = drawItem->GetMaterialShader()->GetShaderData();
-        HdStBufferArrayRangeSharedPtr shaderBar =
-            std::static_pointer_cast<HdStBufferArrayRange>(shaderBar_);
+            shaderBar = drawItem->GetMaterialNetworkShader()->GetShaderData();
 
         // 3 for triangles, 4 for quads, n for patches
         uint32_t numIndicesPerPrimitive
@@ -1069,10 +1050,12 @@ HdSt_IndirectDrawBatch::PrepareDraw(
     if (gpuCulling && !freezeCulling) {
         if (_useGpuInstanceCulling) {
             _GPUFrustumInstanceCulling(
-                batchItem, renderPassState, resourceRegistry);
+                batchItem, GfMatrix4f(renderPassState->GetCullMatrix()),
+                renderPassState->GetDrawingRangeNDC(), resourceRegistry);
         } else {
             _GPUFrustumNonInstanceCulling(
-                batchItem, renderPassState, resourceRegistry);
+                batchItem, GfMatrix4f(renderPassState->GetCullMatrix()),
+                renderPassState->GetDrawingRangeNDC(), resourceRegistry);
         }
 
         if (IsEnabledGPUCountVisibleInstances()) {
@@ -1127,8 +1110,8 @@ HdSt_IndirectDrawBatch::ExecuteDraw(
 
     // XXX: for surfaces shader, we need to iterate all drawItems to
     //      make textures resident, instead of just the first batchItem
-    TF_FOR_ALL(it, shaders) {
-        (*it)->BindResources(programId, binder, *renderPassState);
+    for (HdStShaderCodeSharedPtr const & shader : shaders) {
+        shader->BindResources(programId, binder, *renderPassState);
     }
 
     // constant buffer bind
@@ -1211,8 +1194,8 @@ HdSt_IndirectDrawBatch::ExecuteDraw(
 
     // shader buffer bind
     HdStBufferArrayRangeSharedPtr shaderBar;
-    TF_FOR_ALL(shader, shaders) {
-        HdBufferArrayRangeSharedPtr shaderBar_ = (*shader)->GetShaderData();
+    for (HdStShaderCodeSharedPtr const & shader : shaders) {
+        HdBufferArrayRangeSharedPtr shaderBar_ = shader->GetShaderData();
         shaderBar = std::static_pointer_cast<HdStBufferArrayRange>(shaderBar_);
         if (shaderBar) {
             binder.BindBuffer(HdTokens->materialParams, 
@@ -1291,8 +1274,8 @@ HdSt_IndirectDrawBatch::ExecuteDraw(
         binder.UnbindBufferArray(instanceIndexBar);
     }
 
-    TF_FOR_ALL(it, shaders) {
-        (*it)->UnbindResources(programId, binder, *renderPassState);
+    for (HdStShaderCodeSharedPtr const & shader : shaders) {
+        shader->UnbindResources(programId, binder, *renderPassState);
     }
     program.GetGeometricShader()->UnbindResources(programId, binder, *renderPassState);
 
@@ -1337,7 +1320,8 @@ _GetCullPipeline(
 void
 HdSt_IndirectDrawBatch::_GPUFrustumInstanceCulling(
     HdStDrawItem const *batchItem,
-    HdStRenderPassStateSharedPtr const &renderPassState,
+    GfMatrix4f const &cullMatrix,
+    GfVec2f const &drawRangeNdc,
     HdStResourceRegistrySharedPtr const &resourceRegistry)
 {
     HdBufferArrayRangeSharedPtr constantBar_ =
@@ -1414,8 +1398,8 @@ HdSt_IndirectDrawBatch::_GPUFrustumInstanceCulling(
 
     // set cull parameters
     cullParams.drawCommandNumUints = _dispatchBuffer->GetCommandNumUints();
-    cullParams.cullMatrix = GfMatrix4f(renderPassState->GetCullMatrix());
-    cullParams.drawRangeNDC = renderPassState->GetDrawingRangeNDC();
+    cullParams.cullMatrix = cullMatrix;
+    cullParams.drawRangeNDC = drawRangeNdc;
     cullParams.resetPass = 1;
 
     // run culling shader
@@ -1451,7 +1435,7 @@ HdSt_IndirectDrawBatch::_GPUFrustumInstanceCulling(
             bindLoc, sizeof(Uniforms), &cullParams);
 
         cullGfxCmds->DrawIndirect(
-            cullCommandBuffer->GetId(),
+            cullCommandBuffer->GetHandle(),
             cullCommandBuffer->GetOffset(),
             _dispatchBufferCullInput->GetCount(),
             cullCommandBuffer->GetStride());
@@ -1467,7 +1451,7 @@ HdSt_IndirectDrawBatch::_GPUFrustumInstanceCulling(
             bindLoc, sizeof(Uniforms), &cullParams);
 
         cullGfxCmds->DrawIndirect(
-            cullCommandBuffer->GetId(),
+            cullCommandBuffer->GetHandle(),
             cullCommandBuffer->GetOffset(),
             _dispatchBufferCullInput->GetCount(),
             cullCommandBuffer->GetStride());
@@ -1510,7 +1494,8 @@ HdSt_IndirectDrawBatch::_GPUFrustumInstanceCulling(
 void
 HdSt_IndirectDrawBatch::_GPUFrustumNonInstanceCulling(
     HdStDrawItem const *batchItem,
-    HdStRenderPassStateSharedPtr const &renderPassState,
+    GfMatrix4f const &cullMatrix,
+    GfVec2f const &drawRangeNdc,
     HdStResourceRegistrySharedPtr const &resourceRegistry)
 {
     HdBufferArrayRangeSharedPtr constantBar_ =
@@ -1558,8 +1543,8 @@ HdSt_IndirectDrawBatch::_GPUFrustumNonInstanceCulling(
 
     // set cull parameters
     cullParams.drawCommandNumUints = _dispatchBuffer->GetCommandNumUints();
-    cullParams.cullMatrix = GfMatrix4f(renderPassState->GetCullMatrix());
-    cullParams.drawRangeNDC = renderPassState->GetDrawingRangeNDC();
+    cullParams.cullMatrix = cullMatrix;
+    cullParams.drawRangeNDC = drawRangeNdc;
 
     // bind destination buffer (using entire buffer bind to start from offset=0)
     binder.BindBuffer(_tokens->dispatchBuffer,
@@ -1680,7 +1665,7 @@ HdSt_IndirectDrawBatch::_BeginGPUCountVisibleInstances(
     HgiBufferCpuToGpuOp op;
     op.cpuSourceBuffer = &count;
     op.sourceByteOffset = 0;
-    op.gpuDestinationBuffer = _resultBuffer->GetId();
+    op.gpuDestinationBuffer = _resultBuffer->GetHandle();
     op.destinationByteOffset = 0;
     op.byteSize = sizeof(count);
     blitCmds->CopyBufferCpuToGpu(op);
@@ -1709,7 +1694,7 @@ HdSt_IndirectDrawBatch::_EndGPUCountVisibleInstances(
     copyOp.byteSize = sizeof(count);
     copyOp.cpuDestinationBuffer = &count;
     copyOp.destinationByteOffset = 0;
-    copyOp.gpuSourceBuffer = _resultBuffer->GetId();
+    copyOp.gpuSourceBuffer = _resultBuffer->GetHandle();
     copyOp.sourceByteOffset = 0;
 
     HgiBlitCmds* blitCmds = resourceRegistry->GetGlobalBlitCmds();

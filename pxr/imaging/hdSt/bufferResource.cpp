@@ -21,14 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#include "pxr/imaging/garch/glApi.h"
-
-#include "pxr/imaging/glf/contextCaps.h"
 
 #include "pxr/imaging/hdSt/bufferResource.h"
-
-#include "pxr/base/tf/diagnostic.h"
-#include "pxr/base/tf/staticTokens.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -37,8 +31,7 @@ HdStBufferResource::HdStBufferResource(TfToken const &role,
                                            HdTupleType tupleType,
                                            int offset,
                                            int stride)
-    : HdBufferResource(role, tupleType, offset, stride),
-      _gpuAddr(0)
+    : HdBufferResource(role, tupleType, offset, stride)
 {
     /*NOTHING*/
 }
@@ -49,23 +42,10 @@ HdStBufferResource::~HdStBufferResource()
 }
 
 void
-HdStBufferResource::SetAllocation(HgiBufferHandle const& id, size_t size)
+HdStBufferResource::SetAllocation(HgiBufferHandle const& handle, size_t size)
 {
-    _id = id;
+    _handle = handle;
     HdResource::SetSize(size);
-
-    GlfContextCaps const & caps = GlfContextCaps::GetInstance();
-
-    // note: gpu address remains valid until the buffer object is deleted,
-    // or when the data store is respecified via BufferData/BufferStorage.
-    // It doesn't change even when we make the buffer resident or non-resident.
-    // https://www.opengl.org/registry/specs/NV/shader_buffer_load.txt
-    if (id && caps.bindlessBufferEnabled) {
-        glGetNamedBufferParameterui64vNV(
-            id->GetRawResource(), GL_BUFFER_GPU_ADDRESS_NV, (GLuint64EXT*)&_gpuAddr);
-    } else {
-        _gpuAddr = 0;
-    }
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -105,11 +105,6 @@ public:
     USDIMAGING_API
     void SyncAll(bool includeUnvarying);
 
-    /// Opportunity for the delegate to clean itself up after
-    /// performing parrellel work during sync phase
-    USDIMAGING_API
-    virtual void PostSyncCleanup() override;
-
     /// Populates the rootPrim in the HdRenderIndex.
     USDIMAGING_API
     void Populate(UsdPrim const& rootPrim);
@@ -197,7 +192,7 @@ public:
     void SetCullStyleFallback(HdCullStyle cullStyle);
 
     /// Sets the root transform for the entire delegate, which is applied to all
-    /// render prims generated. Settting this value will immediately invalidate
+    /// render prims generated. Setting this value will immediately invalidate
     /// existing rprim transforms.
     USDIMAGING_API
     void SetRootTransform(GfMatrix4d const& xf);
@@ -206,7 +201,7 @@ public:
     const GfMatrix4d &GetRootTransform() const { return _rootXf; }
 
     /// Sets the root visibility for the entire delegate, which is applied to
-    /// all render prims generated. Settting this value will immediately
+    /// all render prims generated. Setting this value will immediately
     /// invalidate existing rprim visibility.
     USDIMAGING_API
     void SetRootVisibility(bool isVisible);
@@ -327,6 +322,10 @@ public:
     USDIMAGING_API
     virtual VtValue Get(SdfPath const& id, TfToken const& key) override;
     USDIMAGING_API
+    virtual VtValue GetIndexedPrimvar(SdfPath const& id, 
+                                      TfToken const& key, 
+                                      VtIntArray *outIndices) override;
+    USDIMAGING_API
     HdIdVectorSharedPtr
     virtual GetCoordSysBindings(SdfPath const& id) override;
     USDIMAGING_API
@@ -368,6 +367,12 @@ public:
     SamplePrimvar(SdfPath const& id, TfToken const& key,
                   size_t maxNumSamples, float *times,
                   VtValue *samples) override;
+
+    USDIMAGING_API
+    virtual size_t
+    SampleIndexedPrimvar(SdfPath const& id, TfToken const& key,
+                         size_t maxNumSamples, float *times,
+                         VtValue *samples, VtIntArray *indices) override;
 
     // Material Support
     USDIMAGING_API
@@ -427,6 +432,13 @@ public:
     USDIMAGING_API
     VtValue GetExtComputationInput(SdfPath const& computationId,
                                    TfToken const& input) override;
+
+    USDIMAGING_API
+    size_t SampleExtComputationInput(SdfPath const& computationId,
+                                     TfToken const& input,
+                                     size_t maxSampleCount,
+                                     float *sampleTimes,
+                                     VtValue *sampleValues) override;
 
     USDIMAGING_API
     std::string GetExtComputationKernel(SdfPath const& computationId) override;
@@ -503,6 +515,13 @@ public:
     bool IsInInvisedPaths(const SdfPath &usdPath) const;
 
 private:
+    // Internal Get and SamplePrimvar
+    VtValue _Get(SdfPath const& id, TfToken const& key, VtIntArray *outIndices);
+
+    size_t _SamplePrimvar(SdfPath const& id, TfToken const& key,
+                          size_t maxNumSamples, float *times, VtValue *samples, 
+                          VtIntArray *indices);
+
     // Internal friend class.
     class _Worker;
     friend class UsdImagingIndexProxy;
@@ -542,7 +561,8 @@ private:
     // be refreshed.
     void _RefreshUsdObject(SdfPath const& usdPath, 
                            TfTokenVector const& changedPrimInfoFields,
-                           UsdImagingIndexProxy* proxy);
+                           UsdImagingIndexProxy* proxy,
+                           SdfPathSet* allTrackedVariabilityPaths); 
 
     // Heavy-weight invalidation of an entire prim subtree. All cached data is
     // reconstructed for all prims below \p rootPath.
@@ -660,16 +680,16 @@ private:
     _HdPrimInfo *_GetHdPrimInfo(const SdfPath &cachePath);
 
     Usd_PrimFlagsConjunction _GetDisplayPredicate() const;
+    Usd_PrimFlagsConjunction _GetDisplayPredicateForPrototypes() const;
 
     // Mark render tags dirty for all prims.
     // This is done in response to toggling the purpose-based display settings.
     void _MarkRenderTagsDirty();
 
+    typedef TfHashSet<SdfPath, SdfPath::Hash> _DirtySet;
 
-    typedef TfHashSet<SdfPath, SdfPath::Hash> _InstancerSet;
-
-    // Set of cache paths representing instancers
-    _InstancerSet _instancerPrimCachePaths;
+    // Set of cache paths that are due a Sync()
+    _DirtySet _dirtyCachePaths;
 
     /// Refinement level per-USD-prim and fallback.
     typedef TfHashMap<SdfPath, int, SdfPath::Hash> _RefineLevelMap;

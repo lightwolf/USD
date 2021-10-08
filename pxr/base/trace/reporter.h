@@ -58,7 +58,7 @@ class TraceCollectionAvailable;
 ////////////////////////////////////////////////////////////////////////////////
 /// \class TraceReporter
 ///
-/// This class converters streams of TraceEvent objects into call trees which
+/// This class converts streams of TraceEvent objects into call trees which
 /// can then be used as a data source to a GUI or written out to a file.
 ///
 class TraceReporter : 
@@ -192,19 +192,9 @@ protected:
 private:
     void _ProcessCollection(const TraceReporterBase::CollectionPtr&) override;
     void _RebuildEventAndAggregateTrees();
-    void _PrintRecursionMarker(std::ostream &s, const std::string &label, 
-                               int indent);
-    void _PrintLineTimes(std::ostream &s, double inclusive, double exclusive,
-                    int count, const std::string& label, int indent,
-                    bool recursive_node, int iterationCount=1);
-    void _PrintNodeTimes(std::ostream &s, TraceAggregateNodeRefPtr node, 
-                        int indent, int iterationCount=1);
-    void _PrintLineCalls(std::ostream &s, int inclusive, int exclusive,
-                         int total, const std::string& label, int indent);
     void _PrintTimes(std::ostream &s);
 
-    std::string _GetKeyName(const TfToken&) const;
-
+private:
     std::string _label;
 
     bool _groupByFunction;

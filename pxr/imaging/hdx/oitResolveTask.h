@@ -38,7 +38,8 @@ class HdSceneDelegate;
 
 using HdStRenderPassStateSharedPtr = std::shared_ptr<class HdStRenderPassState>;
 
-using HdRenderPassSharedPtr = std::shared_ptr<class HdRenderPass>;
+using HdSt_ImageShaderRenderPassSharedPtr =
+    std::shared_ptr<class HdSt_ImageShaderRenderPass>;
 using HdStRenderPassShaderSharedPtr =
     std::shared_ptr<class HdStRenderPassShader>;
 
@@ -92,11 +93,14 @@ private:
         HdRenderIndex* renderIndex,
         GfVec2i const& screenSize);
 
-    void _PrepareAovBindings(
-        HdTaskContext* ctx,
-        HdRenderIndex* renderIndex);
+    GfVec2i _ComputeScreenSize(
+        HdTaskContext *ctx,
+        HdRenderIndex* renderIndex) const;
 
-    HdRenderPassSharedPtr _renderPass;
+    const HdRenderPassAovBindingVector &_GetAovBindings(
+        HdTaskContext *ctx) const;
+
+    HdSt_ImageShaderRenderPassSharedPtr _renderPass;
     HdStRenderPassStateSharedPtr _renderPassState;
     HdStRenderPassShaderSharedPtr _renderPassShader;
 

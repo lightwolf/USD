@@ -42,6 +42,7 @@ pxr_library(hdx
         colorChannelTask
         colorCorrectionTask
         drawTargetTask
+        freeCameraSceneDelegate
         fullscreenShader
         hgiConversions
         oitBufferAccessor
@@ -58,10 +59,12 @@ pxr_library(hdx
         selectionTracker
         shadowTask
         simpleLightTask
+        skydomeTask
         task
         taskController
         tokens
         types
+        visualizeAovTask
 
     PUBLIC_HEADERS
         shadowMatrixComputation.h
@@ -93,7 +96,10 @@ pxr_library(hdx
         shaders/renderPassOitVolumeShader.glslfx
         shaders/renderPassShadowShader.glslfx
         shaders/selection.glslfx
+        shaders/skydome.glslfx
+        shaders/visualize.glslfx
         textures/StinsonBeach.exr
+        textures/StinsonBeach.tex
 
     DOXYGEN_FILES
         overview.dox

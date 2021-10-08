@@ -68,36 +68,23 @@ UsdContrivedEmptyMultipleApplyAPI::Get(const UsdPrim &prim, const TfToken &name)
 
 
 /* virtual */
-UsdSchemaKind UsdContrivedEmptyMultipleApplyAPI::_GetSchemaKind() const {
+UsdSchemaKind UsdContrivedEmptyMultipleApplyAPI::_GetSchemaKind() const
+{
     return UsdContrivedEmptyMultipleApplyAPI::schemaKind;
 }
 
-/* virtual */
-UsdSchemaKind UsdContrivedEmptyMultipleApplyAPI::_GetSchemaType() const {
-    return UsdContrivedEmptyMultipleApplyAPI::schemaType;
+/* static */
+bool
+UsdContrivedEmptyMultipleApplyAPI::CanApply(
+    const UsdPrim &prim, const TfToken &name, std::string *whyNot)
+{
+    return prim.CanApplyAPI<UsdContrivedEmptyMultipleApplyAPI>(name, whyNot);
 }
 
 /* static */
 UsdContrivedEmptyMultipleApplyAPI
 UsdContrivedEmptyMultipleApplyAPI::Apply(const UsdPrim &prim, const TfToken &name)
 {
-    // Ensure that the instance name is valid.
-    TfTokenVector tokens = SdfPath::TokenizeIdentifierAsTokens(name);
-
-    if (tokens.empty()) {
-        TF_CODING_ERROR("Invalid EmptyMultipleApplyAPI name '%s'.", 
-                        name.GetText());
-        return UsdContrivedEmptyMultipleApplyAPI();
-    }
-
-    const TfToken &baseName = tokens.back();
-    if (IsSchemaPropertyBaseName(baseName)) {
-        TF_CODING_ERROR("Invalid EmptyMultipleApplyAPI name '%s'. "
-                        "The base-name '%s' is a schema property name.", 
-                        name.GetText(), baseName.GetText());
-        return UsdContrivedEmptyMultipleApplyAPI();
-    }
-
     if (prim.ApplyAPI<UsdContrivedEmptyMultipleApplyAPI>(name)) {
         return UsdContrivedEmptyMultipleApplyAPI(prim, name);
     }

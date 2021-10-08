@@ -29,6 +29,7 @@
 #include "pxr/imaging/hdSt/glslProgram.h"
 #include "pxr/imaging/hdSt/interleavedMemoryManager.h"
 #include "pxr/imaging/hdSt/resourceRegistry.h"
+#include "pxr/imaging/hdSt/stagingBuffer.h"
 #include "pxr/imaging/hdSt/vboMemoryManager.h"
 #include "pxr/imaging/hdSt/vboSimpleMemoryManager.h"
 #include "pxr/imaging/hdSt/shaderCode.h"
@@ -43,9 +44,15 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
 TF_DEFINE_ENV_SETTING(HDST_ENABLE_RESOURCE_INSTANCING, true,
                   "Enable instance registry deduplication of resource data");
+
+TF_DEFINE_PRIVATE_TOKENS(
+    _perfTokens,
+
+    (numberOfTextureObjects)
+    (numberOfTextureHandles)
+);
 
 static void
 _CopyChainedBuffers(HdBufferSourceSharedPtr const&  src,
@@ -106,6 +113,7 @@ HdStResourceRegistry::HdStResourceRegistry(Hgi * const hgi)
     , _singleAggregationStrategy(
         std::make_unique<HdStVBOSimpleMemoryManager>(this))
     , _textureHandleRegistry(std::make_unique<HdSt_TextureHandleRegistry>(this))
+    , _stagingBuffer(std::make_unique<HdStStagingBuffer>(this))
 {
 }
 
@@ -387,7 +395,7 @@ HdStResourceRegistry::AddSources(HdBufferArrayRangeSharedPtr const &range,
             sources[srcNum] = sources.back();
             sources.pop_back();
 
-            // Don't increament srcNum as it now points
+            // Don't increment srcNum as it now points
             // to the new item or is off the end of the vector
         }
     }
@@ -509,9 +517,9 @@ HdStResourceRegistry::RegisterBufferResource(
     HgiBufferDesc bufDesc;
     bufDesc.usage= HgiBufferUsageUniform;
     bufDesc.byteSize= byteSize;
-    HgiBufferHandle newId = _hgi->CreateBuffer(bufDesc);
+    HgiBufferHandle buffer = _hgi->CreateBuffer(bufDesc);
 
-    result->SetAllocation(newId, byteSize);
+    result->SetAllocation(buffer, byteSize);
 
     _bufferResourceRegistry.push_back(result);
 
@@ -678,6 +686,12 @@ HdStResourceRegistry::GetGlobalComputeCmds()
     return _computeCmds.get();
 }
 
+HdStStagingBuffer*
+HdStResourceRegistry::GetStagingBuffer()
+{
+    return _stagingBuffer.get();
+}
+
 void
 HdStResourceRegistry::SubmitBlitWork(HgiSubmitWaitType wait)
 {
@@ -724,6 +738,10 @@ HdStResourceRegistry::_Commit()
     // handles (for bindless textures).
     _CommitTextures();
 
+    // Staging buffer size uses an atomic in anticipation of the
+    // Resolve loop being multithreaded.
+    std::atomic_size_t stagingBufferSize { 0 };
+
     // TODO: requests should be sorted by resource, and range.
     {
         HD_TRACE_SCOPE("Resolve");
@@ -762,6 +780,15 @@ HdStResourceRegistry::_Commit()
                                         source->GetNumElements());
                                 }
                             }
+
+                            // Calculate the size of the staging buffer.
+                            if (req.range && req.range->RequiresStaging()) {
+                                size_t srcSize =
+                                    source->GetNumElements() *
+                                    HdDataSizeOfTupleType(
+                                                source->GetTupleType());
+                                stagingBufferSize += srcSize;
+                            }
                         }
                     }
                 }
@@ -796,7 +823,7 @@ HdStResourceRegistry::_Commit()
                         // the reallocation happens only once per BufferArray.
                         //
                         // if the range is already larger than the current one,
-                        // leave it as it is (there is a possibilty that GPU
+                        // leave it as it is (there is a possibility that GPU
                         // computation generates less data than it was).
                         int currentNumElements = dstRange->GetNumElements();
                         if (currentNumElements < numElements) {
@@ -828,6 +855,7 @@ HdStResourceRegistry::_Commit()
         HD_TRACE_SCOPE("Copy");
         // 4. copy phase:
         //
+        _stagingBuffer->Resize(stagingBufferSize);
 
         for (_PendingSource &pendingSource : _pendingSources) {
             HdBufferArrayRangeSharedPtr &dstRange = pendingSource.range;
@@ -866,6 +894,8 @@ HdStResourceRegistry::_Commit()
         _uniformUboAggregationStrategy->Flush();
         _uniformSsboAggregationStrategy->Flush();
         _singleAggregationStrategy->Flush();
+
+        _stagingBuffer->Flush();
 
         // Make sure the writes are visible to computations that follow
         if (_blitCmds) {
@@ -1143,7 +1173,7 @@ HdStResourceRegistry::_TallyResourceAllocation(VtDictionary *result) const
         gpuMemoryUsed += size;
     }
 
-    // Texture Memory
+    // Texture Memory and other texture information
     {
         HdSt_TextureObjectRegistry *const textureObjectRegistry =
             _textureHandleRegistry->GetTextureObjectRegistry();
@@ -1153,6 +1183,15 @@ HdStResourceRegistry::_TallyResourceAllocation(VtDictionary *result) const
 
         (*result)[HdPerfTokens->textureMemory] = VtValue(textureMemory);
         gpuMemoryUsed += textureMemory;
+
+        const size_t numTexObjects =
+            textureObjectRegistry->GetNumberOfTextureObjects();
+        (*result)[_perfTokens->numberOfTextureObjects] = VtValue(numTexObjects);
+
+        const size_t numTexHandles =
+            _textureHandleRegistry->GetNumberOfTextureHandles();
+        (*result)[_perfTokens->numberOfTextureHandles] = VtValue(numTexHandles);
+            
     }
 
     (*result)[HdPerfTokens->gpuMemoryUsed.GetString()] = gpuMemoryUsed;
@@ -1164,12 +1203,11 @@ HdStResourceRegistry::AllocateTextureHandle(
         const HdTextureType textureType,
         HdSamplerParameters const &samplerParams,
         const size_t memoryRequest,
-        const bool createBindlessHandle,
         HdStShaderCodePtr const &shaderCode)
 {
     return _textureHandleRegistry->AllocateTextureHandle(
         textureId, textureType,
-        samplerParams, memoryRequest, createBindlessHandle,
+        samplerParams, memoryRequest,
         shaderCode);
 }
 

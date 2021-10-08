@@ -75,13 +75,9 @@ UsdShadeNodeGraph::Define(
 }
 
 /* virtual */
-UsdSchemaKind UsdShadeNodeGraph::_GetSchemaKind() const {
+UsdSchemaKind UsdShadeNodeGraph::_GetSchemaKind() const
+{
     return UsdShadeNodeGraph::schemaKind;
-}
-
-/* virtual */
-UsdSchemaKind UsdShadeNodeGraph::_GetSchemaType() const {
-    return UsdShadeNodeGraph::schemaType;
 }
 
 /* static */
@@ -163,9 +159,9 @@ UsdShadeNodeGraph::GetOutput(const TfToken &name) const
 }
 
 std::vector<UsdShadeOutput>
-UsdShadeNodeGraph::GetOutputs() const
+UsdShadeNodeGraph::GetOutputs(bool onlyAuthored) const
 {
-    return UsdShadeConnectableAPI(GetPrim()).GetOutputs();
+    return UsdShadeConnectableAPI(GetPrim()).GetOutputs(onlyAuthored);
 }
 
 UsdShadeShader
@@ -221,9 +217,9 @@ UsdShadeNodeGraph::GetInput(const TfToken &name) const
 }
 
 std::vector<UsdShadeInput>
-UsdShadeNodeGraph::GetInputs() const
+UsdShadeNodeGraph::GetInputs(bool onlyAuthored) const
 {
-    return UsdShadeConnectableAPI(GetPrim()).GetInputs();
+    return UsdShadeConnectableAPI(GetPrim()).GetInputs(onlyAuthored);
 }
 
 std::vector<UsdShadeInput> 
@@ -379,28 +375,32 @@ UsdShadeNodeGraph::ComputeInterfaceInputConsumersMap(
     return resolved;
 }
 
-bool
-UsdShadeNodeGraph::ConnectableAPIBehavior::CanConnectOutputToSource(
-    const UsdShadeOutput &output,
-    const UsdAttribute &source,
-    std::string *reason)
+class UsdShadeNodeGraph_ConnectableAPIBehavior : 
+    public UsdShadeConnectableAPIBehavior
 {
-    return UsdShadeConnectableAPIBehavior::_CanConnectOutputToSource(
-            output, source, reason);
-}
+public:
+    // By default all NodeGraph Connectable Behavior should be
+    // container (of nodes) and exhibit encapsulation behavior.
+    USDSHADE_API
+    UsdShadeNodeGraph_ConnectableAPIBehavior() 
+        : UsdShadeConnectableAPIBehavior(
+                true /*isContainer*/, true /*requiresEncapsulation*/) {}
 
-bool
-UsdShadeNodeGraph::ConnectableAPIBehavior::IsContainer() const
-{
-    // NodeGraph does act as a namespace container for connected nodes
-    return true;
-}
+    USDSHADE_API
+    bool
+    CanConnectOutputToSource(const UsdShadeOutput &output,
+                             const UsdAttribute &source,
+                             std::string *reason) const override
+    {
+        return _CanConnectOutputToSource(output, source, reason);
+    }
+};
 
 TF_REGISTRY_FUNCTION(UsdShadeConnectableAPI)
 {
     UsdShadeRegisterConnectableAPIBehavior<
         UsdShadeNodeGraph,
-        UsdShadeNodeGraph::ConnectableAPIBehavior>();
+        UsdShadeNodeGraph_ConnectableAPIBehavior>();
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -64,11 +64,11 @@ class SdfAssetPath;
 /// 02  // including those inside payloads
 /// 03  stage->Load();
 /// 04  
-/// 05  // Traverse all prims, checking if they are of type UsdLuxLight
+/// 05  // Traverse all prims, checking if they have an applied UsdLuxLightAPI
 /// 06  // (Note: ignoring instancing and a few other things for simplicity)
 /// 07  SdfPathVector lights;
 /// 08  for (UsdPrim prim: stage->Traverse()) {
-/// 09      if (prim.IsA<UsdLuxLight>()) {
+/// 09      if (prim.HasAPI<UsdLuxLightAPI>()) {
 /// 10          lights.push_back(i->GetPath());
 /// 11      }
 /// 12  }
@@ -185,11 +185,6 @@ public:
     /// \sa UsdSchemaKind
     static const UsdSchemaKind schemaKind = UsdSchemaKind::SingleApplyAPI;
 
-    /// \deprecated
-    /// Same as schemaKind, provided to maintain temporary backward 
-    /// compatibility with older generated schemas.
-    static const UsdSchemaKind schemaType = UsdSchemaKind::SingleApplyAPI;
-
     /// Construct a UsdLuxListAPI on UsdPrim \p prim .
     /// Equivalent to UsdLuxListAPI::Get(prim.GetStage(), prim.GetPath())
     /// for a \em valid \p prim, but will not immediately throw an error for
@@ -232,6 +227,26 @@ public:
     Get(const UsdStagePtr &stage, const SdfPath &path);
 
 
+    /// Returns true if this <b>single-apply</b> API schema can be applied to 
+    /// the given \p prim. If this schema can not be a applied to the prim, 
+    /// this returns false and, if provided, populates \p whyNot with the 
+    /// reason it can not be applied.
+    /// 
+    /// Note that if CanApply returns false, that does not necessarily imply
+    /// that calling Apply will fail. Callers are expected to call CanApply
+    /// before calling Apply if they want to ensure that it is valid to 
+    /// apply a schema.
+    /// 
+    /// \sa UsdPrim::GetAppliedSchemas()
+    /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
+    ///
+    USDLUX_API
+    static bool 
+    CanApply(const UsdPrim &prim, std::string *whyNot=nullptr);
+
     /// Applies this <b>single-apply</b> API schema to the given \p prim.
     /// This information is stored by adding "ListAPI" to the 
     /// token-valued, listOp metadata \em apiSchemas on the prim.
@@ -243,6 +258,7 @@ public:
     /// 
     /// \sa UsdPrim::GetAppliedSchemas()
     /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
     /// \sa UsdPrim::ApplyAPI()
     /// \sa UsdPrim::RemoveAPI()
     ///
@@ -256,12 +272,6 @@ protected:
     /// \sa UsdSchemaKind
     USDLUX_API
     UsdSchemaKind _GetSchemaKind() const override;
-
-    /// \deprecated
-    /// Same as _GetSchemaKind, provided to maintain temporary backward 
-    /// compatibility with older generated schemas.
-    USDLUX_API
-    UsdSchemaKind _GetSchemaType() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -349,8 +359,8 @@ public:
     /// the stage, optionally consulting a cached result.
     ///
     /// In ComputeModeIgnoreCache mode, caching is ignored, and this
-    /// does a prim traversal looking for prims of type UsdLuxLight
-    /// or UsdLuxLightFilter.
+    /// does a prim traversal looking for prims that have a UsdLuxLightAPI
+    /// or are of type UsdLuxLightFilter.
     ///
     /// In ComputeModeConsultModelHierarchyCache, this does a traversal
     /// only of the model hierarchy. In this traversal, any lights that

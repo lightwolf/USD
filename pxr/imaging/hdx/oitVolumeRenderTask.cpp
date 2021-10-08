@@ -33,6 +33,8 @@
 
 #include "pxr/imaging/hdSt/renderPassShader.h"
 
+#include "pxr/imaging/glf/diagnostic.h"
+
 PXR_NAMESPACE_OPEN_SCOPE
 
 HdxOitVolumeRenderTask::HdxOitVolumeRenderTask(
@@ -43,9 +45,6 @@ HdxOitVolumeRenderTask::HdxOitVolumeRenderTask(
             HdxPackageRenderPassOitVolumeShader()))
     , _isOitEnabled(HdxOitBufferAccessor::IsOitEnabled())
 {
-    // Raymarching shader needs to stop when hitting opaque geometry,
-    // so allow shader to read the depth buffer.
-    _oitVolumeRenderPassShader->AddAovReadback(HdAovTokens->depth);
 }
 
 HdxOitVolumeRenderTask::~HdxOitVolumeRenderTask() = default;
@@ -71,13 +70,16 @@ HdxOitVolumeRenderTask::Prepare(HdTaskContext* ctx,
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    if (_isOitEnabled) {
+    // OIT buffers take up significant GPU resources. Skip if there are no
+    // oit draw items (i.e. no volumetric draw items)
+    if (_isOitEnabled && HdxRenderTask::_HasDrawItems()) {
         HdxRenderTask::Prepare(ctx, renderIndex);
+        HdxOitBufferAccessor(ctx).RequestOitBuffers();
 
-        // OIT buffers take up significant GPU resources. Skip if there are no
-        // oit draw items (i.e. no translucent or volumetric draw items)
-        if (HdxRenderTask::_HasDrawItems()) {
-            HdxOitBufferAccessor(ctx).RequestOitBuffers();
+        if (HdRenderPassStateSharedPtr const state = _GetRenderPassState(ctx)) {
+            _oitVolumeRenderPassShader->UpdateAovInputTextures(
+                state->GetAovInputBindings(),
+                renderIndex);
         }
     }
 }
@@ -88,9 +90,12 @@ HdxOitVolumeRenderTask::Execute(HdTaskContext* ctx)
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    if (!_isOitEnabled) return;
-    if (!HdxRenderTask::_HasDrawItems()) return;
+    GLF_GROUP_FUNCTION();
 
+    if (!_isOitEnabled || !HdxRenderTask::_HasDrawItems()) {
+        return;
+    }
+    
     //
     // Pre Execute Setup
     //
@@ -109,7 +114,7 @@ HdxOitVolumeRenderTask::Execute(HdTaskContext* ctx)
         return;
     }
 
-    extendedState->SetOverrideShader(HdStShaderCodeSharedPtr());
+    extendedState->SetUseSceneMaterials(true);
     renderPassState->SetDepthFunc(HdCmpFuncAlways);
     // Setting cull style for consistency even though it is hard-coded in
     // shaders/volume.glslfx.
@@ -144,11 +149,6 @@ HdxOitVolumeRenderTask::Execute(HdTaskContext* ctx)
     // set cullStyle.
     _oitVolumeRenderPassShader->SetCullStyle(
         renderPassState->GetCullStyle());
-
-    // We want OIT to render into the resolve aov, not the multi sample aov.
-    // This assumes a 'resolve' task has been run between rendering the opaque
-    // prims and volume prims. See HdxTaskController::GetRenderingTasks().
-    renderPassState->SetUseAovMultiSample(false);
 
     //
     // Translucent pixels pass

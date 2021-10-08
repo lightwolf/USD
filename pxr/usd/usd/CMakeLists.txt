@@ -32,6 +32,7 @@ pxr_library(usd
         debugCodes
         editContext
         editTarget
+        errors
         flattenUtils
         inherits
         interpolation
@@ -97,6 +98,7 @@ pxr_library(usd
         crateValueInliners.h
         listEditImpl.h
         wrapUtils.h
+        testenv/TestUsdResolverChangedResolver.h
 
     PYTHON_CPPFILES
         moduleDeps.cpp
@@ -199,6 +201,7 @@ pxr_test_scripts(
     testenv/testUsdAppliedAPISchemas.py
     testenv/testUsdAttributeBlocking.py
     testenv/testUsdAttributeConnections.py
+    testenv/testUsdAttributeQuery.py
     testenv/testUsdBugs.py
     testenv/testUsdBug119633.py
     testenv/testUsdBug141491.py
@@ -209,6 +212,7 @@ pxr_test_scripts(
     testenv/testUsdCreateProperties.py
     testenv/testUsdDataFormats.py
     testenv/testUsdExternalAssetDependencies.py
+    testenv/testUsdErrors.py
     testenv/testUsdFallbackPrimTypes.py
     testenv/testUsdFileFormats.py
     testenv/testUsdFlatten.py
@@ -260,6 +264,20 @@ pxr_build_test_shared_lib(TestUsdProceduralExternalAssetsFileFormatPlugin
         testenv/TestUsdProceduralExternalAssetsFileFormatPlugin.cpp
 )
 
+if (PXR_USE_AR_2)
+    pxr_build_test_shared_lib(TestUsdResolverChangedResolver
+        CREATE_FRAMEWORK
+        INSTALL_PREFIX UsdPlugins
+        LIBRARIES
+            ar
+            plug
+            tf
+    
+        CPPFILES
+            testenv/TestUsdResolverChangedResolver.cpp
+    )
+endif()
+
 pxr_build_test(testUsdAttributeBlockingCpp
     LIBRARIES
         tf
@@ -302,6 +320,19 @@ pxr_build_test(testUsdMetadataCpp
     CPPFILES
         testenv/testUsdMetadata.cpp
 )
+
+if (PXR_USE_AR_2)
+    pxr_build_test(testUsdResolverChanged
+        LIBRARIES
+            arch
+            plug
+            sdf
+            tf
+            usd
+        CPPFILES
+            testenv/testUsdResolverChanged.cpp
+    )
+endif()
 
 pxr_build_test(testUsdInstancingCpp
     LIBRARIES
@@ -406,6 +437,11 @@ pxr_install_test_dir(
 )
 
 pxr_install_test_dir(
+    SRC testenv/testUsdAppliedAPISchemas
+    DEST testUsdAppliedAPISchemas_AutoApplyDisabled
+)
+
+pxr_install_test_dir(
     SRC testenv/testUsdStageThreading
     DEST testUsdStageThreading
 )
@@ -462,6 +498,11 @@ pxr_install_test_dir(
 
 pxr_install_test_dir(
     SRC testenv/testUsdFileFormats
+    DEST testUsdFileFormats_asset
+)
+
+pxr_install_test_dir(
+    SRC testenv/testUsdFileFormats
     DEST testUsdFileFormats_pread
 )
 
@@ -484,6 +525,13 @@ pxr_install_test_dir(
     SRC testenv/testUsdMetadata
     DEST testUsdMetadata
 )
+
+if (PXR_USE_AR_2)
+    pxr_install_test_dir(
+        SRC testenv/testUsdResolverChanged
+        DEST testUsdResolverChanged
+    )
+endif()
 
 pxr_install_test_dir(
     SRC testenv/testUsdNotices.testenv
@@ -587,6 +635,11 @@ pxr_install_test_dir(
 
 pxr_install_test_dir(
     SRC testenv/testUsdUsdzFileFormat
+    DEST testUsdUsdzFileFormat_asset
+)
+
+pxr_install_test_dir(
+    SRC testenv/testUsdUsdzFileFormat
     DEST testUsdUsdzFileFormat_pread
 )
 
@@ -606,6 +659,14 @@ pxr_register_test(testUsdAppliedAPISchemas
     EXPECTED_RETURN_CODE 0
 )
 
+pxr_register_test(testUsdAppliedAPISchemas_AutoApplyDisabled
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAppliedAPISchemas"
+    EXPECTED_RETURN_CODE 0
+    ENV
+        USD_DISABLE_AUTO_APPLY_API_SCHEMAS=1
+)
+
 pxr_register_test(testUsdAttributeBlocking
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAttributeBlocking"
@@ -620,6 +681,19 @@ pxr_register_test(testUsdAttributeBlockingCpp
 pxr_register_test(testUsdAttributeConnections
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAttributeConnections"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdAttributeQuery
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAttributeQuery"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdErrors
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdErrors"
+    ENV TF_FATAL_THROW=0
     EXPECTED_RETURN_CODE 0
 )
 
@@ -787,6 +861,19 @@ pxr_register_test(testUsdFileFormats
     EXPECTED_RETURN_CODE 0
 )
 
+# XXX:
+# Temporarily disable this test on Windows; the ArAsset-based
+# codepath in the .usdc file format code has issues.
+if (NOT WIN32)
+    pxr_register_test(testUsdFileFormats_asset
+        PYTHON
+        COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdFileFormats"
+        ENV
+            USDC_USE_ASSET=1
+        EXPECTED_RETURN_CODE 0
+    )
+endif()
+
 pxr_register_test(testUsdFileFormats_pread
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdFileFormats"
@@ -799,6 +886,18 @@ pxr_register_test(testUsdMetadataCpp
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdMetadataCpp"
     EXPECTED_RETURN_CODE 0
 )
+
+if (PXR_USE_AR_2)
+    # This test relies on a plugin built specifically for this test.
+    # The build system currently doesn't support this for static library
+    # builds, so we only enable this test on shared library builds.
+    if (BUILD_SHARED_LIBS)
+        pxr_register_test(testUsdResolverChanged
+            COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdResolverChanged"
+            EXPECTED_RETURN_CODE 0
+        )
+    endif()
+endif()
 
 pxr_register_test(testUsdStageNoPython
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdStageNoPython"
@@ -824,6 +923,12 @@ pxr_register_test(testUsdTimeCodeStream
 pxr_register_test(testUsdStage
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdStage"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdStageCache
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdStageCache"
     EXPECTED_RETURN_CODE 0
 )
 
@@ -984,6 +1089,14 @@ pxr_register_test(testUsdTimeValueAuthoringCpp
 pxr_register_test(testUsdUsdzFileFormat
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdUsdzFileFormat"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_register_test(testUsdUsdzFileFormat_asset
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdUsdzFileFormat"
+    ENV
+        USDC_USE_ASSET=1
     EXPECTED_RETURN_CODE 0
 )
 

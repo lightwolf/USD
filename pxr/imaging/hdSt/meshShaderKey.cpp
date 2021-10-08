@@ -36,9 +36,11 @@ TF_DEFINE_PRIVATE_TOKENS(
 
     // normal mixins
     ((normalsScene,            "MeshNormal.Scene"))
+    ((normalsScenePatches,     "MeshNormal.Scene.Patches"))
     ((normalsSmooth,           "MeshNormal.Smooth"))
     ((normalsFlat,             "MeshNormal.Flat"))
     ((normalsPass,             "MeshNormal.Pass"))
+    ((normalsScreenSpaceFS,    "MeshNormal.Fragment.ScreenSpace"))
 
     ((normalsGeometryFlat,     "MeshNormal.Geometry.Flat"))
     ((normalsGeometryNoFlat,   "MeshNormal.Geometry.NoFlat"))
@@ -51,17 +53,22 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((faceCullDoubleSidedFS,   "MeshFaceCull.Fragment.DoubleSided"))
 
     // wireframe mixins
-    ((edgeNoneGS,              "MeshWire.Geometry.NoEdge"))
     ((edgeNoneFS,              "MeshWire.Fragment.NoEdge"))
-    
-    ((edgeCommonFS,            "MeshWire.Fragment.EdgeCommon"))
 
-    ((edgeOnlyGS,              "MeshWire.Geometry.Edge"))
+    ((edgeMaskTriangleFS,      "MeshWire.Fragment.EdgeMaskTriangle"))
+    ((edgeMaskQuadFS,          "MeshWire.Fragment.EdgeMaskQuad"))
+    ((edgeMaskRefinedQuadFS,   "MeshWire.Fragment.EdgeMaskRefinedQuad"))
+    ((edgeMaskNoneFS,          "MeshWire.Fragment.EdgeMaskNone"))
+
+    ((edgeCommonFS,            "MeshWire.Fragment.EdgeCommon"))
+    ((edgeParamFS,             "MeshWire.Fragment.EdgeParam"))
+
     ((edgeOnlyBlendFS,         "MeshWire.Fragment.EdgeOnlyBlendColor"))
     ((edgeOnlyNoBlendFS,       "MeshWire.Fragment.EdgeOnlyNoBlend"))
 
-    ((edgeOnSurfGS,            "MeshWire.Geometry.Edge"))
     ((edgeOnSurfFS,            "MeshWire.Fragment.EdgeOnSurface"))
+    ((patchEdgeTriangleFS,     "MeshPatchWire.Fragment.PatchEdgeTriangle"))
+    ((patchEdgeQuadFS,         "MeshPatchWire.Fragment.PatchEdgeQuad"))
     ((patchEdgeOnlyFS,         "MeshPatchWire.Fragment.EdgeOnly"))
     ((patchEdgeOnSurfFS,       "MeshPatchWire.Fragment.EdgeOnSurface"))
 
@@ -74,12 +81,14 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((selElementSelGS,         "Selection.Geometry.ElementSel"))
 
     // edge id mixins (for edge picking & selection)
-    ((edgeIdNoneGS,            "EdgeId.Geometry.None"))
-    ((edgeIdEdgeParamGS,       "EdgeId.Geometry.EdgeParam"))
     ((edgeIdFallbackFS,        "EdgeId.Fragment.Fallback"))
     ((edgeIdCommonFS,          "EdgeId.Fragment.Common"))
+    ((edgeIdTriangleSurfFS,    "EdgeId.Fragment.TriangleSurface"))
+    ((edgeIdTriangleLineFS,    "EdgeId.Fragment.TriangleLines"))
     ((edgeIdTriangleParamFS,   "EdgeId.Fragment.TriangleParam"))
-    ((edgeIdRectangleParamFS,  "EdgeId.Fragment.RectangleParam"))
+    ((edgeIdQuadSurfFS,        "EdgeId.Fragment.QuadSurface"))
+    ((edgeIdQuadLineFS,        "EdgeId.Fragment.QuadLines"))
+    ((edgeIdQuadParamFS,       "EdgeId.Fragment.QuadParam"))
 
     // point id mixins (for point picking & selection)
     ((pointIdNoneVS,           "PointId.Vertex.None"))
@@ -136,13 +145,15 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     float lineWidth,
     bool hasMirroredTransform,
     bool hasInstancer,
-    bool enableScalarOverride)
+    bool enableScalarOverride,
+    HdSt_GeometricShader::FvarPatchType fvarPatchType)
     : primType(primitiveType)
     , cullStyle(cullStyle)
     , hasMirroredTransform(hasMirroredTransform)
     , doubleSided(doubleSided)
     , polygonMode(HdPolygonModeFill)
     , lineWidth(lineWidth)
+    , fvarPatchType(fvarPatchType)
     , glslfx(_tokens->baseGLSLFX)
 {
     if (geomStyle == HdMeshGeomStyleEdgeOnly ||
@@ -157,11 +168,16 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     bool isPrimTypePoints = HdSt_GeometricShader::IsPrimTypePoints(primType);
     bool isPrimTypeQuads  = HdSt_GeometricShader::IsPrimTypeQuads(primType);
     bool isPrimTypeTris   = HdSt_GeometricShader::IsPrimTypeTriangles(primType);
-    const bool isPrimTypePatches = 
+    bool isPrimTypeRefinedMesh =
+        HdSt_GeometricShader::IsPrimTypeRefinedMesh(primType);
+    const bool isPrimTypePatches =
         HdSt_GeometricShader::IsPrimTypePatches(primType);
-    const bool isPrimTypePatchesBSpline = 
+    const bool isPrimTypePatchesBSpline =
         primType ==
             HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BSPLINE;
+    const bool isPrimTypePatchesBoxSplineTriangle =
+        primType ==
+            HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE;
 
     /* Normals configurations:
      * Smooth normals:
@@ -176,6 +192,9 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
      *   [VS] .Pass, [GS] .NoFlat, .Pass, [FS] .Pass
      * Flat normals:
      *   [VS] .Pass, [GS] .Flat, .Pass, [FS] .Pass
+     * Screen Space Flat normals:
+     *   [VS] .Pass, [GS] .Pass, [FS] .ScreenSpace
+     *   (geometry shader optional)
      */
     bool vsSceneNormals =
         (normalsSource == NormalSourceScene &&
@@ -228,23 +247,12 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
 
     GS[gsIndex++] = (normalsSource == NormalSourceFlat) ?
         _tokens->normalsFlat :
-        (gsSceneNormals ? _tokens->normalsScene : _tokens->normalsPass);
-
+        (gsSceneNormals ? (isPrimTypePatches ? _tokens->normalsScenePatches : 
+            _tokens->normalsScene) : 
+        _tokens->normalsPass);
+   
     GS[gsIndex++] = (normalsSource == NormalSourceGeometryShader) ?
             _tokens->normalsGeometryFlat : _tokens->normalsGeometryNoFlat;
-
-    GS[gsIndex++] = ((geomStyle == HdMeshGeomStyleEdgeOnly ||
-                      geomStyle == HdMeshGeomStyleHullEdgeOnly)
-                        ? _tokens->edgeOnlyGS
-                        : (geomStyle == HdMeshGeomStyleEdgeOnSurf ||
-                           geomStyle == HdMeshGeomStyleHullEdgeOnSurf)
-                            ? _tokens->edgeOnSurfGS
-                            : _tokens->edgeNoneGS);
-
-    // emit edge param per vertex to help compute the edgeId
-    TfToken gsEdgeIdMixin = isPrimTypePoints ? _tokens->edgeIdNoneGS
-                                             : _tokens->edgeIdEdgeParamGS;
-    GS[gsIndex++] = gsEdgeIdMixin;
 
     const bool renderWireframe = geomStyle == HdMeshGeomStyleEdgeOnly ||
                                  geomStyle == HdMeshGeomStyleHullEdgeOnly;    
@@ -274,7 +282,8 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     if (!useCustomDisplacement
             && (normalsSource != NormalSourceLimit)
             && (normalsSource != NormalSourceGeometryShader)
-            && (geomStyle == HdMeshGeomStyleSurf || geomStyle == HdMeshGeomStyleHull)
+            && (geomStyle == HdMeshGeomStyleSurf ||
+                geomStyle == HdMeshGeomStyleHull)
             && HdSt_GeometricShader::IsPrimTypeTriangles(primType)
             && (!forceGeometryShader)) {
             
@@ -292,10 +301,14 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     uint8_t fsIndex = 0;
     FS[fsIndex++] = _tokens->instancing;
 
-    FS[fsIndex++] = (!gsStageEnabled && normalsSource == NormalSourceFlat) ?
-        _tokens->normalsFlat :
-        ((!gsStageEnabled && gsSceneNormals) ? _tokens->normalsScene :
-         _tokens->normalsPass);
+    FS[fsIndex++] =
+        (normalsSource == NormalSourceScreenSpace)
+            ? _tokens->normalsScreenSpaceFS
+            : (!gsStageEnabled && normalsSource == NormalSourceFlat)
+                ? _tokens->normalsFlat
+                : ((!gsStageEnabled && gsSceneNormals)
+                    ? _tokens->normalsScene
+                    : _tokens->normalsPass);
 
     FS[fsIndex++] = doubleSided ?
         _tokens->normalsDoubleSidedFS : _tokens->normalsSingleSidedFS;
@@ -308,7 +321,19 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     if ((geomStyle == HdMeshGeomStyleEdgeOnly ||
          geomStyle == HdMeshGeomStyleHullEdgeOnly)) {
 
+        if (isPrimTypeRefinedMesh) {
+            if (isPrimTypeQuads) {
+                FS[fsIndex++] = _tokens->edgeMaskRefinedQuadFS;
+            } else {
+                FS[fsIndex++] = _tokens->edgeMaskNoneFS;
+            }
+        } else if (isPrimTypeTris) {
+            FS[fsIndex++] = _tokens->edgeMaskTriangleFS;
+        } else {
+            FS[fsIndex++] = _tokens->edgeMaskQuadFS;
+        }
         FS[fsIndex++] = _tokens->edgeCommonFS;
+        FS[fsIndex++] = _tokens->edgeParamFS;
         if (isPrimTypePatches) {
             FS[fsIndex++] = _tokens->patchEdgeOnlyFS;
         } else {
@@ -319,8 +344,25 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
     } else if ((geomStyle == HdMeshGeomStyleEdgeOnSurf ||
                 geomStyle == HdMeshGeomStyleHullEdgeOnSurf)) {
 
+        if (isPrimTypeRefinedMesh) {
+            if (isPrimTypeQuads) {
+                FS[fsIndex++] = _tokens->edgeMaskRefinedQuadFS;
+            } else {
+                FS[fsIndex++] = _tokens->edgeMaskNoneFS;
+            }
+        } else if (isPrimTypeTris) {
+            FS[fsIndex++] = _tokens->edgeMaskTriangleFS;
+        } else {
+            FS[fsIndex++] = _tokens->edgeMaskQuadFS;
+        }
         FS[fsIndex++] = _tokens->edgeCommonFS;
-        if (isPrimTypePatches) {
+        FS[fsIndex++] = _tokens->edgeParamFS;
+        if (isPrimTypeTris || isPrimTypePatchesBoxSplineTriangle) {
+            FS[fsIndex++] = _tokens->patchEdgeTriangleFS;
+        } else {
+            FS[fsIndex++] = _tokens->patchEdgeQuadFS;
+        }
+        if (isPrimTypeRefinedMesh) {
             FS[fsIndex++] = _tokens->patchEdgeOnSurfFS;
         } else {
             FS[fsIndex++] = _tokens->edgeOnSurfFS;
@@ -328,6 +370,7 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
 
     } else {
         FS[fsIndex++] = _tokens->edgeNoneFS;
+        FS[fsIndex++] = _tokens->edgeParamFS;
     }
 
     // Shading terminal mixin
@@ -361,14 +404,21 @@ HdSt_MeshShaderKey::HdSt_MeshShaderKey(
 
     // EdgeId mixin(s) for edge picking and selection
     if (gsStageEnabled) {
-        TF_VERIFY(gsEdgeIdMixin == _tokens->edgeIdEdgeParamGS);
         FS[fsIndex++] = _tokens->edgeIdCommonFS;
-        if (isPrimTypeTris) {
-            // coarse and refined triangles and triangular parametric patches
+        if (isPrimTypeTris || isPrimTypePatchesBoxSplineTriangle) {
+            if (polygonMode == HdPolygonModeLine) {
+                FS[fsIndex++] = _tokens->edgeIdTriangleLineFS;
+            } else {
+                FS[fsIndex++] = _tokens->edgeIdTriangleSurfFS;
+            }
             FS[fsIndex++] = _tokens->edgeIdTriangleParamFS;
         } else {
-            // coarse and refined quads and rectangular parametric patches
-            FS[fsIndex++] = _tokens->edgeIdRectangleParamFS;
+            if (polygonMode == HdPolygonModeLine) {
+                FS[fsIndex++] = _tokens->edgeIdQuadLineFS;
+            } else {
+                FS[fsIndex++] = _tokens->edgeIdQuadSurfFS;
+            }
+            FS[fsIndex++] = _tokens->edgeIdQuadParamFS;
         }
     } else {
         // the GS stage is skipped if we're dealing with points or triangles.

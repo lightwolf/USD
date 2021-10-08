@@ -160,7 +160,8 @@ public:
                          UsdTimeCode time,
                          size_t maxNumSamples, 
                          float *sampleTimes,
-                         VtValue *sampleValues) override;
+                         VtValue *sampleValues,
+                         VtIntArray *sampleIndices) override;
 
     PxOsdSubdivTags GetSubdivTags(UsdPrim const& usdPrim,
                                   SdfPath const& cachePath,
@@ -238,7 +239,8 @@ public:
     VtValue Get(UsdPrim const& prim,
                 SdfPath const& cachePath,
                 TfToken const& key,
-                UsdTimeCode time) const override;
+                UsdTimeCode time,
+                VtIntArray *outIndices) const override;
 
     // ---------------------------------------------------------------------- //
     /// \name Nested instancing support
@@ -390,7 +392,7 @@ private:
     // Indexed by cachePath (each prim has one entry)
     typedef std::unordered_map<SdfPath, _ProtoPrim, SdfPath::Hash> _ProtoPrimMap;
 
-    // All data asscoiated with a given Instancer prim. PrimMap could
+    // All data associated with a given Instancer prim. PrimMap could
     // technically be split out to avoid two lookups, however it seems cleaner
     // to keep everything bundled up under the instancer path.
     struct _InstancerData {

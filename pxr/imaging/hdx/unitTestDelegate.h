@@ -68,6 +68,10 @@ public:
     void AddLight(SdfPath const &id, GlfSimpleLight const &light);
     void SetLight(SdfPath const &id, TfToken const &key, VtValue value);
 
+    // render buffer
+    void AddRenderBuffer(SdfPath const &id,
+                         const HdRenderBufferDescriptor &desc);
+
     // draw target
     void AddDrawTarget(SdfPath const &id);
     void SetDrawTarget(SdfPath const &id, TfToken const &key, VtValue value);
@@ -162,6 +166,7 @@ public:
     VtIntArray GetInstanceIndices(
         SdfPath const& instancerId,
         SdfPath const& prototypeId) override;
+    SdfPathVector GetInstancerPrototypes(SdfPath const& instancerId) override;
 
     GfMatrix4d GetInstancerTransform(SdfPath const& instancerId) override;
     HdDisplayStyle GetDisplayStyle(SdfPath const& id) override;
@@ -177,6 +182,9 @@ public:
         TfToken const &paramName) override;
 
     TfTokenVector GetTaskRenderTags(SdfPath const& taskId) override;
+
+    bool WriteRenderBufferToFile(SdfPath const &id,
+                                 std::string const &filePath);
 
 private:
     struct _Mesh {

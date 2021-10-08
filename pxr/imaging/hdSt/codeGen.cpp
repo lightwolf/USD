@@ -58,6 +58,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((_double, "double"))
     ((_float, "float"))
     ((_int, "int"))
+    ((_uint, "uint"))
     (hd_vec3)
     (hd_vec3_get)
     (hd_vec3_set)
@@ -75,7 +76,14 @@ TF_DEFINE_PRIVATE_TOKENS(
     (hd_dmat3_set)
     (hd_vec4_2_10_10_10_get)
     (hd_vec4_2_10_10_10_set)
+    (hd_half2_get)
+    (hd_half2_set)
+    (hd_half4_get)
+    (hd_half4_set)
     (inPrimvars)
+    (uvec2)
+    (uvec3)
+    (uvec4)
     (ivec2)
     (ivec3)
     (ivec4)
@@ -91,6 +99,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     (dmat3)
     (dmat4)
     (packed_2_10_10_10)
+    (packed_half2)
+    (packed_half4)
     ((ptexTextureSampler, "ptexTextureSampler"))
     (isamplerBuffer)
     (samplerBuffer)
@@ -272,7 +282,17 @@ _GetPackedTypeDefinitions()
            "    return ( (int(v.x * 511.0) & 0x3ff) |\n"
            "            ((int(v.y * 511.0) & 0x3ff) << 10) |\n"
            "            ((int(v.z * 511.0) & 0x3ff) << 20) |\n"
-           "            ((int(v.w) & 0x1) << 30)); }\n";
+           "            ((int(v.w) & 0x1) << 30)); }\n"
+        // half2 and half4 accessors (note that half and half3 are unsupported)
+           "vec2 hd_half2_get(uint v) {\n"
+           "    return unpackHalf2x16(v); }\n"
+           "uint hd_half2_set(vec2 v) {\n"
+           "    return packHalf2x16(v); }\n"
+           "vec4 hd_half4_get(uvec2 v) {\n"
+           "    return vec4(unpackHalf2x16(v.x), unpackHalf2x16(v.y)); }\n"
+           "uvec2 hd_half4_set(vec4 v) {\n"
+           "    return uvec2(packHalf2x16(v.xy), packHalf2x16(v.zw)); }\n"
+           ;
 }
 
 static TfToken const &
@@ -294,6 +314,12 @@ _GetPackedType(TfToken const &token, bool packedAlignment)
     if (token == _tokens->packed_2_10_10_10) {
         return _tokens->_int;
     }
+    if (token == _tokens->packed_half2) {
+        return _tokens->_uint;
+    }
+    if (token == _tokens->packed_half4) {
+        return _tokens->uvec2;
+    }
     return token;
 }
 
@@ -301,6 +327,12 @@ static TfToken const &
 _GetUnpackedType(TfToken const &token, bool packedAlignment)
 {
     if (token == _tokens->packed_2_10_10_10) {
+        return _tokens->vec4;
+    }
+    if (token == _tokens->packed_half2) {
+        return _tokens->vec2;
+    }
+    if (token == _tokens->packed_half4) {
         return _tokens->vec4;
     }
     return token;
@@ -325,6 +357,12 @@ _GetPackedTypeAccessor(TfToken const &token, bool packedAlignment)
     if (token == _tokens->packed_2_10_10_10) {
         return _tokens->hd_vec4_2_10_10_10_get;
     }
+    if (token == _tokens->packed_half2) {
+        return _tokens->hd_half2_get;
+    }
+    if (token == _tokens->packed_half4) {
+        return _tokens->hd_half4_get;
+    }
     return token;
 }
 
@@ -346,6 +384,12 @@ _GetPackedTypeMutator(TfToken const &token, bool packedAlignment)
     }
     if (token == _tokens->packed_2_10_10_10) {
         return _tokens->hd_vec4_2_10_10_10_set;
+    }
+    if (token == _tokens->packed_half2) {
+        return _tokens->hd_half2_set;
+    }
+    if (token == _tokens->packed_half4) {
+        return _tokens->hd_half4_set;
     }
     return token;
 }
@@ -475,8 +519,8 @@ HdSt_CodeGen::Compile(HdStResourceRegistry*const registry)
     bool hasFS  = (!fragmentShader.empty());
 
     // create GLSL program.
-    HdStGLSLProgramSharedPtr glslProgram(
-        new HdStGLSLProgram(HdTokens->drawingShader, registry));
+    HdStGLSLProgramSharedPtr glslProgram =
+        std::make_shared<HdStGLSLProgram>(HdTokens->drawingShader, registry);
 
     // initialize autogen source buckets
     _genCommon.str(""); _genVS.str(""); _genTCS.str(""); _genTES.str("");
@@ -605,6 +649,8 @@ HdSt_CodeGen::Compile(HdStResourceRegistry*const registry)
     if (_geometricShader->IsPrimTypePatches()) {
         _genCommon << "#define HD_NUM_PATCH_VERTS "
                    << _geometricShader->GetPrimitiveIndexSize() << "\n";
+        _genCommon << "#define HD_NUM_PATCH_EVAL_VERTS "
+                   << _geometricShader->GetNumPatchEvalVerts() << "\n";
     }
     _genCommon << "#define HD_NUM_PRIMITIVE_VERTS "
                << _geometricShader->GetNumPrimitiveVertsForGeometryShader()
@@ -707,6 +753,25 @@ HdSt_CodeGen::Compile(HdStResourceRegistry*const registry)
         _genCommon << (*it)->GetSource(HdShaderTokens->commonShaderSource);
     }
 
+    // Needed for patch-based face-varying primvar refinement
+    if (_geometricShader->GetFvarPatchType() == 
+        HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE ||
+        _geometricShader->GetFvarPatchType() == 
+        HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE) {
+        _genGS << "#define OSD_PATCH_BASIS_GLSL\n";
+        _genGS << 
+            OpenSubdiv::Osd::GLSLPatchShaderSource::GetPatchBasisShaderSource();
+    }
+
+    // Barycentric coordinates
+    if (hasGS) {
+        _genGS << "noperspective out vec3 hd_barycentricCoord;\n";
+        _genFS << "noperspective in vec3 hd_barycentricCoord;\n"
+                  "vec3 GetBarycentricCoord() {\n"
+                  "  return hd_barycentricCoord;\n"
+                  "}\n";
+    }
+
     // prep interstage plumbing function
     _procVS  << "void ProcessPrimvars() {\n";
     _procTCS << "void ProcessPrimvars() {\n";
@@ -718,36 +783,53 @@ HdSt_CodeGen::Compile(HdStResourceRegistry*const registry)
     // geometry shader plumbing
     switch(_geometricShader->GetPrimitiveType())
     {
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_QUADS:
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_TRIANGLES:
+        {
+            _procGS << "vec4 GetPatchCoord(int index);\n"
+                    << "void ProcessPrimvars(int index) {\n"
+                    << "  vec2 localST = GetPatchCoord(index).xy;\n";
+            break;
+        }
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BSPLINE:
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE:
         {
-            // patch interpolation
-            _procGS << "vec4 GetPatchCoord(int index);\n"
-                    << "void ProcessPrimvars(int index) {\n"
-                    << "   vec2 localST = GetPatchCoord(index).xy;\n";
+            _procGS << "void ProcessPrimvars(int index, vec2 tessST) {\n"
+                    << "  vec2 localST = tessST;\n";
             break;
         }
-
+        default: // points, basis curves
+            // do nothing. no additional code needs to be generated.
+            ;
+    }
+    switch(_geometricShader->GetPrimitiveType())
+    {
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_QUADS:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BSPLINE:
         {
-            // quad interpolation
-            _procGS  << "void ProcessPrimvars(int index) {\n"
-                     << "   vec2 lut[4] = vec2[4](vec2(0,0), vec2(1,0), vec2(1,1), vec2(0,1));\n"
-                     << "   vec2 localST = lut[index];\n";
+            // These correspond to built-in fragment shader barycentric coords
+            // except reversed for the second triangle in the quad. Each quad is
+            // split into two triangles with indices (3,0,2) and (1,2,0).
+            _procGS << "  const vec3 coords[4] = vec3[](\n"
+                    << "   vec3(0,0,1), vec3(1,0,0), vec3(0,1,0), vec3(1,0,0)\n"
+                    << "  );\n"
+                    << "  hd_barycentricCoord = coords[index];\n";
             break;
         }
-
         case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_TRIANGLES:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE:
         {
-            // barycentric interpolation
-             _procGS  << "void ProcessPrimvars(int index) {\n"
-                      << "   vec2 lut[3] = vec2[3](vec2(0,0), vec2(1,0), vec2(0,1));\n"
-                      << "   vec2 localST = lut[index];\n";
+            // These correspond to built-in fragment shader barycentric coords.
+            _procGS << "  const vec3 coords[3] = vec3[](\n"
+                    << "   vec3(1,0,0), vec3(0,1,0), vec3(0,0,1)\n"
+                    << "  );\n"
+                    << "  hd_barycentricCoord = coords[index];\n";
             break;
         }
-
         default: // points, basis curves
             // do nothing. no additional code needs to be generated.
             ;
@@ -1009,8 +1091,8 @@ HdSt_CodeGen::CompileComputeProgram(HdStResourceRegistry*const registry)
     _genCS << "}\n";
     
     // create GLSL program.
-    HdStGLSLProgramSharedPtr glslProgram(
-        new HdStGLSLProgram(HdTokens->computeShader, registry));
+    HdStGLSLProgramSharedPtr glslProgram =
+        std::make_shared<HdStGLSLProgram>(HdTokens->computeShader, registry);
     
     // compile shaders
     {
@@ -1413,17 +1495,41 @@ static void _EmitTextureAccessors(
 
     TfToken const &dataType = acc.dataType;
 
+    if (hasTextureTransform) {
+        // Declare an eye to sampling transform and define function
+        // to initialize it.
+        const std::string eyeToSamplingTransform =
+            "eyeTo" + name.GetString() + "SamplingTransform";
+
+        // Computations in eye space are done with float precision, so the
+        // eye to sampling transform is mat4.
+        // Note that the multiplication that yiels this sampling transform
+        // might be done using higher precision.
+        accessors
+            << "mat4 " << eyeToSamplingTransform << ";\n"
+            << "\n"
+            << "void Process_" << eyeToSamplingTransform
+            << "(MAT4 instanceModelViewInverse) { \n"
+            << "    int shaderCoord = GetDrawingCoord().shaderCoord; \n"
+            << "    " << eyeToSamplingTransform << " = mat4(\n"
+            << "        MAT4(shaderData[shaderCoord]."
+            << name << HdSt_ResourceBindingSuffixTokens->samplingTransform
+            << ") * instanceModelViewInverse);\n"
+            << "}\n";
+    }
+
     accessors
         << _GetUnpackedType(dataType, false)
         << " HdGet_" << name << "(vec" << dim << " coord) {\n"
         << "  int shaderCoord = GetDrawingCoord().shaderCoord; \n";
 
     if (hasTextureTransform) {
+        const std::string eyeToSamplingTransform =
+            "eyeTo" + name.GetString() + "SamplingTransform";
+
         accessors
-            << "   vec4 c = vec4(\n"
-            << "     shaderData[shaderCoord]."
-            << name << HdSt_ResourceBindingSuffixTokens->samplingTransform
-            << " * vec4(coord, 1));\n"
+            << "   vec4 c = " << eyeToSamplingTransform
+            << " * vec4(coord, 1);\n"
             << "   vec3 sampleCoord = c.xyz / c.w;\n";
     } else {
         accessors
@@ -1565,65 +1671,129 @@ static void _EmitTextureAccessors(
 
 // Accessing face varying primvar data of a vertex in the GS requires special
 // case handling for refinement while providing a branchless solution.
-// When dealing with vertices on a refined face, we use the patch coord to get
-// its parametrization on the sanitized (coarse) "ptex" face, and interpolate
-// based on the face primitive type (bilinear for quad faces, barycentric for
-// tri faces)
+// When dealing with vertices on a refined face when the face-varying data has 
+// not been refined, we use the patch coord to get its parametrization on the 
+// sanitized (coarse) "ptex" face, and interpolate based on the face primitive 
+// type (bilinear for quad faces, barycentric for tri faces).
+// When face varying data has been refined and the fvar patch type is quad or 
+// tri, we still use bilinear or barycentric interpolation, respectively, but
+// we do it over the refined face and use refined face-varying values, accessed
+// using the refined face-varying indices.
+// When the fvar patch type is b-spline or box-spline, we solve over 16 or 12
+// refined values, respectively, also accessed via the refined indices, getting 
+// the weights from OsdEvaluatePatchBasisNormalized(). 
 static void _EmitFVarGSAccessor(
                 std::stringstream &str,
                 TfToken const &name,
                 TfToken const &type,
                 HdBinding const &binding,
-                HdSt_GeometricShader::PrimitiveType const& primType)
+                HdSt_GeometricShader::PrimitiveType const& primType,
+                HdSt_GeometricShader::FvarPatchType const& fvarPatchType,
+                int fvarChannel)
 {
     // emit an internal getter for accessing the coarse fvar data (corresponding
     // to the refined face, in the case of refinement)
     str << _GetUnpackedType(type, false)
-        << " HdGet_" << name << "_Coarse(int localIndex) {\n"
-        << "  int fvarIndex = GetFVarIndex(localIndex);\n"
-        << "  return " << _GetPackedTypeAccessor(type, true) << "("
+        << " HdGet_" << name << "_Coarse(int localIndex) {\n";
+    if ((fvarPatchType == 
+            HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_QUADS) ||
+        (fvarPatchType == 
+            HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_TRIANGLES)) {
+        str << "  int fvarIndex = GetFVarIndex(localIndex);\n";
+    } else {
+        str << "  int fvarIndex = GetDrawingCoord().fvarCoord + localIndex;\n";
+    }
+    str << "  return " << _GetPackedTypeAccessor(type, true) << "("
         <<       name << "[fvarIndex]);\n}\n";
 
     // emit the (public) accessor for the fvar data, accounting for refinement
     // interpolation
-    str << "vec4 GetPatchCoord(int index);\n"; // forward decl
     str << _GetUnpackedType(type, false)
-        << " HdGet_" << name << "(int localIndex) {\n"
-        << "  vec2 localST = GetPatchCoord(localIndex).xy;\n";
+        << " HdGet_" << name << "(int localIndex, vec2 st) {\n";
 
-    switch(primType)
-    {
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_QUADS:
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BSPLINE:
+    if (fvarPatchType == 
+        HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE) {
+        str << "  int patchType = OSD_PATCH_DESCRIPTOR_REGULAR;\n";
+    } else if (fvarPatchType == 
+        HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE) {
+        str << "  int patchType = OSD_PATCH_DESCRIPTOR_LOOP;\n";
+    }
+
+    switch (fvarPatchType) {
+        case HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_QUADS: 
         {
             // linear interpolation within a quad.
             str << "  return mix("
                 << "mix(" << "HdGet_" << name << "_Coarse(0),"
-                <<           "HdGet_" << name << "_Coarse(1), localST.x),"
+                <<           "HdGet_" << name << "_Coarse(1), st.x),"
                 << "mix(" << "HdGet_" << name << "_Coarse(3),"
-                <<           "HdGet_" << name << "_Coarse(2), localST.x), localST.y);\n}\n";
+                <<           "HdGet_" << name << "_Coarse(2), st.x), "
+                << "st.y);\n}\n";
             break;
         }
-
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_TRIANGLES:
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
-        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE:
+        case HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_TRIANGLES:
         {
             // barycentric interpolation within a triangle.
             str << "  return ("
-                << "HdGet_" << name << "_Coarse(0) * (1-localST.x-localST.y)"
-                << " + HdGet_" << name << "_Coarse(1) * localST.x"
-                << " + HdGet_" << name << "_Coarse(2) * localST.y);\n}\n";
+                << "HdGet_" << name << "_Coarse(0) * (1-st.x-st.y)"
+                << " + HdGet_" << name << "_Coarse(1) * st.x"
+                << " + HdGet_" << name << "_Coarse(2) * st.y);\n}\n";
             break;
         }
-
-        case HdSt_GeometricShader::PrimitiveType::PRIM_POINTS:
+        case HdSt_GeometricShader::FvarPatchType::PATCH_REFINED_QUADS:
+        {
+            // linear interpolation between 4 refined primvars
+            str << "  ivec4 indices = HdGet_fvarIndices" << fvarChannel 
+                << "();\n"
+                << "  return mix("
+                << "mix(" << "HdGet_" << name << "_Coarse(indices[0]),"
+                <<           "HdGet_" << name << "_Coarse(indices[1]), st.s),"
+                << "mix(" << "HdGet_" << name << "_Coarse(indices[3]),"
+                <<           "HdGet_" << name << "_Coarse(indices[2]), st.s), "
+                << "st.t);\n}\n"; 
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_REFINED_TRIANGLES:
+        {
+            // barycentric interpolation between 3 refined primvars
+            str << "  ivec3 indices = HdGet_fvarIndices" << fvarChannel 
+                << "();\n"
+                << "  return ("
+                << "HdGet_" << name << "_Coarse(indices[0]) * (1-st.s-st.t)"
+                << " + HdGet_" << name << "_Coarse(indices[1]) * st.s"
+                << " + HdGet_" << name << "_Coarse(indices[2]) * st.t);\n}\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE:
+        case HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE:
+        {
+            // evaluation of a bspline/box spline patch
+            str << "  ivec2 fvarPatchParam = HdGet_fvarPatchParam" 
+                << fvarChannel << "();\n"
+                << "  OsdPatchParam param = OsdPatchParamInit(fvarPatchParam.x,"
+                << " fvarPatchParam.y, 0);\n"
+                << "  float wP[20], wDu[20], wDv[20], wDuu[20], wDuv[20], "
+                << "wDvv[20];\n"
+                << "  OsdEvaluatePatchBasisNormalized(patchType, param,"
+                << " st.s, st.t, wP, wDu, wDv, wDuu, wDuv, wDvv);\n"
+                << "  " << _GetUnpackedType(type, false) << " result = " 
+                << _GetUnpackedType(type, false) << "(0);\n"
+                << "  for (int i = 0; i < HD_NUM_PATCH_VERTS; ++i) {\n"
+                << "    int fvarIndex = HdGet_fvarIndices" << fvarChannel 
+                << "(i);\n"
+                << "    " << _GetUnpackedType(type, false) << " cv = "
+                << _GetUnpackedType(type, false) << "(HdGet_" << name 
+                << "_Coarse(fvarIndex));\n"
+                << "    result += wP[i] * cv;\n"
+                << "  }\n" 
+                << " return result;\n}\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_NONE:
         {
             str << "  return HdGet_" << name << "_Coarse(localIndex);\n}\n";
             break;
         }
-
         default:
         {
             // emit a default version for compilation sake
@@ -1634,6 +1804,63 @@ static void _EmitFVarGSAccessor(
                             (int)primType);
         }
     }
+
+    str << "vec4 GetPatchCoord(int index);\n"
+        << _GetUnpackedType(type, false)
+        << " HdGet_" << name << "(int localIndex) {\n";         
+
+    switch (fvarPatchType) {
+        case HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_QUADS:         
+        case HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_TRIANGLES:
+        {
+            str << "  vec2 localST = GetPatchCoord(localIndex).xy;\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE:
+        {
+            // Compute localST in normalized patch param space
+            str << "  ivec2 fvarPatchParam = HdGet_fvarPatchParam" 
+                << fvarChannel << "();\n"
+                << "  OsdPatchParam param = OsdPatchParamInit(fvarPatchParam.x,"
+                << " fvarPatchParam.y, 0);\n"
+                << "  vec2 unnormalized = GetPatchCoord(localIndex).xy;\n"
+                << "  float uv[2] = float[2](unnormalized.x, unnormalized.y);\n"
+                << "  OsdPatchParamNormalize(param, uv);\n"
+                << "  vec2 localST = vec2(uv[0], uv[1]);\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE:
+        {
+            // Compute localST in normalized patch param space
+            str << "  ivec2 fvarPatchParam = HdGet_fvarPatchParam" 
+                << fvarChannel << "();\n"
+                << "  OsdPatchParam param = OsdPatchParamInit(fvarPatchParam.x,"
+                << " fvarPatchParam.y, 0);\n"
+                << "  vec2 unnormalized = GetPatchCoord(localIndex).xy;\n"
+                << "  float uv[2] = float[2](unnormalized.x, unnormalized.y);\n"
+                << "  OsdPatchParamNormalizeTriangle(param, uv);\n"
+                << "  vec2 localST = vec2(uv[0], uv[1]);\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_REFINED_QUADS:
+        {
+            str << "  vec2 lut[4] = vec2[4](vec2(0,0), vec2(1,0), "
+                << "vec2(1,1), vec2(0,1));\n"
+                << "  vec2 localST = lut[localIndex];\n";
+            break;
+        }
+        case HdSt_GeometricShader::FvarPatchType::PATCH_REFINED_TRIANGLES:
+        {
+            str << "  vec2 lut[3] = vec2[3](vec2(0,0), vec2(1,0), vec2(0,1));\n"
+                << "  vec2 localST = lut[localIndex];\n";
+            break;
+        }
+        default:
+        {
+            str << "  vec2 localST = vec2(0);\n";
+        }
+    }
+    str << "  return HdGet_" << name << "(localIndex, localST);\n}\n";   
 
     // XXX: We shouldn't emit the default (argument free) accessor version,
     // since that doesn't make sense within a GS. Once we fix the XXX in
@@ -1872,9 +2099,9 @@ HdSt_CodeGen::_GenerateDrawingCoord()
 
     // tess control shader
     _genTCS << "flat in hd_drawingCoord vsDrawingCoord[gl_MaxPatchVertices];\n"
-            << "flat out hd_drawingCoord tcsDrawingCoord[HD_NUM_PATCH_VERTS];\n"
+            << "flat out hd_drawingCoord tcsDrawingCoord[HD_NUM_PATCH_EVAL_VERTS];\n"
             << "hd_drawingCoord GetDrawingCoord() { \n"
-            << "  hd_drawingCoord dc = vsDrawingCoord[gl_InvocationID];\n"
+            << "  hd_drawingCoord dc = vsDrawingCoord[0];\n"
             << "  dc.primitiveCoord += gl_PrimitiveID;\n"
             << "  return dc;\n"
             << "}\n";
@@ -2113,7 +2340,7 @@ HdSt_CodeGen::_GenerateElementPrimvar()
     For each prim, GetDrawingCoord().elementCoord holds the start index into
     this buffer.
 
-    For an unrefined prim, the subprimitive ID s simply the gl_PrimitiveID.
+    For an unrefined prim, the subprimitive ID is simply the gl_PrimitiveID.
     For a refined prim, gl_PrimitiveID corresponds to the refined element ID.
 
     To map a refined face to its coarse face, Storm builds a "primitive param"
@@ -2186,14 +2413,14 @@ HdSt_CodeGen::_GenerateElementPrimvar()
     //     3 ints : coarse face index + edge flag
     //              Far::PatchParam::field0 (includes ptex index)
     //              Far::PatchParam::field1
-    //     (see hdSt/subdivision3.cpp)
+    //     (see hdSt/subdivision.cpp)
     //
     // d. patch adaptively refined
     //     4 ints : coarse face index + edge flag
     //              Far::PatchParam::field0 (includes ptex index)
     //              Far::PatchParam::field1
     //              sharpness (float)
-    //     (see hdSt/subdivision3.cpp)
+    //     (see hdSt/subdivision.cpp)
     // -----------------------------------------------------------------------
     // note: decoding logic of primitiveParam has to match with
     // HdMeshTopology::DecodeFaceIndexFromPrimitiveParam()
@@ -2207,9 +2434,10 @@ HdSt_CodeGen::_GenerateElementPrimvar()
     //  Field1     | Bits | Content
     //  -----------|:----:|---------------------------------------------------
     //  level      | 4    | the subdivision level of the patch
-    //  nonquad    | 1    | whether the patch is the child of a non-quad face
-    //  unused     | 3    | unused
-    //  boundary   | 4    | boundary edge mask encoding
+    //  nonquad    | 1    | whether patch is refined from a non-quad face
+    //  regular    | 1    | whether patch is regular
+    //  unused     | 1    | unused
+    //  boundary   | 5    | boundary mask encoding
     //  v          | 10   | log2 value of u parameter at first patch corner
     //  u          | 10   | log2 value of v parameter at first patch corner
     //
@@ -2256,16 +2484,15 @@ HdSt_CodeGen::_GenerateElementPrimvar()
                 case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_QUADS:
                 case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_TRIANGLES:
                 {
-                    // refined quads ("uniform" subdiv) or
-                    // refined tris (loop subdiv)
+                    // refined quads (catmulClark uniform subdiv) or
+                    // refined tris (loop uniform subdiv)
                     accessors
                         << "ivec3 GetPatchParam() {\n"
                         << "  return ivec3(HdGet_primitiveParam().y, \n"
                         << "               HdGet_primitiveParam().z, 0);\n"
                         << "}\n";
-                    // XXX: Is the edge flag returned actually used?
                     accessors
-                        << "int GetEdgeFlag(int localIndex) {\n"
+                        << "int GetEdgeFlag() {\n"
                         << "  return (HdGet_primitiveParam().x & 3);\n"
                         << "}\n";
                     break;
@@ -2282,49 +2509,38 @@ HdSt_CodeGen::_GenerateElementPrimvar()
                         << "               HdGet_primitiveParam().z, \n"
                         << "               HdGet_primitiveParam().w);\n"
                         << "}\n";
-                    // use the edge flag calculated in the geometry shader
-                    // (i.e., not from primitiveParam)
-                    // see mesh.glslfx Mesh.Geometry.Triangle
                     accessors
-                        << "int GetEdgeFlag(int localIndex) {\n"
-                        << "  return localIndex;\n"
+                        << "int GetEdgeFlag() {\n"
+                        << "  return (HdGet_primitiveParam().x & 3);\n"
                         << "}\n";
                     break;
                 }
 
                 case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
-                {
-                    // coarse quads (for ptex)
-                    // put ptexIndex into the first element of PatchParam.
-                    // (transition flags in MSB can be left as 0)
-                    accessors
-                        << "ivec3 GetPatchParam() {\n"
-                        << "  return ivec3(HdGet_primitiveParam().y, 0, 0);\n"
-                        << "}\n";
-                    // the edge flag for coarse quads tells us if the quad face
-                    // is the result of quadrangulation (1) or from the authored
-                    // topology (0).
-                    accessors
-                        << "int GetEdgeFlag(int localIndex) {\n"
-                        << "  return (HdGet_primitiveParam().x & 3); \n"
-                        << "}\n";
-                    break;
-                }
-
                 case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
                 {
-                    // coarse triangles                
-                    // note that triangulated meshes don't have ptexIndex.
-                    // Here we're passing primitiveID as ptexIndex PatchParam
-                    // since Hd_TriangulateFaceVaryingComputation unrolls facevaring
-                    // primvars for each triangles.
+                    // coarse quads or coarse triangles
+                    // ptexId matches the primitiveID for quadrangulated or
+                    // triangulated meshes, the other fields can be left as 0.
+                    // When there are geom subsets, we can no longer use the 
+                    // primitiveId and instead use a buffer source generated
+                    // per subset draw item containing the coarse face indices. 
                     accessors
+                        << "#if defined(HD_HAS_coarseFaceIndex)\n"
+                        << "int HdGet_coarseFaceIndex();\n"
+                        << "#endif\n"
                         << "ivec3 GetPatchParam() {\n"
+                        << "#if defined(HD_HAS_coarseFaceIndex)\n "
+                        << "  return ivec3(HdGet_coarseFaceIndex().x, 0, 0);\n"
+                        << "#else\n "
                         << "  return ivec3(gl_PrimitiveID, 0, 0);\n"
+                        << "#endif\n"
                         << "}\n";
+                    // edge flag encodes edges which have been
+                    // introduced by quadrangulation or triangulation
                     accessors
-                        << "int GetEdgeFlag(int localIndex) {\n"
-                        << "  return HdGet_primitiveParam() & 3;\n"
+                        << "int GetEdgeFlag() {\n"
+                        << "  return (HdGet_primitiveParam() & 3);\n"
                         << "}\n";
                     break;
                 }
@@ -2338,9 +2554,9 @@ HdSt_CodeGen::_GenerateElementPrimvar()
             }
 
             // GetFVarIndex
-            if (_geometricShader->IsPrimTypeTriangles() ||
-                (_geometricShader->GetPrimitiveType() ==
-                 HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE)) {
+            if (_geometricShader->GetFvarPatchType() == 
+                HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_TRIANGLES) 
+            {
                 // note that triangulated meshes don't have ptexIndex.
                 // Here we're passing primitiveID as ptexIndex PatchParam
                 // since Hd_TriangulateFaceVaryingComputation unrolls facevaring
@@ -2351,8 +2567,8 @@ HdSt_CodeGen::_GenerateElementPrimvar()
                     << "  int ptexIndex = GetPatchParam().x & 0xfffffff;\n"
                     << "  return fvarCoord + ptexIndex * 3 + localIndex;\n"
                     << "}\n";    
-            }
-            else {
+            } else if (_geometricShader->GetFvarPatchType() == 
+                HdSt_GeometricShader::FvarPatchType::PATCH_COARSE_QUADS) {
                 accessors
                     << "int GetFVarIndex(int localIndex) {\n"
                     << "  int fvarCoord = GetDrawingCoord().fvarCoord;\n"
@@ -2408,7 +2624,7 @@ HdSt_CodeGen::_GenerateElementPrimvar()
             << "  return GetElementID();\n"
             << "}\n";
         accessors
-            << "int GetEdgeFlag(int localIndex) {\n"
+            << "int GetEdgeFlag() {\n"
             << "  return 0;\n"
             << "}\n";
         accessors
@@ -2433,72 +2649,55 @@ HdSt_CodeGen::_GenerateElementPrimvar()
         _EmitAccessor(accessors, _metaData.edgeIndexBinding.name,
                     _metaData.edgeIndexBinding.dataType, binding,
                     "GetDrawingCoord().primitiveCoord");
+    }
 
-        // Authored EdgeID getter
-        // abs() is needed below, since both branches may get executed, and
-        // we need to guard against array oob indexing.
-        accessors
-            << "int GetAuthoredEdgeId(int primitiveEdgeID) {\n"
-            << "  if (primitiveEdgeID == -1) {\n"
-            << "    return -1;\n"
-            << "  }\n"
-            << "  "
-            << _GetUnpackedType(_metaData.edgeIndexBinding.dataType, false)
-            << " edgeIndices = HdGet_edgeIndices();\n"
-            << "  int coord = abs(primitiveEdgeID);\n"
-            << "  return edgeIndices[coord];\n"
-            << "}\n";
+    if (_metaData.coarseFaceIndexBinding.binding.IsValid()) {
+        _genCommon << "#define HD_HAS_" 
+            << _metaData.coarseFaceIndexBinding.name << " 1\n";
 
-        // Primitive EdgeID getter
-        if (_geometricShader->IsPrimTypePoints()) {
-            // we get here only if we're rendering a mesh with the edgeIndices
-            // binding and using a points repr. since there is no GS stage, we
-            // generate fallback versions.
-            // note: this scenario can't be handled in meshShaderKey, since it
-            // doesn't know whether an edgeIndices binding exists.
+        const HdBinding &binding = _metaData.coarseFaceIndexBinding.binding;
+
+        _EmitDeclaration(declarations, _metaData.coarseFaceIndexBinding);
+        _EmitAccessor(accessors, _metaData.coarseFaceIndexBinding.name,
+                    _metaData.coarseFaceIndexBinding.dataType, binding,
+                    "GetDrawingCoord().primitiveCoord  + localIndex");
+    }
+
+    switch (_geometricShader->GetPrimitiveType()) {
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_QUADS:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_REFINED_TRIANGLES:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BSPLINE:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_BOXSPLINETRIANGLE:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_QUADS:
+        case HdSt_GeometricShader::PrimitiveType::PRIM_MESH_COARSE_TRIANGLES:
+            // This is no longer used by Storm but is generated for backward
+            // compatibility with production shaders.
+            accessors
+                << "int GetAuthoredEdgeId(int primitiveEdgeId) {\n"
+                << "  return primitiveEdgeId;\n"
+                << "}\n";
+            break;
+        default:
+            // The functions below are used in picking (id render) and/or
+            // selection highlighting, and are expected to be defined.
+            // Generate fallback versions when we aren't rendering meshes.
+            accessors
+                << "int GetAuthoredEdgeId(int primitiveEdgeId) {\n"
+                << "  return -1;\n"
+                << "}\n";
             accessors
                 << "int GetPrimitiveEdgeId() {\n"
                 << "  return -1;\n"
                 << "}\n";
             accessors
-                << "bool IsFragmentOnEdge() {\n"
-                << "  return false;\n"
+                << "float GetSelectedEdgeOpacity() {\n"
+                << "  return 0.0;\n"
                 << "}\n";
-        }
-        else if (_geometricShader->IsPrimTypeBasisCurves()) {
-            // basis curves don't have an edge indices buffer bound, so we 
-            // shouldn't ever get here.
-            TF_VERIFY(false, "edgeIndexBinding shouldn't be found on a "
-                             "basis curve");
-        }
-        else if (_geometricShader->IsPrimTypeMesh()) {
-            // nothing to do. meshShaderKey takes care of it.
-        }
-    } else {
-        // The functions below are used in picking (id render) and/or selection
-        // highlighting, and are expected to be defined. Generate fallback
-        // versions when we don't bind an edgeIndices buffer.
-        accessors
-            << "int GetAuthoredEdgeId(int primitiveEdgeID) {\n"
-            << "  return -1;\n"
-            << "}\n";
-        accessors
-            << "int GetPrimitiveEdgeId() {\n"
-            << "  return -1;\n"
-            << "}\n";
-        accessors
-            << "bool IsFragmentOnEdge() {\n"
-            << "  return false;\n"
-            << "}\n";
-        accessors
-            << "float GetSelectedEdgeOpacity() {\n"
-            << "  return 0.0;\n"
-            << "}\n";
+            break;
     }
+
     declarations
-        << "int GetAuthoredEdgeId(int primitiveEdgeID);\n"
         << "int GetPrimitiveEdgeId();\n"
-        << "bool IsFragmentOnEdge();\n"
         << "float GetSelectedEdgeOpacity();\n";
 
     // Uniform primvar data declarations & accessors
@@ -2512,6 +2711,54 @@ HdSt_CodeGen::_GenerateElementPrimvar()
             // AggregatedElementID gives us the buffer index post batching, which
             // is what we need for accessing element (uniform) primvar data.
             _EmitAccessor(accessors, name, dataType, binding,"GetAggregatedElementID()");
+        }
+    }
+
+    for (size_t i = 0; i < _metaData.fvarIndicesBindings.size(); ++i) {
+        if (!_metaData.fvarIndicesBindings[i].binding.IsValid()) {
+            continue;
+        }
+
+        HdBinding binding = _metaData.fvarIndicesBindings[i].binding;
+        TfToken name = _metaData.fvarIndicesBindings[i].name;
+        _EmitDeclaration(declarations, name, 
+            _metaData.fvarIndicesBindings[i].dataType, 
+            _metaData.fvarIndicesBindings[i].binding, 0);
+
+        if (_geometricShader->GetFvarPatchType() == 
+            HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE || 
+            _geometricShader->GetFvarPatchType() ==
+            HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE) {
+            _EmitAccessor(accessors, name,
+                _metaData.fvarIndicesBindings[i].dataType, binding,
+                "GetDrawingCoord().primitiveCoord * HD_NUM_PATCH_VERTS + "
+                "localIndex");
+        } else {
+            _EmitAccessor(accessors,name,
+                _metaData.fvarIndicesBindings[i].dataType, binding,
+                "GetDrawingCoord().primitiveCoord + localIndex");
+        }
+    }
+
+    for (size_t i = 0; i < _metaData.fvarPatchParamBindings.size(); ++i) {
+        if (!_metaData.fvarPatchParamBindings[i].binding.IsValid()) {
+            continue;
+        }
+
+        HdBinding binding = _metaData.fvarPatchParamBindings[i].binding;
+        TfToken name = _metaData.fvarPatchParamBindings[i].name;
+        _EmitDeclaration(declarations, name, 
+            _metaData.fvarPatchParamBindings[i].dataType, 
+            _metaData.fvarPatchParamBindings[i].binding, 0);
+
+        // Only need fvar patch param for bspline or box spline patches
+        if (_geometricShader->GetFvarPatchType() == 
+            HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE ||
+            _geometricShader->GetFvarPatchType() ==
+            HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE) {
+            _EmitAccessor(accessors, name,
+                _metaData.fvarPatchParamBindings[i].dataType, binding,
+                "GetDrawingCoord().primitiveCoord + localIndex");
         }
     }
 
@@ -2721,8 +2968,8 @@ HdSt_CodeGen::_GenerateVertexAndFaceVaryingPrimvar(bool hasGS)
       } outPrimvars;
 
       void ProcessPrimvars(int index) {
-          outPrimvars.map1 = HdGet_map1(index);
-          outPrimvars.map2_u = HdGet_map2_u(index);
+          outPrimvars.map1 = HdGet_map1(index, localST);
+          outPrimvars.map2_u = HdGet_map2_u(index, localST);
       }
 
       // --------- fragment stage plumbing -------
@@ -2733,21 +2980,68 @@ HdSt_CodeGen::_GenerateVertexAndFaceVaryingPrimvar(bool hasGS)
       } inPrimvars;
 
       // --------- facevarying data accessors ----------
-      // in geometry shader (internal accessor)
+      // in geometry shader
+      // unrefined internal accessor
       vec2 HdGet_map1_Coarse(int localIndex) {
           int fvarIndex = GetFVarIndex(localIndex);
           return vec2(map1[fvarIndex]);
       }
-      // in geometry shader (public accessor)
-      vec2 HdGet_map1(int localIndex) {
+      // unrefined public accessors
+      vec2 HdGet_map1(int localIndex, vec2 st) {
           int fvarIndex = GetFVarIndex(localIndex);
           return (HdGet_map1_Coarse(0) * ...);
       }
+      vec2 HdGet_map1(int localIndex) {
+          vec2 localST = GetPatchCoord(localIndex).xy;
+          return HdGet_map1(localIndex, localST);
+      }
+
+      // refined internal accessor
+      vec2 HdGet_map1_Coarse(int localIndex) {
+          int fvarIndex = GetDrawingCoord().fvarCoord + localIndex;
+          return vec2(map1[fvarIndex]);
+      }
+      // refined public accessors
+      vec2 HdGet_map1(int localIndex, vec2 st) {
+          ivec4 indices = HdGet_fvarIndices0();
+          return mix(mix(HdGet_map1_Coarse(indices[0])...);
+      }
+      // refined quads:
+      vec2 HdGet_map1(int localIndex) {
+          vec2 lut[4] = vec2[4](vec2(0,0), vec2(1,0), vec2(1,1), vec2(0,1));
+          vec2 localST = lut[localIndex];\n";
+          return HdGet_map1(localIndex, localST);
+      }
+      // refined triangles:
+      vec2 HdGet_map1(int localIndex) {
+          vec2 lut[3] = vec2[3](vec2(0,0), vec2(1,0), vec2(0,1));
+          vec2 localST = lut[localIndex];\n";
+          return HdGet_map1(localIndex, localST);
+      }
+
+      // refined public accessor for b-spline/box-spline patches
+      vec2 HdGet_map1(int localIndex, vec2 st) {
+          int patchType = OSD_PATCH_DESCRIPTOR_REGULAR; // b-spline patches
+          // OR int patchType = OSD_PATCH_DESCRIPTOR_LOOP; for box-spline
+          ivec2 fvarPatchParam = HdGet_fvarPatchParam0();
+          OsdPatchParam param = OsdPatchParamInit(fvarPatchParam.x, 
+                                                  fvarPatchParam.y, 0);
+          float wP[20], wDu[20], wDv[20], wDuu[20], wDuv[20], wDvv[20];
+          OsdEvaluatePatchBasisNormalized(patchType, param, st.s, 
+            st.t, wP, wDu, wDv, wDuu, wDuv, wDvv);
+          vec2 result = vec2(0);
+          for (int i = 0; i < HD_NUM_PATCH_VERTS; ++i) {
+              int fvarIndex = HdGet_fvarIndices0(i);
+               vec2 cv = vec2(HdGet_map1_Coarse(fvarIndex));
+               result += wP[i] * cv;
+          }
+          return result;
+      }
+   
       // in fragment shader
       vec2 HdGet_map1() {
           return inPrimvars.map1;
       }
-
     */
 
     // face varying
@@ -2761,6 +3055,7 @@ HdSt_CodeGen::_GenerateVertexAndFaceVaryingPrimvar(bool hasGS)
             HdBinding binding = it->first;
             TfToken const &name = it->second.name;
             TfToken const &dataType = it->second.dataType;
+            const int channel = it->second.channel;
 
             _EmitDeclaration(fvarDeclarations, name, dataType, binding);
 
@@ -2769,12 +3064,24 @@ HdSt_CodeGen::_GenerateVertexAndFaceVaryingPrimvar(bool hasGS)
 
             // primvar accessors (only in GS and FS)
             _EmitFVarGSAccessor(accessorsGS, name, dataType, binding,
-                                _geometricShader->GetPrimitiveType());
+                                _geometricShader->GetPrimitiveType(),
+                                _geometricShader->GetFvarPatchType(),
+                                channel);
+        
             _EmitStructAccessor(accessorsFS, _tokens->inPrimvars, name, dataType,
                                 /*arraySize=*/1, NULL);
 
-            _procGS << "  outPrimvars." << name 
-                                        <<" = HdGet_" << name << "(index);\n";
+            if (_geometricShader->GetFvarPatchType() == 
+                HdSt_GeometricShader::FvarPatchType::PATCH_BSPLINE ||
+                _geometricShader->GetFvarPatchType() == 
+                HdSt_GeometricShader::FvarPatchType::PATCH_BOXSPLINETRIANGLE) {
+                    _procGS << "  outPrimvars." << name 
+                    <<" = HdGet_" << name << "(index, localST);\n";
+            } else {
+                _procGS << "  outPrimvars." << name 
+                    <<" = HdGet_" << name << "(index);\n";
+            }
+            
         }
     }
 
@@ -2791,7 +3098,7 @@ HdSt_CodeGen::_GenerateVertexAndFaceVaryingPrimvar(bool hasGS)
                 << "} inPrimvars[gl_MaxPatchVertices];\n"
                 << "out Primvars {\n"
                 << interstageVertexData.str()
-                << "} outPrimvars[HD_NUM_PATCH_VERTS];\n"
+                << "} outPrimvars[HD_NUM_PATCH_EVAL_VERTS];\n"
                 << accessorsTCS.str();
 
         _genTES << "in Primvars {\n"
@@ -2838,7 +3145,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
           vec4            diffuseColor;     // fallback uniform
           sampler2D       kdTexture;        // uv texture    (bindless texture)
           sampler2DArray  ptexTexels;       // ptex texels   (bindless texture)
-          isamplerBuffer  ptexLayouts;      // ptex layouts  (bindless texture)
+          usamplerBuffer  ptexLayouts;      // ptex layouts  (bindless texture)
       };
 
       // bindless buffer
@@ -2884,7 +3191,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
       <type> HdGet_<name>(int localIndex=0) {
           return GlopPtexTextureLookup(
               samplers_2darray[<offset_ptex_texels> + drawIndex * <stride>],
-              isamplerBuffers[<offset_ptex_layouts> + drawIndex * <stride>],
+              usamplerBuffers[<offset_ptex_layouts> + drawIndex * <stride>],
               GetPatchCoord()).xxx;
       }
 
@@ -2897,7 +3204,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
       <type> HdGet_<name>(vec4 patchCoord) {
           return GlopPtexTextureLookup(
               samplers_2darray[<offset_ptex_texels> + drawIndex * <stride>],
-              isamplerBuffers[<offset_ptex_layouts> + drawIndex * <stride>],
+              usamplerBuffers[<offset_ptex_layouts> + drawIndex * <stride>],
               patchCoord).xxx;
       }
 
@@ -3053,16 +3360,18 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "  int shaderCoord = GetDrawingCoord().shaderCoord;\n";
             if (!it->second.inPrimvars.empty()) {
                 accessors
+                    << "  vec3 c = vec3(0.0, 0.0, 0.0);\n"
                     << "#if defined(HD_HAS_"
                     << it->second.inPrimvars[0] << ")\n"
-                    << "  vec3 c = hd_sample_udim(HdGet_"
-                    << it->second.inPrimvars[0] << "().xy);\n"
-                    << "  c.z = texelFetch(sampler1D(shaderData[shaderCoord]."
+                    << "  uvec2 handle = shaderData[shaderCoord]."
                     << it->second.name
-                    << HdSt_ResourceBindingSuffixTokens->layout
-                    << "), int(c.z), 0).x - 1;\n"
-                    << "#else\n"
-                    << "  vec3 c = vec3(0.0, 0.0, 0.0);\n"
+                    << HdSt_ResourceBindingSuffixTokens->layout << ";\n"
+                    << "  if (handle != uvec2(0)) {\n"
+                    << "    c = hd_sample_udim(HdGet_"
+                    << it->second.inPrimvars[0] << "().xy);\n"
+                    << "    c.z = "
+                    << "texelFetch(sampler1D(handle), int(c.z), 0).x - 1;\n"
+                    << "  }\n"
                     << "#endif\n";
             } else {
                 accessors
@@ -3070,9 +3379,12 @@ HdSt_CodeGen::_GenerateShaderParameters()
             }
             accessors
                 << "  vec4 ret = vec4(0, 0, 0, 0);\n"
-                << "  if (c.z >= -0.5) {"
-                << " ret = texture(sampler2DArray(shaderData[shaderCoord]."
-                << it->second.name << "), c); }\n"
+                << "  if (c.z >= -0.5) {\n"
+                << "    uvec2 handleTexels = shaderData[shaderCoord]."
+                << it->second.name << ";\n"
+                << "    if (handleTexels != uvec2(0)) {\n"
+                << "      ret = texture(sampler2DArray(handleTexels), c);\n"
+                << "    }\n  }\n"
                 << "  return (ret\n"
                 << "#ifdef HD_HAS_" << it->second.name << "_" 
                 << HdStTokens->scale << "\n"
@@ -3216,7 +3528,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "(PtexTextureLookup("
                 << "sampler2DArray(shaderData[shaderCoord]."
                 << it->second.name << "),"
-                << "isampler1DArray(shaderData[shaderCoord]."
+                << "usampler1DArray(shaderData[shaderCoord]."
                 << it->second.name << HdSt_ResourceBindingSuffixTokens->layout
                 <<"), "
                 << "GetPatchCoord(localIndex))" << swizzle << ");\n"
@@ -3231,7 +3543,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "(PtexTextureLookup("
                 << "sampler2DArray(shaderData[shaderCoord]."
                 << it->second.name << "),"
-                << "isampler1DArray(shaderData[shaderCoord]."
+                << "usampler1DArray(shaderData[shaderCoord]."
                 << it->second.name << HdSt_ResourceBindingSuffixTokens->layout
                 << "), "
                 << "patchCoord)" << swizzle << ");\n"
@@ -3253,7 +3565,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "  return " << _GetPackedTypeAccessor(it->second.dataType, false)
                 << "(PtexTextureLookup("
                 << "sampler2darray_" << it->second.name << ", "
-                << "isampler1darray_"
+                << "usampler1darray_"
                 << it->second.name << HdSt_ResourceBindingSuffixTokens->layout
                 << ", "
                 << "GetPatchCoord(localIndex))" << swizzle << ");\n"
@@ -3266,7 +3578,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "  return " << _GetPackedTypeAccessor(it->second.dataType, false)
                 << "(PtexTextureLookup("
                 << "sampler2darray_" << it->second.name << ", "
-                << "isampler1darray_"
+                << "usampler1darray_"
                 << it->second.name << HdSt_ResourceBindingSuffixTokens->layout
                 << ", "
                 << "patchCoord)" << swizzle << ");\n"
@@ -3284,7 +3596,7 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << LayoutQualifier(HdBinding(it->first.GetType(),
                                              it->first.GetLocation(),
                                              it->first.GetTextureUnit()))
-                << "uniform isampler1DArray isampler1darray_"
+                << "uniform usampler1DArray usampler1darray_"
                 << it->second.name << ";\n";
         } else if (bindingType == HdBinding::PRIMVAR_REDIRECT) {
             // Create an HdGet_INPUTNAME for the shader to access a primvar
@@ -3376,6 +3688,29 @@ HdSt_CodeGen::_GenerateShaderParameters()
                 << "}\n";
         }
     }
+
+    
+    accessors
+        << "void ProcessSamplingTransforms("
+        << "MAT4 instanceModelViewInverse) {\n";
+
+    TF_FOR_ALL (it, _metaData.shaderParameterBinding) {
+        const HdBinding::Type bindingType = it->first.GetType();
+
+        if ( bindingType == HdBinding::TEXTURE_FIELD ||
+             bindingType == HdBinding::BINDLESS_TEXTURE_FIELD) {
+
+            const std::string eyeToSamplingTransform =
+                "eyeTo" + it->second.name.GetString() + "SamplingTransform";
+            
+            accessors
+                << "    Process_" << eyeToSamplingTransform
+                << "(instanceModelViewInverse);\n";
+        }
+    }
+
+    accessors
+        << "}\n";
 
     // Field redirect accessors, need to access above field textures.
     TF_FOR_ALL (it, _metaData.shaderParameterBinding) {

@@ -195,16 +195,6 @@ public:
     HD_API
     void SetMaterialId(SdfPath const& materialId);
 
-    /// The MaterialTag allows rprims to be organized into different
-    /// collections based on properties of the prim's material.
-    /// E.g. A renderer may wish to organize opaque and translucent prims 
-    /// into different collections so they can be rendered seperately.
-    TfToken const& GetMaterialTag() const { return _sharedData.materialTag; }
-
-    /// Sets the material tag used by the rprim.
-    HD_API
-    void SetMaterialTag(TfToken const& materialTag);
-
     HdReprSelector const& GetReprSelector() const {
         return _authoredReprSelector;
     }
@@ -227,6 +217,10 @@ public:
 
     inline VtValue
     GetPrimvar(HdSceneDelegate* delegate, const TfToken &name) const;
+
+    inline VtValue
+    GetIndexedPrimvar(HdSceneDelegate* delegate, const TfToken &name, 
+                      VtIntArray *indices) const;
 
     HD_API
     VtMatrix4dArray GetInstancerTransforms(HdSceneDelegate* delegate);
@@ -378,6 +372,13 @@ inline VtValue
 HdRprim::GetPrimvar(HdSceneDelegate* delegate, const TfToken &name) const
 {
     return delegate->Get(GetId(), name);
+}
+
+inline VtValue
+HdRprim::GetIndexedPrimvar(HdSceneDelegate* delegate, const TfToken &name, 
+                           VtIntArray *indices) const
+{
+    return delegate->GetIndexedPrimvar(GetId(), name, indices);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -31,7 +31,7 @@
 #include "pxr/imaging/hd/material.h"
 #include "pxr/usd/ar/resolverScopedCache.h"
 #include "pxr/usd/ar/resolverContextBinder.h"
-#include "pxr/usd/usdLux/light.h"
+#include "pxr/usd/usdLux/lightAPI.h"
 
 #include "pxr/base/tf/envSetting.h"
 
@@ -41,8 +41,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_REGISTRY_FUNCTION(TfType)
 {
     typedef UsdImagingLightAdapter Adapter;
-    TfType::Define<Adapter, TfType::Bases<Adapter::BaseAdapter> >();
-    // No factory here, UsdImagingLightAdapter is abstract.
+    TfType t = TfType::Define<Adapter, TfType::Bases<Adapter::BaseAdapter> >();
+    t.SetFactory< UsdImagingPrimAdapterFactory<Adapter> >();
 }
 
 TF_DEFINE_ENV_SETTING(USDIMAGING_ENABLE_SCENE_LIGHTS, 1, 
@@ -55,6 +55,31 @@ bool UsdImagingLightAdapter::IsEnabledSceneLights() {
 
 UsdImagingLightAdapter::~UsdImagingLightAdapter() 
 {
+}
+
+bool
+UsdImagingLightAdapter::IsSupported(UsdImagingIndexProxy const* index) const
+{
+    return IsEnabledSceneLights() &&
+           index->IsSprimTypeSupported(HdPrimTypeTokens->light);
+}
+
+SdfPath
+UsdImagingLightAdapter::Populate(UsdPrim const& prim, 
+                            UsdImagingIndexProxy* index,
+                            UsdImagingInstancerContext const* instancerContext)
+{
+    index->InsertSprim(HdPrimTypeTokens->light, prim.GetPath(), prim);
+    HD_PERF_COUNTER_INCR(UsdImagingTokens->usdPopulatedPrimCount);
+
+    return prim.GetPath();
+}
+
+void
+UsdImagingLightAdapter::_RemovePrim(SdfPath const& cachePath,
+                                    UsdImagingIndexProxy* index)
+{
+    index->RemoveSprim(HdPrimTypeTokens->light, cachePath);
 }
 
 void 
@@ -100,7 +125,7 @@ UsdImagingLightAdapter::TrackVariability(UsdPrim const& prim,
 
     UsdImagingPrimvarDescCache* primvarDescCache = _GetPrimvarDescCache();
 
-    UsdLuxLight light(prim);
+    UsdLuxLightAPI light(prim);
     if (TF_VERIFY(light)) {
         UsdImaging_CollectionCache &collectionCache = _GetCollectionCache();
         collectionCache.UpdateCollection(light.GetLightLinkCollectionAPI());
@@ -198,12 +223,10 @@ UsdImagingLightAdapter::GetMaterialResource(UsdPrim const &prim,
                                             SdfPath const& cachePath, 
                                             UsdTimeCode time) const
 {
-    UsdLuxLight light(prim);
-    if (!light) {
-        TF_RUNTIME_ERROR("Expected light prim at <%s> to be a subclass of type "
-                         "'UsdLuxLight', not type '%s'; ignoring",
-                         prim.GetPath().GetText(),
-                         prim.GetTypeName().GetText());
+    if (!prim.HasAPI<UsdLuxLightAPI>()) {
+        TF_RUNTIME_ERROR("Expected light prim at <%s> to have an applied API "
+                         "of type 'UsdLuxLightAPI'; ignoring",
+                         prim.GetPath().GetText());
         return VtValue();
     }
 
@@ -217,6 +240,7 @@ UsdImagingLightAdapter::GetMaterialResource(UsdPrim const &prim,
         prim, 
         HdMaterialTerminalTokens->light,
         _GetShaderSourceTypes(),
+        _GetMaterialRenderContexts(),
         &networkMap,
         time);
 

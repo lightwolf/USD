@@ -61,6 +61,7 @@ public:
     void
     Insert(TextureSharedPtr const &texture,
            HandlePtr const &handle) {
+        _size++;
         _GetOrCreate(texture)->push_back(handle);
     }
 
@@ -89,10 +90,13 @@ public:
 
     const Map &GetMap() const { return _map; }
 
+    size_t GetSize() const { return _size.load(); }
+
 private:
     // Remove all expired weak pointers from vector, return true
     // if no weak pointers left.
-    static
+    //
+    // Also update _size.
     bool
     _GarbageCollect(HandlePtrVector * const vec) {
         // Go from left to right, filling slots that became empty
@@ -101,6 +105,7 @@ private:
 
         for (size_t i = 0; i < last; i++) {
             if ((*vec)[i].expired()) {
+                _size--;
                 while(true) {
                     last--;
                     if (i == last) {
@@ -134,6 +139,8 @@ private:
         return result;
     }
 
+    std::atomic<size_t> _size;
+
     std::mutex _mutex;
     Map _map;
 };
@@ -157,7 +164,6 @@ HdSt_TextureHandleRegistry::AllocateTextureHandle(
         HdTextureType textureType,
         HdSamplerParameters const &samplerParams,
         size_t memoryRequest,
-        bool createBindlessHandle,
         HdStShaderCodePtr const &shaderCode)
 {
     TRACE_FUNCTION();
@@ -172,7 +178,6 @@ HdSt_TextureHandleRegistry::AllocateTextureHandle(
             textureObject,
             samplerParams,
             memoryRequest,
-            createBindlessHandle,
             shaderCode,
             this);
 
@@ -426,6 +431,12 @@ HdSt_TextureHandleRegistry::SetMemoryRequestForTextureType(
         val = memoryRequest;
         _textureTypeToMemoryRequestChanged = true;
     }
+}
+
+size_t
+HdSt_TextureHandleRegistry::GetNumberOfTextureHandles() const
+{
+    return _textureToHandlesMap->GetSize();
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

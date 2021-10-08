@@ -34,6 +34,9 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 class Hgi;
 class HdStRenderParam;
+using HdStDrawItemsCacheUniquePtr =
+    std::unique_ptr<class HdSt_DrawItemsCache>;
+using HdStDrawItemsCachePtr = HdSt_DrawItemsCache *;
 
 using HdStResourceRegistrySharedPtr = 
     std::shared_ptr<class HdStResourceRegistry>;
@@ -113,7 +116,7 @@ public:
     virtual void CommitResources(HdChangeTracker *tracker) override;
 
     HDST_API
-    virtual TfToken GetMaterialNetworkSelector() const override;
+    virtual TfTokenVector GetMaterialRenderContexts() const override;
 
     HDST_API
     virtual TfTokenVector GetShaderSourceTypes() const override;
@@ -141,6 +144,11 @@ public:
     HDST_API
     static bool IsSupported();
 
+    // Returns a raw pointer to the draw items cache owned (solely) by the
+    // render delegate.
+    HDST_API
+    HdStDrawItemsCachePtr GetDrawItemsCache() const;
+
     // Returns Hydra graphics interface
     HDST_API
     Hgi* GetHgi();
@@ -163,6 +171,8 @@ private:
     Hgi* _hgi;
 
     std::unique_ptr<HdStRenderParam> _renderParam;
+
+    HdStDrawItemsCacheUniquePtr _drawItemsCache;
 };
 
 
