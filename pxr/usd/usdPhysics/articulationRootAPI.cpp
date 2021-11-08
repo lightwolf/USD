@@ -21,7 +21,15 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
 #include "pxr/usd/usdPhysics/articulationRootAPI.h"
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+#include "pxr/usd/usdPhysics/fixedJoint.h"
+=======
+#include "pxr/usd/usdPhysics/articulationRootAPI.h"
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 #include "pxr/usd/usd/schemaRegistry.h"
 #include "pxr/usd/usd/typed.h"
 #include "pxr/usd/usd/tokens.h"
@@ -34,9 +42,27 @@ PXR_NAMESPACE_OPEN_SCOPE
 // Register the schema with the TfType system.
 TF_REGISTRY_FUNCTION(TfType)
 {
+<<<<<<< HEAD
     TfType::Define<UsdPhysicsArticulationRootAPI,
         TfType::Bases< UsdAPISchemaBase > >();
     
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+    TfType::Define<UsdPhysicsFixedJoint,
+        TfType::Bases< UsdPhysicsJoint > >();
+    
+    // Register the usd prim typename as an alias under UsdSchemaBase. This
+    // enables one to call
+    // TfType::Find<UsdSchemaBase>().FindDerivedByName("PhysicsFixedJoint")
+    // to find TfType<UsdPhysicsFixedJoint>, which is how IsA queries are
+    // answered.
+    TfType::AddAlias<UsdSchemaBase, UsdPhysicsFixedJoint>("PhysicsFixedJoint");
+=======
+    TfType::Define<UsdPhysicsArticulationRootAPI,
+        TfType::Bases< UsdAPISchemaBase > >();
+    
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 }
 
 TF_DEFINE_PRIVATE_TOKENS(
@@ -45,11 +71,53 @@ TF_DEFINE_PRIVATE_TOKENS(
 );
 
 /* virtual */
+<<<<<<< HEAD
 UsdPhysicsArticulationRootAPI::~UsdPhysicsArticulationRootAPI()
 {
 }
 
 /* static */
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint::~UsdPhysicsFixedJoint()
+=======
+UsdPhysicsArticulationRootAPI::~UsdPhysicsArticulationRootAPI()
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+{
+}
+
+/* static */
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint
+UsdPhysicsFixedJoint::Get(const UsdStagePtr &stage, const SdfPath &path)
+{
+    if (!stage) {
+        TF_CODING_ERROR("Invalid stage");
+        return UsdPhysicsFixedJoint();
+    }
+    return UsdPhysicsFixedJoint(stage->GetPrimAtPath(path));
+}
+
+/* static */
+UsdPhysicsFixedJoint
+UsdPhysicsFixedJoint::Define(
+    const UsdStagePtr &stage, const SdfPath &path)
+{
+    static TfToken usdPrimTypeName("PhysicsFixedJoint");
+    if (!stage) {
+        TF_CODING_ERROR("Invalid stage");
+        return UsdPhysicsFixedJoint();
+    }
+    return UsdPhysicsFixedJoint(
+        stage->DefinePrim(path, usdPrimTypeName));
+}
+
+/* virtual */
+UsdSchemaKind UsdPhysicsFixedJoint::_GetSchemaKind() const
+{
+    return UsdPhysicsFixedJoint::schemaKind;
+=======
+>>>>>>> upstream/dev
 UsdPhysicsArticulationRootAPI
 UsdPhysicsArticulationRootAPI::Get(const UsdStagePtr &stage, const SdfPath &path)
 {
@@ -83,19 +151,43 @@ UsdPhysicsArticulationRootAPI::Apply(const UsdPrim &prim)
         return UsdPhysicsArticulationRootAPI(prim);
     }
     return UsdPhysicsArticulationRootAPI();
+<<<<<<< HEAD
+=======
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 }
 
 /* static */
 const TfType &
+<<<<<<< HEAD
 UsdPhysicsArticulationRootAPI::_GetStaticTfType()
 {
     static TfType tfType = TfType::Find<UsdPhysicsArticulationRootAPI>();
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint::_GetStaticTfType()
+{
+    static TfType tfType = TfType::Find<UsdPhysicsFixedJoint>();
+=======
+UsdPhysicsArticulationRootAPI::_GetStaticTfType()
+{
+    static TfType tfType = TfType::Find<UsdPhysicsArticulationRootAPI>();
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
     return tfType;
 }
 
 /* static */
 bool 
+<<<<<<< HEAD
 UsdPhysicsArticulationRootAPI::_IsTypedSchema()
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint::_IsTypedSchema()
+=======
+UsdPhysicsArticulationRootAPI::_IsTypedSchema()
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 {
     static bool isTyped = _GetStaticTfType().IsA<UsdTyped>();
     return isTyped;
@@ -103,18 +195,40 @@ UsdPhysicsArticulationRootAPI::_IsTypedSchema()
 
 /* virtual */
 const TfType &
+<<<<<<< HEAD
 UsdPhysicsArticulationRootAPI::_GetTfType() const
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint::_GetTfType() const
+=======
+UsdPhysicsArticulationRootAPI::_GetTfType() const
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 {
     return _GetStaticTfType();
 }
 
 /*static*/
 const TfTokenVector&
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD:pxr/usd/usdPhysics/fixedJoint.cpp
+UsdPhysicsFixedJoint::GetSchemaAttributeNames(bool includeInherited)
+{
+    static TfTokenVector localNames;
+    static TfTokenVector allNames =
+        UsdPhysicsJoint::GetSchemaAttributeNames(true);
+=======
+>>>>>>> upstream/dev
 UsdPhysicsArticulationRootAPI::GetSchemaAttributeNames(bool includeInherited)
 {
     static TfTokenVector localNames;
     static TfTokenVector allNames =
         UsdAPISchemaBase::GetSchemaAttributeNames(true);
+<<<<<<< HEAD
+=======
+>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.cpp
+>>>>>>> upstream/dev
 
     if (includeInherited)
         return allNames;

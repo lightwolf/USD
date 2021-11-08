@@ -201,6 +201,11 @@ if (NOT PXR_HEADLESS_TEST_MODE)
         DEST testUsdviewAnimatedBounds
     )
 
+    pxr_install_test_dir(
+        SRC testenv/testUsdviewColorManagement
+        DEST testUsdviewColorManagement
+    )
+
     pxr_register_test(testUsdviewAlive                                               
         PRE_COMMAND "${PYTHON_EXECUTABLE} testUsdviewAliveSetup.py"
         PYTHON
@@ -435,9 +440,22 @@ if (NOT PXR_HEADLESS_TEST_MODE)
     )
 
     pxr_register_test(testUsdviewAnimatedBounds
+<<<<<<< HEAD
+        PYTHON
+        COMMAND "${CMAKE_INSTALL_PREFIX}/bin/testusdview --testScript testUsdviewAnimatedBounds.py test.usda"
+=======
         PYTHON
         COMMAND "${CMAKE_INSTALL_PREFIX}/bin/testusdview --testScript testUsdviewAnimatedBounds.py test.usda"
         EXPECTED_RETURN_CODE 0
+    )
+    
+    pxr_register_test(testUsdviewColorManagement
+        PYTHON
+        COMMAND "${CMAKE_INSTALL_PREFIX}/bin/testusdview --testScript testUsdviewColorManagement.py test.usda"
+>>>>>>> upstream/dev
+        EXPECTED_RETURN_CODE 0
+        ENV
+            OCIO=test.ocio
     )
     
 endif()

@@ -28,6 +28,7 @@
 #include "pxr/imaging/hd/renderDelegate.h"
 #include "hdPrman/api.h"
 
+<<<<<<< HEAD
 #include <mutex>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -36,6 +37,13 @@ class HdPrman_RenderParam;
 class HdPrman_RenderPass;
 struct HdPrman_Context;
 struct HdPrman_InteractiveContext;
+=======
+PXR_NAMESPACE_OPEN_SCOPE
+
+class HdPrman_RenderPass;
+class HdPrman_RenderParam;
+class HdPrman_InteractiveRenderParam;
+>>>>>>> upstream/dev
 class RixParamList;
 
 TF_DEFINE_PRIVATE_TOKENS(
@@ -64,12 +72,21 @@ class HdPrmanRenderDelegate : public HdRenderDelegate
 {
 public:
     HDPRMAN_API 
+<<<<<<< HEAD
     HdPrmanRenderDelegate(std::shared_ptr<HdPrman_Context> context);
     HDPRMAN_API 
     HdPrmanRenderDelegate(std::shared_ptr<HdPrman_Context> context,
         HdRenderSettingsMap const& settingsMap);
     HDPRMAN_API 
     virtual ~HdPrmanRenderDelegate();
+=======
+    HdPrmanRenderDelegate(std::shared_ptr<HdPrman_RenderParam> renderParam);
+    HDPRMAN_API 
+    HdPrmanRenderDelegate(std::shared_ptr<HdPrman_RenderParam> renderParam,
+        HdRenderSettingsMap const& settingsMap);
+    HDPRMAN_API 
+    ~HdPrmanRenderDelegate() override;
+>>>>>>> upstream/dev
 
     // HdRenderDelegate API implementation.
     HDPRMAN_API
@@ -150,6 +167,13 @@ public:
     HDPRMAN_API 
     bool IsStopSupported() const override;
 
+<<<<<<< HEAD
+=======
+    /// Return true to indicate whether or not the rendering threads are active.
+    HDPRMAN_API 
+    bool IsStopped() const override;
+
+>>>>>>> upstream/dev
     /// Stop background rendering threads.
     HDPRMAN_API 
     bool Stop() override;
@@ -181,7 +205,10 @@ protected:
     static const TfTokenVector SUPPORTED_SPRIM_TYPES;
     static const TfTokenVector SUPPORTED_BPRIM_TYPES;
 
+<<<<<<< HEAD
     std::shared_ptr<HdPrman_Context> _context;
+=======
+>>>>>>> upstream/dev
     std::shared_ptr<HdPrman_RenderParam> _renderParam;
     HdResourceRegistrySharedPtr _resourceRegistry;
     HdRenderPassSharedPtr _renderPass;

@@ -90,6 +90,7 @@ public:
     HDST_API
     void ClearBufferBindings();
 
+<<<<<<< HEAD
     HdCullStyle GetCullStyle() const {
         return _cullStyle;
     }
@@ -97,6 +98,18 @@ public:
     void SetCullStyle(HdCullStyle cullStyle) {
         _cullStyle = cullStyle;
     }
+=======
+    // Sets the textures and params such that the shader can access
+    // the requested aovs with HdGet_AOVNAMEReadback().
+    //
+    // Needs to be called in task prepare or sync since it is
+    // allocating texture handles.
+    //
+    HDST_API
+    void UpdateAovInputTextures(
+        HdRenderPassAovBindingVector const &aovInputBindings,
+        HdRenderIndex * const renderIndex);
+>>>>>>> upstream/dev
 
     // Sets the textures and params such that the shader can access
     // the requested aovs with HdGet_AOVNAMEReadback().
@@ -116,7 +129,6 @@ private:
     mutable bool    _hashValid;
 
     TfHashMap<TfToken, HdBindingRequest, TfToken::HashFunctor> _customBuffers;
-    HdCullStyle _cullStyle;
 
     NamedTextureHandleVector _namedTextureHandles;
 

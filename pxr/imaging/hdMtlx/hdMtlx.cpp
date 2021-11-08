@@ -210,7 +210,12 @@ _AddMaterialXNode(
     mx::StringSet * addedNodeNames,
     std::set<SdfPath> * hdTextureNodes,
     std::string const& connectionName,
+<<<<<<< HEAD
     mx::StringMap * mxHdTextureMap)
+=======
+    mx::StringMap * mxHdTextureMap,
+    std::set<SdfPath> * hdPrimvarNodes)
+>>>>>>> upstream/dev
 {
     // Get the mxNode information
     mx::NodeDefPtr mxNodeDef = mxDoc->getNodeDef(hdNode.nodeTypeId.GetString());
@@ -240,10 +245,28 @@ _AddMaterialXNode(
         if (mxNodeCategory == "image" || mxNodeCategory == "tiledimage") {
 
             // Save the corresponding MaterialX and Hydra names for ShaderGen
+<<<<<<< HEAD
             (*mxHdTextureMap)[hdNodePath.GetName()] = connectionName;
 
             // Save the path to adjust the parameters after traversing the network
             hdTextureNodes->insert(hdNodePath);
+=======
+            if (mxHdTextureMap) {
+                (*mxHdTextureMap)[hdNodePath.GetName()] = connectionName;
+            }
+
+            // Save the path to adjust the parameters after traversing the network
+            if (hdTextureNodes) {
+                hdTextureNodes->insert(hdNodePath);
+            }
+        }
+
+        // If this is a MaterialX primvar node
+        if (mxNodeCategory == "geompropvalue") {
+            if (hdPrimvarNodes) {
+                hdPrimvarNodes->insert(hdNodePath);
+            }
+>>>>>>> upstream/dev
         }
     }
     return mxNode;
@@ -261,7 +284,12 @@ _GatherUpstreamNodes(
     mx::NodePtr * mxUpstreamNode,
     std::set<SdfPath> * hdTextureNodes,
     std::string const& connectionName,
+<<<<<<< HEAD
     mx::StringMap * mxHdTextureMap)
+=======
+    mx::StringMap * mxHdTextureMap,
+    std::set<SdfPath> * hdPrimvarNodes)
+>>>>>>> upstream/dev
 {
     // Get the connected node (hdNode) from the hdConnection
     SdfPath hdNodePath;
@@ -284,7 +312,12 @@ _GatherUpstreamNodes(
     // Add the node to the mxNodeGraph/mxDoc.
     mx::NodePtr mxCurrNode = _AddMaterialXNode(hdNetwork, hdNode, hdNodePath, 
                                 mxDoc, *mxNodeGraph, addedNodeNames, 
+<<<<<<< HEAD
                                 hdTextureNodes, connectionName, mxHdTextureMap);
+=======
+                                hdTextureNodes, connectionName, mxHdTextureMap,
+                                hdPrimvarNodes);
+>>>>>>> upstream/dev
 
     if (!mxCurrNode) {
         return;
@@ -299,7 +332,12 @@ _GatherUpstreamNodes(
             // Gather the nodes uptream from the mxCurrNode
             _GatherUpstreamNodes(hdNetwork, currConnection, mxDoc, mxNodeGraph,
                                  addedNodeNames, mxUpstreamNode, hdTextureNodes, 
+<<<<<<< HEAD
                                  connName.GetString(), mxHdTextureMap);
+=======
+                                 connName.GetString(), mxHdTextureMap,
+                                 hdPrimvarNodes);
+>>>>>>> upstream/dev
 
             // Connect mxCurrNode to the mxUpstreamNode
             mx::NodePtr mxNextNode = *mxUpstreamNode;
@@ -325,7 +363,12 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
     SdfPath const& materialPath,
     mx::DocumentPtr const& libraries,
     std::set<SdfPath> * hdTextureNodes, // Paths to the Hd Texture Nodes
+<<<<<<< HEAD
     mx::StringMap * mxHdTextureMap)     // Mx-Hd texture name counterparts
+=======
+    mx::StringMap * mxHdTextureMap,     // Mx-Hd texture name counterparts
+    std::set<SdfPath> * hdPrimvarNodes) // Paths to the Hd primvar nodes
+>>>>>>> upstream/dev
 {
     // Initialize a MaterialX Document
     mx::DocumentPtr mxDoc = mx::createDocument();
@@ -351,7 +394,11 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
             mx::NodePtr mxUpstreamNode;
             _GatherUpstreamNodes(hdNetwork, currConnection, mxDoc, &mxNodeGraph,
                         &addedNodeNames, &mxUpstreamNode, hdTextureNodes, 
+<<<<<<< HEAD
                         mxNodeGraphOutput, mxHdTextureMap);
+=======
+                        mxNodeGraphOutput, mxHdTextureMap, hdPrimvarNodes);
+>>>>>>> upstream/dev
 
             if (!mxUpstreamNode) {
                 continue;
@@ -424,4 +471,8 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
     return mxDoc;
 }
 
+<<<<<<< HEAD
 PXR_NAMESPACE_CLOSE_SCOPE
+=======
+PXR_NAMESPACE_CLOSE_SCOPE
+>>>>>>> upstream/dev

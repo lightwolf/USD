@@ -67,8 +67,18 @@ public:
     /// \sa UsdSchemaKind
     static const UsdSchemaKind schemaKind = UsdSchemaKind::SingleApplyAPI;
 
+<<<<<<< HEAD
     /// Construct a UsdPhysicsArticulationRootAPI on UsdPrim \p prim .
     /// Equivalent to UsdPhysicsArticulationRootAPI::Get(prim.GetStage(), prim.GetPath())
+=======
+<<<<<<<< HEAD:pxr/usd/usdRender/settingsAPI.h
+    /// Construct a UsdRenderSettingsAPI on UsdPrim \p prim .
+    /// Equivalent to UsdRenderSettingsAPI::Get(prim.GetStage(), prim.GetPath())
+========
+    /// Construct a UsdPhysicsArticulationRootAPI on UsdPrim \p prim .
+    /// Equivalent to UsdPhysicsArticulationRootAPI::Get(prim.GetStage(), prim.GetPath())
+>>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.h
+>>>>>>> upstream/dev
     /// for a \em valid \p prim, but will not immediately throw an error for
     /// an invalid \p prim
     explicit UsdPhysicsArticulationRootAPI(const UsdPrim& prim=UsdPrim())
@@ -125,7 +135,15 @@ public:
     /// \sa UsdPrim::ApplyAPI()
     /// \sa UsdPrim::RemoveAPI()
     ///
+<<<<<<< HEAD
     USDPHYSICS_API
+=======
+<<<<<<<< HEAD:pxr/usd/usdRender/settingsAPI.h
+    USDRENDER_API
+========
+    USDPHYSICS_API
+>>>>>>>> upstream/dev:pxr/usd/usdPhysics/articulationRootAPI.h
+>>>>>>> upstream/dev
     static bool 
     CanApply(const UsdPrim &prim, std::string *whyNot=nullptr);
 

@@ -17,6 +17,16 @@ class "NonAppliedAPI"
 {
 }
 
+<<<<<<< HEAD
+class "SingleApplyAPI" (
+    apiSchemas = ["BuiltinAPI"]
+)
+=======
+class "DerivedNonAppliedAPI"
+>>>>>>> upstream/dev
+{
+}
+
 class "SingleApplyAPI" (
     apiSchemas = ["BuiltinAPI"]
 )
@@ -27,12 +37,15 @@ class "EmptyMultipleApplyAPI"
 {
 }
 
+<<<<<<< HEAD
+=======
 class "MultipleApplyAPI"
 {
     int testAttrOne
     double testAttrTwo
 }
 
+>>>>>>> upstream/dev
 class "PublicMultipleApplyAPI"
 {
     int testAttrOne

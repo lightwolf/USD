@@ -693,6 +693,7 @@ class PxrEnvDayLight "PxrEnvDayLight" (
     inherits = </NonboundableLightBase>
 )
 {
+<<<<<<< HEAD
     float inputs:diffuse = 1 (
         connectability = "interfaceOnly"
         displayGroup = "Refine"
@@ -725,6 +726,8 @@ class PxrEnvDayLight "PxrEnvDayLight" (
               intensity: Scales the contribution of this light linearly.
             """
     )
+=======
+>>>>>>> upstream/dev
     bool inputs:ri:light:cheapCaustics = 0 (
         connectability = "interfaceOnly"
         displayGroup = "Advanced"
@@ -971,6 +974,7 @@ class PxrEnvDayLight "PxrEnvDayLight" (
                 This is ignored if month is 0.
             """
     )
+<<<<<<< HEAD
     color3f inputs:shadow:color = (0, 0, 0) (
         connectability = "interfaceOnly"
         displayGroup = "Shadows"
@@ -1030,6 +1034,8 @@ class PxrEnvDayLight "PxrEnvDayLight" (
                 light for your scene objects and avoid adding highlights.
             """
     )
+=======
+>>>>>>> upstream/dev
     uniform token ri:light:shaderId = "PxrEnvDayLight" (
         displayGroup = "Internal"
     )

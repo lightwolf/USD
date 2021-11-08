@@ -23,10 +23,9 @@
 //
 #include "hdPrman/points.h"
 
-#include "hdPrman/context.h"
+#include "hdPrman/renderParam.h"
 #include "hdPrman/instancer.h"
 #include "hdPrman/material.h"
-#include "hdPrman/renderParam.h"
 #include "hdPrman/renderPass.h"
 #include "hdPrman/rixStrings.h"
 #include "pxr/base/gf/matrix4f.h"
@@ -65,7 +64,11 @@ HdPrman_Points::GetInitialDirtyBitsMask() const
 }
 
 RtPrimVarList
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/points.cpp
 HdPrman_Points::_ConvertGeometry(HdPrman_Context *context,
+=======
+HdPrman_Points::_ConvertGeometry(HdPrman_RenderParam *renderParam,
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/points.cpp
                                   HdSceneDelegate *sceneDelegate,
                                   const SdfPath &id,
                                   RtUString *primType,

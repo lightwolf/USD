@@ -29,12 +29,20 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hio/glslfx.h"
 
+<<<<<<< HEAD
 #include "pxr/imaging/hgi/blitCmdsOps.h"
 #include "pxr/imaging/hgi/graphicsCmds.h"
 #include "pxr/imaging/hgi/graphicsCmdsDesc.h"
 #include "pxr/imaging/hgi/hgi.h"
 #include "pxr/imaging/hgi/tokens.h"
 
+=======
+#include "pxr/imaging/hgi/hgi.h"
+#include "pxr/imaging/hgi/tokens.h"
+
+#include "pxr/imaging/hdSt/textureUtils.h"
+
+>>>>>>> upstream/dev
 #include <iostream>
 #include <limits>
 #include <string>
@@ -122,7 +130,12 @@ HdxVisualizeAovTask::_UpdateVizKernel(TfToken const &aovName)
 
     if (aovName == HdAovTokens->color) {
         vk = VizKernelNone;
+<<<<<<< HEAD
     } else if (HdAovHasDepthSemantic(aovName)) {
+=======
+    } else if (HdAovHasDepthSemantic(aovName) ||
+               HdAovHasDepthStencilSemantic(aovName)) {
+>>>>>>> upstream/dev
         vk = VizKernelDepth;
     } else if (_IsIdAov(aovName)) {
         vk = VizKernelId;
@@ -482,6 +495,7 @@ HdxVisualizeAovTask::_UpdateMinMaxDepth(HgiTextureHandle const &inputAovTexture)
          return;
     }
 
+<<<<<<< HEAD
     const size_t formatByteSize = HgiGetDataSizeOfFormat(textureDesc.format);
     const size_t width = textureDesc.dimensions[0];
     const size_t height = textureDesc.dimensions[1];
@@ -504,6 +518,15 @@ HdxVisualizeAovTask::_UpdateMinMaxDepth(HgiTextureHandle const &inputAovTexture)
     _GetHgi()->SubmitCmds(blitCmds.get(), HgiSubmitWaitTypeWaitUntilCompleted);
     
     {
+=======
+    std::vector<uint8_t> buffer;
+    HdStTextureUtils::HgiTextureReadback(_GetHgi(), inputAovTexture, &buffer);
+
+    {
+        const HgiTextureDesc& textureDesc = inputAovTexture.Get()->GetDescriptor();
+        const size_t width = textureDesc.dimensions[0];
+        const size_t height = textureDesc.dimensions[1];
+>>>>>>> upstream/dev
         float *ptr = reinterpret_cast<float*>(&buffer[0]);
         float min = std::numeric_limits<float>::max();
         float max = std::numeric_limits<float>::min();

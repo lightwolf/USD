@@ -28,12 +28,26 @@ PXR_NAMESPACE_OPEN_SCOPE
 HgiShaderFunctionTextureDesc::HgiShaderFunctionTextureDesc()
   : dimensions(2)
   , format(HgiFormatInvalid)
+<<<<<<< HEAD
+=======
+{
+}
+
+HgiShaderFunctionBufferDesc::HgiShaderFunctionBufferDesc()
+  : bindIndex(0)
+  , arraySize(0)
+  , binding(HgiBindingTypeValue)
+  , writable(false)
+>>>>>>> upstream/dev
 {
 }
 
 HgiShaderFunctionBufferDesc::HgiShaderFunctionBufferDesc()  =  default;
 
 HgiShaderFunctionParamDesc::HgiShaderFunctionParamDesc() = default;
+
+HgiShaderFunctionTessellationDesc::HgiShaderFunctionTessellationDesc()
+= default;
 
 HgiShaderFunctionDesc::HgiShaderFunctionDesc() 
   : shaderStage(0)
@@ -42,6 +56,7 @@ HgiShaderFunctionDesc::HgiShaderFunctionDesc()
   , constantParams()
   , stageInputs()
   , stageOutputs()
+  , tessellationDescriptor()
 {
 }
 
@@ -66,7 +81,15 @@ bool operator==(
     const HgiShaderFunctionBufferDesc& rhs)
 {
     return lhs.nameInShader == rhs.nameInShader &&
+<<<<<<< HEAD
            lhs.type == rhs.type;
+=======
+           lhs.type == rhs.type &&
+           lhs.bindIndex == rhs.bindIndex &&
+           lhs.arraySize == rhs.arraySize &&
+           lhs.binding == rhs.binding &&
+           lhs.writable == rhs.writable;
+>>>>>>> upstream/dev
 }
 
 bool operator!=(
@@ -95,6 +118,22 @@ bool operator!=(
 }
 
 bool operator==(
+        const HgiShaderFunctionTessellationDesc& lhs,
+        const HgiShaderFunctionTessellationDesc& rhs)
+{
+    return lhs.patchType == rhs.patchType &&
+    lhs.numVertsPerPatchIn == rhs.numVertsPerPatchIn &&
+    lhs.numVertsPerPatchOut == rhs.numVertsPerPatchOut;
+}
+
+bool operator!=(
+    const HgiShaderFunctionTessellationDesc& lhs,
+    const HgiShaderFunctionTessellationDesc& rhs)
+{
+    return !(lhs == rhs);
+}
+
+bool operator==(
     const HgiShaderFunctionDesc& lhs,
     const HgiShaderFunctionDesc& rhs)
 {
@@ -105,7 +144,8 @@ bool operator==(
            lhs.textures == rhs.textures &&
            lhs.constantParams == rhs.constantParams &&
            lhs.stageInputs == rhs.stageInputs &&
-           lhs.stageOutputs == rhs.stageOutputs;
+           lhs.stageOutputs == rhs.stageOutputs &&
+           lhs.tessellationDescriptor == rhs.tessellationDescriptor;
 }
 
 bool operator!=(
@@ -134,11 +174,42 @@ void
 HgiShaderFunctionAddBuffer(
     HgiShaderFunctionDesc * const desc,
     const std::string &nameInShader,
+<<<<<<< HEAD
     const std::string &type)
+=======
+    const std::string &type,
+    const uint32_t bindIndex,
+    HgiBindingType binding,
+    uint32_t arraySize)
+>>>>>>> upstream/dev
 {
     HgiShaderFunctionBufferDesc bufDesc;
     bufDesc.nameInShader = nameInShader;
     bufDesc.type = type;
+<<<<<<< HEAD
+=======
+    bufDesc.binding = binding;
+    bufDesc.arraySize = arraySize;
+    bufDesc.bindIndex = bindIndex;
+    bufDesc.writable = false;
+
+    desc->buffers.push_back(std::move(bufDesc));
+}
+
+void
+HgiShaderFunctionAddWritableBuffer(
+    HgiShaderFunctionDesc * const desc,
+    const std::string &nameInShader,
+    const std::string &type,
+    const uint32_t bindIndex)
+{
+    HgiShaderFunctionBufferDesc bufDesc;
+    bufDesc.nameInShader = nameInShader;
+    bufDesc.type = type;
+    bufDesc.bindIndex = bindIndex;
+    bufDesc.binding = HgiBindingTypePointer;
+    bufDesc.writable = true;
+>>>>>>> upstream/dev
 
     desc->buffers.push_back(std::move(bufDesc));
 }

@@ -127,7 +127,11 @@ HdxFreeCameraSceneDelegate::SetMatrices(
     GfMatrix4d const &viewMatrix,
     GfMatrix4d const &projMatrix)
 {
+<<<<<<< HEAD
     GfCamera cam;
+=======
+    GfCamera cam = _camera;
+>>>>>>> upstream/dev
     cam.SetFromViewAndProjectionMatrix(viewMatrix, projMatrix);
     SetCamera(cam);
 }

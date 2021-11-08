@@ -21,16 +21,29 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 #ifndef EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_CONTEXT_H
 #define EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_CONTEXT_H
+=======
+#ifndef EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+#define EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 
 #include "pxr/pxr.h"
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/imaging/hd/renderThread.h"
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 #include "hdPrman/context.h"
 #include "hdPrman/rixStrings.h"
 #include "hdPrman/framebuffer.h"
 #include "hdPrman/renderBuffer.h"
+=======
+#include "hdPrman/renderParam.h"
+#include "hdPrman/rixStrings.h"
+#include "hdPrman/framebuffer.h"
+#include "hdPrman/renderBuffer.h"
+#include "hdPrman/cameraContext.h"
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 
 #include "Riley.h"
 
@@ -47,32 +60,46 @@ class SdfPath;
 class HdSceneDelegate;
 class HdRenderDelegate;
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 // HdPrman_InteractiveContext supports interactive rendering workflows.
+=======
+// HdPrman_InteractiveRenderParam supports interactive rendering workflows.
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 // Specifically, this means it provides:
 //
 // - a built-in Riley camera used for the RenderPass
 // - a framebuffer for returning image results
 // - concurrent, background rendering support.
 //
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 struct HdPrman_InteractiveContext : public HdPrman_Context
+=======
+class HdPrman_InteractiveRenderParam : public HdPrman_RenderParam
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 {
+public:
+
     // A framebuffer to hold PRMan results.
     // The d_hydra.so renderman display driver handles updates via IPC.
     HdPrmanFramebuffer framebuffer;
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 
     // The integrator to use.
     // Updated from render pass state.
     riley::IntegratorId integratorId;
+=======
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 
-    // The viewport camera to use.
-    // Updated from render pass state.
-    riley::CameraId cameraId;
-        
     // Count of scene lights.  Maintained by the delegate.
     int sceneLightCount;
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
     HdPrman_InteractiveContext();
     virtual ~HdPrman_InteractiveContext();
+=======
+    HdPrman_InteractiveRenderParam();
+    ~HdPrman_InteractiveRenderParam() override;
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 
     // Start connection to Renderman.
     void Begin(HdRenderDelegate *renderDelegate);
@@ -86,12 +113,22 @@ struct HdPrman_InteractiveContext : public HdPrman_Context
     // Request Riley (and the HdRenderThread) to stop.
     void StopRender();
 
-    // Checks whether context was successfully initialized.
+    // Query whether or not the HdRenderThread is running.
+    bool IsRenderStopped();
+
+    // Checks whether render param was successfully initialized.
     // ie. riley was created
     bool IsValid() const;
 
     // Creates displays in riley based on aovBindings vector
-    bool CreateDisplays(const HdRenderPassAovBindingVector& aovBindings);
+    void CreateDisplays(const HdRenderPassAovBindingVector& aovBindings);
+
+    // Invalidate texture at path.
+    void InvalidateTexture(const std::string &path);
+
+    // Request edit access (stopping the renderer and marking the contex to restart
+    // the renderer when executing the render pass) to the Riley scene and return it.
+    riley::Riley * AcquireRiley() override;
 
     // Render thread for background rendering.
     HdRenderThread renderThread;
@@ -106,6 +143,7 @@ struct HdPrman_InteractiveContext : public HdPrman_Context
     // resolution edits, so we need to keep track of these too.
     std::map<riley::RenderViewId, riley::RenderTargetId> renderTargets;
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
     riley::IntegratorId GetIntegrator();
     void SetIntegrator(riley::IntegratorId integratorId);
 
@@ -119,6 +157,10 @@ struct HdPrman_InteractiveContext : public HdPrman_Context
     // but now need to be provided as camera properties.
     static const std::vector<RtUString> _newRileyCameraProperties;
 
+=======
+    void SetIntegrator(riley::IntegratorId integratorId);
+
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
     int32_t resolution[2];
 
     // Some quantites previously given as options now need to be provided
@@ -127,17 +169,39 @@ struct HdPrman_InteractiveContext : public HdPrman_Context
     // copy of the options, to be provided to SetOptions().
     RtParamList _GetDeprecatedOptionsPrunedList();
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
     // Some quantities previously given as options now need to be provided
     // through CreateCamera() or ModifyCamera(). This method retrieve these
     // values from _options and add them to the given paramlist.
     RtParamList _GetCameraPropertiesFromDeprecatedOptions();
 
+=======
+    // Provides external access to resources used to set parameters for
+    // options and the active integrator.
+    RtParamList &GetOptions() override;
+    riley::IntegratorId GetActiveIntegratorId() override;
+    riley::ShadingNode &GetActiveIntegratorShadingNode() override;
+
+    HdPrmanCameraContext &GetCameraContext() override;
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
 
 private:
+    // The integrator to use.
+    // Updated from render pass state.
+    riley::IntegratorId _integratorId;
+
     // Initialize things, like riley, that need to succeed
     // in order for Begin to be called.
     void _Initialize();
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
+=======
+    void _RenderThreadCallback();
+
+    // Full option description
+    RtParamList _options;
+
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
     // The fallback light.  HdPrman_RenderPass calls
     // SetFallbackLightsEnabled() to maintain visibility
     // of the fallback light XOR other lights in the scene.
@@ -146,8 +210,16 @@ private:
     RtParamList _fallbackLightAttrs;
     bool _fallbackLightEnabled;
     bool _didBeginRiley;
+
+    riley::ShadingNode _activeIntegratorShadingNode;
+
+    HdPrmanCameraContext _cameraContext;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveContext.h
 #endif // EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_CONTEXT_H
+=======
+#endif // EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h

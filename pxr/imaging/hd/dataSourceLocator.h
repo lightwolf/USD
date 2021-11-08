@@ -224,9 +224,17 @@ public:
 
     explicit HdDataSourceLocatorSet() {}
 
+<<<<<<< HEAD
     HdDataSourceLocatorSet(const HdDataSourceLocator &locator);
 
     // Initializer list constructor.
+=======
+    HD_API
+    HdDataSourceLocatorSet(const HdDataSourceLocator &locator);
+
+    // Initializer list constructor.
+    HD_API
+>>>>>>> upstream/dev
     HdDataSourceLocatorSet(
         const std::initializer_list<const HdDataSourceLocator> &l);
 

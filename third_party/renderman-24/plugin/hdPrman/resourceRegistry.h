@@ -27,7 +27,10 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/resourceRegistry.h"
 #include "hdPrman/api.h"
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/resourceRegistry.h
 #include "hdPrman/interactiveContext.h"
+=======
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/resourceRegistry.h
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -39,10 +42,17 @@ class HdPrman_ResourceRegistry final : public HdResourceRegistry
 public:
     HDPRMAN_API
     HdPrman_ResourceRegistry(
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/resourceRegistry.h
         std::shared_ptr<HdPrman_InteractiveContext> const& context);
 
     HDPRMAN_API
     virtual ~HdPrman_ResourceRegistry();
+=======
+        std::shared_ptr<class HdPrman_InteractiveRenderParam> const& renderParam);
+
+    HDPRMAN_API
+    ~HdPrman_ResourceRegistry() override;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/resourceRegistry.h
 
     HDPRMAN_API
     void ReloadResource(
@@ -50,7 +60,11 @@ public:
         std::string const& path) override;
 
 private:
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/resourceRegistry.h
     std::shared_ptr<HdPrman_InteractiveContext> _context;
+=======
+    std::shared_ptr<class HdPrman_InteractiveRenderParam> _renderParam;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/resourceRegistry.h
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

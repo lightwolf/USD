@@ -511,6 +511,7 @@ HdSt_QuadrangulateComputationGPU::Execute(
             computeDesc.debugName = shaderToken.GetString();
             computeDesc.shaderStage = HgiShaderStageCompute;
             if (shaderToken == HdStGLSLProgramTokens->quadrangulateFloat) {
+<<<<<<< HEAD
                 HgiShaderFunctionAddBuffer(
                     &computeDesc, "primvar", HdStTokens->_float);
             } else {
@@ -519,6 +520,19 @@ HdSt_QuadrangulateComputationGPU::Execute(
             }
             HgiShaderFunctionAddBuffer(
                     &computeDesc, "quadInfo", HdStTokens->_int);
+=======
+                HgiShaderFunctionAddWritableBuffer(
+                    &computeDesc, "primvar", HdStTokens->_float,
+                    BufferBinding_Primvar);
+            } else {
+                HgiShaderFunctionAddWritableBuffer(
+                    &computeDesc, "primvar", HdStTokens->_double,
+                    BufferBinding_Primvar);
+            }
+            HgiShaderFunctionAddBuffer(
+                    &computeDesc, "quadInfo", HdStTokens->_int,
+                    BufferBinding_Quadinfo, HgiBindingTypePointer);
+>>>>>>> upstream/dev
 
             static const std::string params[] = {
                 "vertexOffset",       // offset in aggregated buffer

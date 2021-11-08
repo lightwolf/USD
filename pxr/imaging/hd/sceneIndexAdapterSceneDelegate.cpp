@@ -85,6 +85,18 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+<<<<<<< HEAD
+=======
+// XXX: currently private and duplicated where used so as to not yet formally
+//      define this convention.
+TF_DEFINE_PRIVATE_TOKENS(
+    _tokens,
+    (prmanParams)
+    ((prmanParamsNames, ""))
+);
+
+
+>>>>>>> upstream/dev
 /* static */
 HdSceneIndexBaseRefPtr
 HdSceneIndexAdapterSceneDelegate::AppendDefaultSceneFilters(
@@ -1291,6 +1303,46 @@ HdSceneIndexAdapterSceneDelegate::Get(SdfPath const &id, TfToken const &key)
         return GetLightParamValue(id, key);
     }
 
+<<<<<<< HEAD
+=======
+    // camera use of Get().
+    if (prim.primType == HdPrimTypeTokens->camera) {
+        return GetCameraParamValue(id, key);
+    }
+
+    // Temporary backdoor for getting arbitrary data to render delegates
+    // Currently supported for setting Options and active integrator parameters
+    // in hdPrman.
+    if (prim.primType == _tokens->prmanParams) {
+         HdContainerDataSourceHandle prmanParamsDs = HdContainerDataSource::Cast(
+                prim.dataSource->Get(_tokens->prmanParams));
+
+         if (!prmanParamsDs) {
+            return VtValue();
+         }
+
+         if (key == _tokens->prmanParamsNames) {
+            return VtValue(prmanParamsDs->GetNames());
+         } else {
+            if (HdContainerDataSourceHandle paramsDs =
+                    HdContainerDataSource::Cast(
+                        prmanParamsDs->Get(key))) {
+
+                std::map<TfToken, VtValue> valueDict;
+                for (const TfToken &name : paramsDs->GetNames()) {
+                    if (HdSampledDataSourceHandle sampledDs =
+                            HdSampledDataSource::Cast(paramsDs->Get(name))){
+                        valueDict[name] = sampledDs->GetValue(0.0f);
+                    }
+                }
+                return VtValue(valueDict);
+            }
+        }
+
+        return VtValue();
+    }
+
+>>>>>>> upstream/dev
     // drawTarget use of Get().
     if (prim.primType == HdPrimTypeTokens->drawTarget) {
         if (HdContainerDataSourceHandle drawTarget =
@@ -1343,8 +1395,29 @@ HdSceneIndexAdapterSceneDelegate::Get(SdfPath const &id, TfToken const &key)
         return VtValue();
     }
 
+<<<<<<< HEAD
     // Rprim "primvars" use of Get()
     return _GetPrimvar(id, key, nullptr);
+=======
+    // "primvars" use of Get()
+    if (HdContainerDataSource::Cast(prim.dataSource)->Has(
+            HdPrimvarsSchemaTokens->primvars)) {
+        return _GetPrimvar(id, key, nullptr);
+    }
+
+    // Fallback for unknown prim conventions provided by emulated scene
+    // delegate.
+    if (HdTypedSampledDataSource<HdSceneDelegate*>::Handle sdDs =
+            HdTypedSampledDataSource<HdSceneDelegate*>::Cast(
+                prim.dataSource->Get(
+                    HdSceneIndexEmulationTokens->sceneDelegate))) {
+        if (HdSceneDelegate *delegate = sdDs->GetTypedValue(0.0f)) {
+            return delegate->Get(id, key);
+        }
+    }
+
+    return VtValue();
+>>>>>>> upstream/dev
 }
 
 VtValue 
@@ -1390,6 +1463,7 @@ HdSceneIndexAdapterSceneDelegate::_GetPrimvar(SdfPath const &id,
         }
     }
 
+<<<<<<< HEAD
     // Fallback for unknown prim conventions provided by emulated scene
     // delegate (for non-indexed cases).
     if (!outIndices) {
@@ -1405,6 +1479,8 @@ HdSceneIndexAdapterSceneDelegate::_GetPrimvar(SdfPath const &id,
     }
 
 
+=======
+>>>>>>> upstream/dev
     return VtValue();
 }
 

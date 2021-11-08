@@ -1,5 +1,9 @@
 //
+<<<<<<< HEAD
+// Copyright 2021 Pixar
+=======
 // Copyright 2017 Pixar
+>>>>>>> upstream/dev
 //
 // Licensed under the Apache License, Version 2.0 (the "Apache License")
 // with the following modification; you may not use this file except in
@@ -24,6 +28,10 @@
 #ifndef USDPHYSICS_API_H
 #define USDPHYSICS_API_H
 
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdPhysics/api.h
+=======
+>>>>>>> upstream/dev
 #include "pxr/base/arch/export.h"
 
 #if defined(PXR_STATIC)
@@ -43,5 +51,45 @@
 #   endif
 #   define USDPHYSICS_LOCAL ARCH_HIDDEN
 #endif
+<<<<<<< HEAD
+=======
+#include "pxr/imaging/hd/tokens.h"
+#include "pxr/imaging/hd/vtBufferSource.h"
+#include "pxr/base/vt/value.h"
+
+#include "pxr/base/tf/errorMark.h"
+
+#include <iostream>
+
+PXR_NAMESPACE_USING_DIRECTIVE
+
+int main()
+{
+    TfErrorMark mark;
+
+    VtValue v;
+    HdVtBufferSource b(HdTokens->points, v);
+
+    // Above could throw errors.
+    mark.Clear();
+
+    bool valid = b.IsValid();
+
+    std::cout << "Buffer is ";
+    std::cout << (valid ? "Valid" : "Invalid");
+    std::cout << "\n";
+
+
+    if (mark.IsClean() && (!valid)) {
+        std::cout << "OK" << std::endl;
+        return EXIT_SUCCESS;
+    } else {
+        std::cout << "FAILED" << std::endl;
+        return EXIT_FAILURE;
+    }
+}
+>>>>>>> upstream/dev:pxr/imaging/hd/testenv/testHdBufferSourceEmptyVal.cpp
+=======
+>>>>>>> upstream/dev
 
 #endif

@@ -64,7 +64,11 @@ class HdSceneIndexBase : public TfRefBase, public TfWeakBase
 public:
 
     HD_API
+<<<<<<< HEAD
     virtual ~HdSceneIndexBase();
+=======
+    ~HdSceneIndexBase() override;
+>>>>>>> upstream/dev
 
     // ------------------------------------------------------------------------
     // Scene Observer API

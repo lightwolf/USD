@@ -22,12 +22,18 @@
 // language governing permissions and limitations under the Apache License.
 //
 #include "hdPrman/resourceRegistry.h"
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/resourceRegistry.cpp
 #include "pxr/imaging/hd/tokens.h"
 #include "RixRiCtl.h"
+=======
+#include "hdPrman/interactiveRenderParam.h"
+#include "pxr/imaging/hd/tokens.h"
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/resourceRegistry.cpp
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 HdPrman_ResourceRegistry::HdPrman_ResourceRegistry(
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/resourceRegistry.cpp
     std::shared_ptr<HdPrman_InteractiveContext> const& context)
     : _context(context)
 {
@@ -36,6 +42,14 @@ HdPrman_ResourceRegistry::HdPrman_ResourceRegistry(
 HdPrman_ResourceRegistry::~HdPrman_ResourceRegistry()
 {
 }
+=======
+    std::shared_ptr<HdPrman_InteractiveRenderParam> const& renderParam)
+    : _renderParam(renderParam)
+{
+}
+
+HdPrman_ResourceRegistry::~HdPrman_ResourceRegistry() = default;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/resourceRegistry.cpp
 
 void
 HdPrman_ResourceRegistry::ReloadResource(
@@ -43,11 +57,8 @@ HdPrman_ResourceRegistry::ReloadResource(
     std::string const& path)
 {
     if (resourceType == HdResourceTypeTokens->texture) {
-        _context->ri->InvalidateTexture(RtUString(path.c_str()));
+        _renderParam->InvalidateTexture(path);
     }
-
-    _context->StopRender();
-    _context->sceneVersion.fetch_add(1);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

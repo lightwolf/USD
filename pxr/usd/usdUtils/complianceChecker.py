@@ -278,8 +278,13 @@ class TextureChecker(BaseRuleChecker):
         else:
             self._Msg("Not performing texture format checks for general "
                       "USD asset")
+<<<<<<< HEAD
 
 
+=======
+
+
+>>>>>>> upstream/dev
     def _CheckTexture(self, texAssetPath, inputPath):
         self._Msg("Checking texture <%s>." % texAssetPath)
         texFileExt = Ar.GetResolver().GetExtension(texAssetPath).lower()
@@ -396,11 +401,24 @@ class PrimEncapsulationChecker(BaseRuleChecker):
                 if not parent.GetTypeName():
                     pConnectable = None
                 if pConnectable and not pConnectable.IsContainer():
+<<<<<<< HEAD
                     self._AddFailedCheck("Connectable %s <%s> cannot reside "
                                          "under a non-Container Connectable %s"
                                          % (prim.GetTypeName(),
                                             prim.GetPath(),
                                             parent.GetTypeName()))
+=======
+                    # XXX This should be a failure as it is a violation of the
+                    # UsdShade OM.  But pragmatically, there are many 
+                    # authoring tools currently producing this structure, which
+                    # does not _currently_ perturb Hydra, so we need to start
+                    # with a warning
+                    self._AddWarning("Connectable %s <%s> cannot reside "
+                                     "under a non-Container Connectable %s"
+                                     % (prim.GetTypeName(),
+                                        prim.GetPath(),
+                                        parent.GetTypeName()))
+>>>>>>> upstream/dev
                 elif not pConnectable:
                     # it's only OK to have a non-connectable parent if all
                     # the rest of your ancestors are also non-connectable.  The
@@ -548,6 +566,7 @@ Specifically:
         
         if not (bias and scale and 
                 isinstance(bias, Gf.Vec4f) and isinstance(scale, Gf.Vec4f)):
+<<<<<<< HEAD
              self._AddFailedCheck("%s prim <%s> reads 8 bit Normal Map @%s@, "
                                   "which requires that inputs:scale be set to "
                                   "[2, 2, 2, 1] and inputs:bias be set to "
@@ -556,6 +575,20 @@ Specifically:
                                    sourcePrim.GetPath(),
                                    texAsset.path))
              return
+=======
+            # XXX This should be a failure, as it results in broken normal
+            # maps in Storm and hdPrman, at least.  But for the same reason
+            # as the shader-under-shader check, we cannot fail until at least
+            # the major authoring tools have been updated.
+            self._AddWarning("%s prim <%s> reads 8 bit Normal Map @%s@, "
+                             "which requires that inputs:scale be set to "
+                             "[2, 2, 2, 1] and inputs:bias be set to "
+                             "[-1, -1, -1, 0] for proper interpretation." %\
+                             (NodeTypes.UsdUVTexture,
+                              sourcePrim.GetPath(),
+                              texAsset.path))
+            return
+>>>>>>> upstream/dev
 
         # don't really care about fourth components...
         if (bias[0] != -1 or bias[1] != -1 or bias[2] != -1 or

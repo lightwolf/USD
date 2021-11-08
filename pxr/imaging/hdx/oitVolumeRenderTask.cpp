@@ -143,6 +143,7 @@ HdxOitVolumeRenderTask::Execute(HdTaskContext* ctx)
     // To show volumes that intersect the far clipping plane, we might consider
     // calling glEnable(GL_DEPTH_CLAMP) here.
 
+<<<<<<< HEAD
     // XXX HdxRenderTask::Prepare calls HdStRenderPassState::Prepare.
     // This sets the cullStyle for the render pass shader.
     // Since Oit uses a custom render pass shader, we must manually
@@ -150,6 +151,8 @@ HdxOitVolumeRenderTask::Execute(HdTaskContext* ctx)
     _oitVolumeRenderPassShader->SetCullStyle(
         renderPassState->GetCullStyle());
 
+=======
+>>>>>>> upstream/dev
     //
     // Translucent pixels pass
     //

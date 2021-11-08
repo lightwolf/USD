@@ -22,7 +22,7 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#include "hdPrman/context.h"
+#include "hdPrman/renderParam.h"
 #include "hdPrman/coordSys.h"
 #include "hdPrman/debugCodes.h"
 #include "hdPrman/material.h"
@@ -59,33 +59,40 @@ TF_DEFINE_PRIVATE_TOKENS(
     (PrimvarPass)
 );
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
 TF_MAKE_STATIC_DATA(std::vector<HdPrman_Context::IntegratorCameraCallback>,
+=======
+TF_MAKE_STATIC_DATA(std::vector<HdPrman_RenderParam::IntegratorCameraCallback>,
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
                     _integratorCameraCallbacks)
 {
     _integratorCameraCallbacks->clear();
 }
 
-HdPrman_Context::HdPrman_Context() :
-    rix(nullptr),
-    ri(nullptr),
-    mgr(nullptr),
-    riley(nullptr),
+HdPrman_RenderParam::HdPrman_RenderParam() :
+    _rix(nullptr),
+    _ri(nullptr),
+    _mgr(nullptr),
+    _riley(nullptr),
     _instantaneousShutter(false)
 {
-    /* NOTHING */
 }
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
 HdPrman_Context::~HdPrman_Context() = default;
+=======
+HdPrman_RenderParam::~HdPrman_RenderParam() = default;
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
 
 void
-HdPrman_Context::IncrementLightLinkCount(TfToken const& name)
+HdPrman_RenderParam::IncrementLightLinkCount(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightLinkMutex);
     ++_lightLinkRefs[name];
 }
 
 void 
-HdPrman_Context::DecrementLightLinkCount(TfToken const& name)
+HdPrman_RenderParam::DecrementLightLinkCount(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightLinkMutex);
     if (--_lightLinkRefs[name] == 0) {
@@ -94,33 +101,33 @@ HdPrman_Context::DecrementLightLinkCount(TfToken const& name)
 }
 
 bool 
-HdPrman_Context::IsLightLinkUsed(TfToken const& name)
+HdPrman_RenderParam::IsLightLinkUsed(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightLinkMutex);
     return _lightLinkRefs.find(name) != _lightLinkRefs.end();
 }
 
 bool 
-HdPrman_Context::IsShutterInstantaneous() const
+HdPrman_RenderParam::IsShutterInstantaneous() const
 {
     return _instantaneousShutter;
 }
 
 void
-HdPrman_Context::SetInstantaneousShutter(bool instantaneousShutter)
+HdPrman_RenderParam::SetInstantaneousShutter(bool instantaneousShutter)
 {
     _instantaneousShutter = instantaneousShutter;
 }
 
 void
-HdPrman_Context::IncrementLightFilterCount(TfToken const& name)
+HdPrman_RenderParam::IncrementLightFilterCount(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightFilterMutex);
     ++_lightFilterRefs[name];
 }
 
 void 
-HdPrman_Context::DecrementLightFilterCount(TfToken const& name)
+HdPrman_RenderParam::DecrementLightFilterCount(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightFilterMutex);
     if (--_lightFilterRefs[name] == 0) {
@@ -129,7 +136,7 @@ HdPrman_Context::DecrementLightFilterCount(TfToken const& name)
 }
 
 bool 
-HdPrman_Context::IsLightFilterUsed(TfToken const& name)
+HdPrman_RenderParam::IsLightFilterUsed(TfToken const& name)
 {
     std::lock_guard<std::mutex> lock(_lightFilterMutex);
     return _lightFilterRefs.find(name) != _lightFilterRefs.end();
@@ -225,7 +232,11 @@ _SetParamValue(RtUString const& name,
         } else if (role == HdPrimvarRoleTokens->point) {
             params.SetPoint(name, RtPoint3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->normal) {
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
             params.SetPoint(name, RtNormal3(v[0], v[1], v[2]));
+=======
+            params.SetNormal(name, RtNormal3(v[0], v[1], v[2]));
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
         } else if (role == HdPrimvarRoleTokens->vector) {
             params.SetVector(name, RtVector3(v[0], v[1], v[2]));
         } else {
@@ -259,7 +270,11 @@ _SetParamValue(RtUString const& name,
         } else if (role == HdPrimvarRoleTokens->point) {
             params.SetPoint(name, RtPoint3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->normal) {
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
             params.SetPoint(name, RtNormal3(v[0], v[1], v[2]));
+=======
+            params.SetNormal(name, RtNormal3(v[0], v[1], v[2]));
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
         } else if (role == HdPrimvarRoleTokens->vector) {
             params.SetVector(name, RtVector3(v[0], v[1], v[2]));
         } else {
@@ -454,7 +469,7 @@ _SetPrimVarValue(RtUString const& name,
         } else if (role == HdPrimvarRoleTokens->point) {
             params.SetPoint(name, RtPoint3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->normal) {
-            params.SetPoint(name, RtNormal3(v[0], v[1], v[2]));
+            params.SetNormal(name, RtNormal3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->vector) {
             params.SetVector(name, RtVector3(v[0], v[1], v[2]));
         } else {
@@ -492,7 +507,7 @@ _SetPrimVarValue(RtUString const& name,
         } else if (role == HdPrimvarRoleTokens->point) {
             params.SetPoint(name, RtPoint3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->normal) {
-            params.SetPoint(name, RtNormal3(v[0], v[1], v[2]));
+            params.SetNormal(name, RtNormal3(v[0], v[1], v[2]));
         } else if (role == HdPrimvarRoleTokens->vector) {
             params.SetVector(name, RtVector3(v[0], v[1], v[2]));
         } else {
@@ -975,7 +990,7 @@ HdPrman_TransferMaterialPrimvarOpinions(HdSceneDelegate *sceneDelegate,
 }
 
 RtParamList
-HdPrman_Context::ConvertAttributes(HdSceneDelegate *sceneDelegate,
+HdPrman_RenderParam::ConvertAttributes(HdSceneDelegate *sceneDelegate,
                                    SdfPath const& id)
 {
     RtPrimVarList attrs;
@@ -1007,7 +1022,7 @@ HdPrman_Context::ConvertAttributes(HdSceneDelegate *sceneDelegate,
 }
 
 void
-HdPrman_Context::ConvertCategoriesToAttributes(
+HdPrman_RenderParam::ConvertCategoriesToAttributes(
     SdfPath const& id,
     VtArray<TfToken> const& categories,
     RtParamList& attrs)
@@ -1103,8 +1118,8 @@ HdPrman_ResolveMaterial(HdSceneDelegate *sceneDelegate,
     return false;
 }
 
-HdPrman_Context::RileyCoordSysIdVecRefPtr
-HdPrman_Context::ConvertAndRetainCoordSysBindings(
+HdPrman_RenderParam::RileyCoordSysIdVecRefPtr
+HdPrman_RenderParam::ConvertAndRetainCoordSysBindings(
     HdSceneDelegate *sceneDelegate,
     SdfPath const& id)
 {
@@ -1153,7 +1168,7 @@ HdPrman_Context::ConvertAndRetainCoordSysBindings(
 }
 
 void
-HdPrman_Context::ReleaseCoordSysBindings(SdfPath const& id)
+HdPrman_RenderParam::ReleaseCoordSysBindings(SdfPath const& id)
 {
     std::lock_guard<std::mutex> lock(_coordSysMutex);
     _GeomToHdCoordSysMap::iterator geomIt = _geomToHdCoordSysMap.find(id);
@@ -1205,7 +1220,7 @@ _GetShutterInterval(
 }
 
 void
-HdPrman_Context::SetOptionsFromRenderSettings(
+HdPrman_RenderParam::SetOptionsFromRenderSettings(
     HdPrmanRenderDelegate *renderDelegate, 
     RtParamList& options)
 {
@@ -1272,7 +1287,7 @@ HdPrman_Context::SetOptionsFromRenderSettings(
 }
 
 void
-HdPrman_Context::SetIntegratorParamsFromRenderSettings(
+HdPrman_RenderParam::SetIntegratorParamsFromRenderSettings(
     HdPrmanRenderDelegate *renderDelegate,
     std::string& integratorName,
     RtParamList& params)
@@ -1396,7 +1411,7 @@ HdPrman_UpdateSearchPathsFromEnvironment(RtParamList& options)
 }
 
 void
-HdPrman_Context::SetIntegratorParamsFromCamera(
+HdPrman_RenderParam::SetIntegratorParamsFromCamera(
     HdPrmanRenderDelegate *renderDelegate,
     HdPrmanCamera *camera,
     std::string const& integratorName,
@@ -1408,12 +1423,13 @@ HdPrman_Context::SetIntegratorParamsFromCamera(
 }
 
 void 
-HdPrman_Context::RegisterIntegratorCallbackForCamera(
+HdPrman_RenderParam::RegisterIntegratorCallbackForCamera(
     IntegratorCameraCallback const& callback)
 {
    _integratorCameraCallbacks->push_back(callback);
 }
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
 void
 HdPrman_Context::_InitializePrman()
 {
@@ -1424,6 +1440,28 @@ HdPrman_Context::_InitializePrman()
     }
     ri = (RixRiCtl*)rix->GetRixInterface(k_RixRiCtl);
     if (!ri) {
+=======
+bool
+HdPrman_RenderParam::SetParamFromVtValue(
+    RtUString const& name,
+    VtValue const& val,
+    TfToken const& role,
+    RtParamList& params)
+{
+    return _SetParamValue(name, val, role, params);
+}
+
+void
+HdPrman_RenderParam::_InitializePrman()
+{
+    _rix = RixGetContext();
+    if (!_rix) {
+        TF_RUNTIME_ERROR("Could not initialize Rix API.");
+        return;
+    }
+    _ri = (RixRiCtl*)_rix->GetRixInterface(k_RixRiCtl);
+    if (!_ri) {
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
         TF_RUNTIME_ERROR("Could not initialize Ri API.");
         return;
     }
@@ -1436,6 +1474,7 @@ HdPrman_Context::_InitializePrman()
     char arg1[] = "-woff";
     char woffs[] = "R56008,R56009";
     char* argv[] = { arg0, arg1, woffs};
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
     ri->PRManBegin(3, argv);
 
     // Register an Xcpt handler
@@ -1444,6 +1483,16 @@ HdPrman_Context::_InitializePrman()
 
     // Populate RixStr struct
     RixSymbolResolver* sym = (RixSymbolResolver*)rix->GetRixInterface(
+=======
+    _ri->PRManBegin(3, argv);
+
+    // Register an Xcpt handler
+    RixXcpt* rix_xcpt = (RixXcpt*)_rix->GetRixInterface(k_RixXcpt);
+    rix_xcpt->Register(&_xcpt);
+
+    // Populate RixStr struct
+    RixSymbolResolver* sym = (RixSymbolResolver*)_rix->GetRixInterface(
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
         k_RixSymbolResolver);
     sym->ResolvePredefinedStrings(RixStr);
 
@@ -1459,9 +1508,15 @@ HdPrman_Context::_InitializePrman()
     }
 
     // Acquire Riley instance.
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
     mgr = (RixRileyManager*)rix->GetRixInterface(k_RixRileyManager);
     riley = mgr->CreateRiley(RtUString(rileyvariant.c_str()), RtParamList());
     if(!riley) {
+=======
+    _mgr = (RixRileyManager*)_rix->GetRixInterface(k_RixRileyManager);
+    _riley = _mgr->CreateRiley(RtUString(rileyvariant.c_str()), RtParamList());
+    if(!_riley) {
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
         TF_RUNTIME_ERROR("Could not initialize riley API.");
         return;
     }
@@ -1470,4 +1525,116 @@ HdPrman_Context::_InitializePrman()
             (rileyvariant.find("xpu") != std::string::npos));
 }
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.cpp
+=======
+static
+RtParamList
+_ComputePrimvarNodeParams()
+{
+    static const RtUString us_varname("varname");
+    static const RtUString us_displayColor("displayColor");
+    static const RtUString us_defaultColor("defaultColor");
+
+    RtParamList result;
+    result.SetString(
+        us_varname, us_displayColor);
+    // Note: this 0.5 gray is to match UsdImaging's fallback.
+    result.SetColor(
+        us_defaultColor, RtColorRGB(0.5, 0.5, 0.5));
+    result.SetString(
+        RixStr.k_type, RixStr.k_color);
+    return result;
+}
+
+static
+RtParamList
+_ComputeSurfaceNodeParams()
+{
+    static const RtUString us_diffuseColor("diffuseColor");
+    static const RtUString us_pv_color_resultRGB("pv_color:resultRGB");
+    static const RtUString us_specularModelType("specularModelType");
+    static const RtUString us_diffuseDoubleSided("diffuseDoubleSided");
+    static const RtUString us_specularDoubleSided("specularDoubleSided");
+    static const RtUString us_specularFaceColor("specularFaceColor");
+    static const RtUString us_specularEdgeColor("specularEdgeColor");
+
+    RtParamList result;
+    result.SetColorReference(
+        us_diffuseColor, us_pv_color_resultRGB);
+    result.SetInteger(
+        us_specularModelType, 1);
+    result.SetInteger(
+        us_diffuseDoubleSided, 1);
+    result.SetInteger(
+        us_specularDoubleSided, 1);
+    result.SetColor(
+        us_specularFaceColor, RtColorRGB(0.04f));
+    result.SetColor(
+        us_specularEdgeColor, RtColorRGB(1.0f));
+    return result;
+}
+
+static
+RtParamList
+_ComputeVolumeNodeParams()
+{
+    static const RtUString us_densityFloatPrimVar("densityFloatPrimVar");
+    static const RtUString us_density("density");
+    static const RtUString us_diffuseColor("diffuseColor");
+
+    RtParamList result;
+    result.SetString(
+        us_densityFloatPrimVar, us_density);
+    // 18% albedo chosen to match Storm's fallback volume shader.
+    result.SetColor(
+        us_diffuseColor, RtColorRGB(0.18, 0.18, 0.18));
+    return result;
+}
+
+void
+HdPrman_RenderParam::_CreateFallbackMaterials()
+{
+    // Default material
+    {
+        static const RtUString us_PxrPrimvar("PxrPrimvar");
+        static const RtUString us_pv_color("pv_color");
+        static const RtUString us_PxrSurface("PxrSurface");
+        static const RtUString us_simpleTestSurface("simpleTestSurface");
+
+        const std::vector<riley::ShadingNode> materialNodes{
+            riley::ShadingNode{
+                riley::ShadingNode::Type::k_Pattern,
+                us_PxrPrimvar,
+                us_pv_color,
+                _ComputePrimvarNodeParams()},
+            riley::ShadingNode{
+                riley::ShadingNode::Type::k_Bxdf,
+                us_PxrSurface, 
+                us_simpleTestSurface,
+                _ComputeSurfaceNodeParams()}};
+        _fallbackMaterialId = _riley->CreateMaterial(
+            riley::UserId::DefaultId(),
+            {static_cast<uint32_t>(materialNodes.size()), materialNodes.data()},
+            RtParamList());
+    }
+
+    // Volume default material
+    {
+        static const RtUString us_PxrVolume("PxrVolume");
+        static const RtUString us_simpleVolume("simpleVolume");
+
+        const std::vector<riley::ShadingNode> materialNodes{
+            riley::ShadingNode{
+                riley::ShadingNode::Type::k_Bxdf,
+                us_PxrVolume,
+                us_simpleVolume,
+                _ComputeVolumeNodeParams()}};    
+        _fallbackVolumeMaterialId = _riley->CreateMaterial(
+            riley::UserId::DefaultId(),
+            {static_cast<uint32_t>(materialNodes.size()), materialNodes.data()},
+            RtParamList());
+    }
+}
+
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.cpp
 PXR_NAMESPACE_CLOSE_SCOPE

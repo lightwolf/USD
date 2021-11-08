@@ -232,6 +232,13 @@ public:
     HD_API
     TfToken GetRenderTag(SdfPath const& id) const;
 
+<<<<<<< HEAD
+=======
+    /// Like GetRenderTag, but updates the render tag if dirty.
+    TfToken UpdateRenderTag(SdfPath const& id,
+                            HdDirtyBits bits);
+
+>>>>>>> upstream/dev
     /// Returns a sorted list of all Rprims in the render index.
     /// The list is sorted by std::less<SdfPath>
     HD_API

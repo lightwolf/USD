@@ -201,10 +201,16 @@ HdDirtyBitsTranslator::SprimDirtyBitsToLocatorSet(TfToken const& primType,
             set->append(HdXformSchema::GetDefaultLocator());
         }
     } else if (primType == HdPrimTypeTokens->camera) {
+<<<<<<< HEAD
         if (bits & (HdCamera::DirtyProjMatrix |
                     HdCamera::DirtyWindowPolicy |
                     HdCamera::DirtyClipPlanes |
                     HdCamera::DirtyParams)) {
+=======
+        if (bits & (HdCamera::DirtyParams |
+                    HdCamera::DirtyClipPlanes |
+                    HdCamera::DirtyWindowPolicy)) {
+>>>>>>> upstream/dev
             set->append(HdCameraSchema::GetDefaultLocator());
         }
         if (bits & HdCamera::DirtyTransform) {
@@ -258,6 +264,14 @@ HdDirtyBitsTranslator::SprimDirtyBitsToLocatorSet(TfToken const& primType,
         if (bits & HdExtComputation::DirtyOutputDesc) {
             set->append(HdExtComputationSchema::GetOutputsLocator());
         }
+<<<<<<< HEAD
+=======
+    } else {
+        // unknown prim type, use AllDirty for anything
+        if (bits) {
+            set->append(HdDataSourceLocator());
+        }
+>>>>>>> upstream/dev
     }
 }
 
@@ -561,7 +575,11 @@ HdDirtyBitsTranslator::SprimLocatorSetToDirtyBits(
         }
     } else if (primType == HdPrimTypeTokens->camera) {
         if (_FindLocator(HdCameraSchema::GetDefaultLocator(), end, &it)) {
+<<<<<<< HEAD
             bits |= HdCamera::DirtyProjMatrix |
+=======
+            bits |=
+>>>>>>> upstream/dev
                 HdCamera::DirtyWindowPolicy |
                 HdCamera::DirtyClipPlanes |
                 HdCamera::DirtyParams;
@@ -633,6 +651,14 @@ HdDirtyBitsTranslator::SprimLocatorSetToDirtyBits(
                             HdExtComputationSchema::GetDefaultLocator()));
             }
         }
+<<<<<<< HEAD
+=======
+    } else {
+        // unknown prim type, use AllDirty for anything
+        if (_FindLocator(HdDataSourceLocator(), end, &it)) {
+            bits |= HdChangeTracker::AllDirty;
+        }
+>>>>>>> upstream/dev
     }
 
     return bits;

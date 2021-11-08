@@ -33,13 +33,17 @@ class HdPrmanRendererPlugin final : public HdRendererPlugin
 {
 public:
     HdPrmanRendererPlugin() = default;
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/rendererPlugin.h
     virtual ~HdPrmanRendererPlugin() = default;
+=======
+    ~HdPrmanRendererPlugin() override = default;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/rendererPlugin.h
 
-    virtual HdRenderDelegate *CreateRenderDelegate() override;
-    virtual HdRenderDelegate *CreateRenderDelegate(
+    HdRenderDelegate *CreateRenderDelegate() override;
+    HdRenderDelegate *CreateRenderDelegate(
         HdRenderSettingsMap const& settingsMap) override;
-    virtual void DeleteRenderDelegate(HdRenderDelegate *) override;
-    virtual bool IsSupported() const override;
+    void DeleteRenderDelegate(HdRenderDelegate *) override;
+    bool IsSupported() const override;
 
 private:
     // This class does not support copying.

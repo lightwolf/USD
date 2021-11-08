@@ -21,7 +21,15 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdPhysics/wrapCollisionGroup.cpp
 #include "pxr/usd/usdPhysics/collisionGroup.h"
+=======
+#include "pxr/usd/usdContrived/derivedNonAppliedAPI.h"
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/basic/wrapDerivedNonAppliedAPI.cpp
+=======
+#include "pxr/usd/usdPhysics/collisionGroup.h"
+>>>>>>> upstream/dev
 #include "pxr/usd/usd/schemaBase.h"
 
 #include "pxr/usd/sdf/primSpec.h"
@@ -50,22 +58,51 @@ WRAP_CUSTOM;
 
 
 static std::string
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdPhysics/wrapCollisionGroup.cpp
+=======
+>>>>>>> upstream/dev
 _Repr(const UsdPhysicsCollisionGroup &self)
 {
     std::string primRepr = TfPyRepr(self.GetPrim());
     return TfStringPrintf(
         "UsdPhysics.CollisionGroup(%s)",
+<<<<<<< HEAD
+=======
+_Repr(const UsdContrivedDerivedNonAppliedAPI &self)
+{
+    std::string primRepr = TfPyRepr(self.GetPrim());
+    return TfStringPrintf(
+        "UsdContrived.DerivedNonAppliedAPI(%s)",
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/basic/wrapDerivedNonAppliedAPI.cpp
+=======
+>>>>>>> upstream/dev
         primRepr.c_str());
 }
 
 } // anonymous namespace
 
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdPhysics/wrapCollisionGroup.cpp
+=======
+>>>>>>> upstream/dev
 void wrapUsdPhysicsCollisionGroup()
 {
     typedef UsdPhysicsCollisionGroup This;
 
     class_<This, bases<UsdTyped> >
         cls("CollisionGroup");
+<<<<<<< HEAD
+=======
+void wrapUsdContrivedDerivedNonAppliedAPI()
+{
+    typedef UsdContrivedDerivedNonAppliedAPI This;
+
+    class_<This, bases<UsdContrivedNonAppliedAPI> >
+        cls("DerivedNonAppliedAPI");
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/basic/wrapDerivedNonAppliedAPI.cpp
+=======
+>>>>>>> upstream/dev
 
     cls
         .def(init<UsdPrim>(arg("prim")))
@@ -75,9 +112,12 @@ void wrapUsdPhysicsCollisionGroup()
         .def("Get", &This::Get, (arg("stage"), arg("path")))
         .staticmethod("Get")
 
+<<<<<<< HEAD
+=======
         .def("Define", &This::Define, (arg("stage"), arg("path")))
         .staticmethod("Define")
 
+>>>>>>> upstream/dev
         .def("GetSchemaAttributeNames",
              &This::GetSchemaAttributeNames,
              arg("includeInherited")=true,

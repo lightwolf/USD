@@ -21,8 +21,13 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/rendererPlugin.cpp
 #include "hdPrman/interactiveContext.h"
 #include "hdPrman/offlineContext.h"
+=======
+#include "hdPrman/interactiveRenderParam.h"
+#include "hdPrman/offlineRenderParam.h"
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/rendererPlugin.cpp
 #include "hdPrman/renderDelegate.h"
 #include "pxr/imaging/plugin/hdPrmanLoader/rendererPlugin.h"
 #include "pxr/imaging/hd/tokens.h"
@@ -44,6 +49,7 @@ HDPRMAN_LOADER_CREATE_DELEGATE
     HdRenderDelegate* renderDelegate = nullptr;
     if (isInteractive) {
         // Prman only supports one delegate at a time
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/rendererPlugin.cpp
         std::shared_ptr<HdPrman_InteractiveContext> context =
             std::make_shared<HdPrman_InteractiveContext>();
         if (!context->IsValid()) {
@@ -53,6 +59,17 @@ HDPRMAN_LOADER_CREATE_DELEGATE
         }
 
         renderDelegate = new HdPrmanRenderDelegate(context, settingsMap);
+=======
+        std::shared_ptr<HdPrman_InteractiveRenderParam> renderParam =
+            std::make_shared<HdPrman_InteractiveRenderParam>();
+        if (!renderParam->IsValid()) {
+            TF_WARN("Failed to create the HdPrman render delegate due to"
+                    " an invalid HdPrman_InteractiveRenderParam.");
+            return nullptr;
+        }
+
+        renderDelegate = new HdPrmanRenderDelegate(renderParam, settingsMap);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/rendererPlugin.cpp
     } else {
         TF_WARN("Failed to create the non-interactive HdPrman render delegate,"
                 " this is not yet supported via plugin loading.");
@@ -63,7 +80,11 @@ HDPRMAN_LOADER_CREATE_DELEGATE
 
 HDPRMAN_LOADER_DELETE_DELEGATE
 {
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/rendererPlugin.cpp
     // The HdPrman_InteractiveContext is owned by delegate and
+=======
+    // The HdPrman_InteractiveRenderParam is owned by delegate and
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/rendererPlugin.cpp
     // will be automatically destroyed by ref-counting, shutting
     // down the attached PRMan instance.
     delete renderDelegate;

@@ -655,7 +655,11 @@ public:
             ++dataIndex;
         }
 
+<<<<<<< HEAD
         bindingData->Swap(contextData);
+=======
+        bindingData->UncheckedSwap(contextData);
+>>>>>>> upstream/dev
 
         _ContextStack& contextStack = _threadContextStack.local();
         if (contextStack.empty()) {
@@ -705,6 +709,7 @@ public:
         if (ArIsPackageRelativePath(assetPath)) {
             return _CreateDefaultContextForAsset(
                 ArSplitPackageRelativePathOuter(assetPath).first);
+<<<<<<< HEAD
         }
 
         std::vector<ArResolverContext> contexts;
@@ -725,6 +730,28 @@ public:
             }
         }
 
+=======
+        }
+
+        std::vector<ArResolverContext> contexts;
+
+        if (_resolver->info.implementsContexts) {
+            contexts.push_back(
+                _resolver->Get()->CreateDefaultContextForAsset(assetPath));
+        }
+
+        for (const auto& entry : _uriResolvers) {
+            if (!entry.second->info.implementsContexts) {
+                continue;
+            }
+
+            if (ArResolver* uriResolver = entry.second->Get()) {
+                contexts.push_back(
+                    uriResolver->CreateDefaultContextForAsset(assetPath));
+            }
+        }
+
+>>>>>>> upstream/dev
         return ArResolverContext(contexts);
     }
 

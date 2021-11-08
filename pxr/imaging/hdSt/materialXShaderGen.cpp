@@ -63,10 +63,9 @@ R"(#if NUM_LIGHTS > 0
                 (HdGet_worldToViewInverseMatrix() * lightSource[i].position).xyz;
 
             // Color and Intensity 
-            // Note: Storm supports Simple, Sphere and Rect Direct Lights where
-            // diffuse = lightColor * intensity;
-            // specular = vec3(1) * intensity;
-            float intensity = lightSource[i].specular.r;
+            // Note: in Storm, diffuse = lightColor * intensity;
+            float intensity = max( max(lightSource[i].diffuse.r, lightSource[i].diffuse.g), 
+                                   lightSource[i].diffuse.b);
             $lightData[u_numActiveLightSources].color = lightSource[i].diffuse.rgb/intensity;
             $lightData[u_numActiveLightSources].intensity = intensity;
             
@@ -160,8 +159,20 @@ HdStMaterialXShaderGen::_EmitGlslfxHeader(mx::ShaderStage& mxStage) const
         emitString(R"(    "attributes": {)" "\n", mxStage);
         std::string line; unsigned int i = 0;
         for (auto primvarPair : _mxHdPrimvarMap) {
+<<<<<<< HEAD
             line += "        \"" + primvarPair.first + "\": {\n";
             line += "            \"type\": \"" + primvarPair.second + "\"\n";
+=======
+            const mx::TypeDesc *mxType = mx::TypeDesc::get(primvarPair.second);
+            if (mxType == nullptr) {
+                TF_WARN("MaterialX geomprop '%s' has unknown type '%s'",
+                        primvarPair.first.c_str(), primvarPair.second.c_str());
+            }
+            std::string type = mxType ? _syntax->getTypeName(mxType) : "vec2";
+
+            line += "        \"" + primvarPair.first + "\": {\n";
+            line += "            \"type\": \"" + type + "\"\n";
+>>>>>>> upstream/dev
             line += "        }";
             line += (i < _mxHdPrimvarMap.size() - 1) ? ",\n" : "\n";
             i++;
@@ -548,9 +559,16 @@ HdStMaterialXShaderGen::_EmitMxVertexDataLine(
                 "    #ifdef HD_HAS_%s\n"
                 "        HdGet_%s(),\n"
                 "    #else\n"
+<<<<<<< HEAD
                 "        vec2(0.0),\n"
                 "    #endif\n        ", 
                 _defaultTexcoordName.c_str(), _defaultTexcoordName.c_str());
+=======
+                "        %s(0.0),\n"
+                "    #endif\n        ", 
+                _defaultTexcoordName.c_str(), _defaultTexcoordName.c_str(),
+                _syntax->getTypeName(variable->getType()).c_str());
+>>>>>>> upstream/dev
     }
     else if (mxVariableName.compare(0, mx::HW::T_IN_GEOMPROP.size(), 
                                     mx::HW::T_IN_GEOMPROP) == 0) {
@@ -563,9 +581,16 @@ HdStMaterialXShaderGen::_EmitMxVertexDataLine(
                 "    #ifdef HD_HAS%s\n"
                 "        HdGet%s(),\n"
                 "    #else\n"
+<<<<<<< HEAD
                 "        vec2(0.0),\n"
                 "    #endif\n        ", 
                 geompropName.c_str(), geompropName.c_str());
+=======
+                "        %s(0.0),\n"
+                "    #endif\n        ", 
+                geompropName.c_str(), geompropName.c_str(),
+                _syntax->getTypeName(variable->getType()).c_str());
+>>>>>>> upstream/dev
     }
     else {
         const std::string valueStr = variable->getValue() 

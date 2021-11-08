@@ -44,8 +44,11 @@ using HdStRenderPassShaderSharedPtr =
     std::shared_ptr<class HdStRenderPassShader>;
 using HdSt_FallbackLightingShaderSharedPtr =
     std::shared_ptr<class HdSt_FallbackLightingShader>;
+using HdSt_GeometricShaderSharedPtr =
+    std::shared_ptr<class HdSt_GeometricShader>;
 using HdStShaderCodeSharedPtrVector = std::vector<HdStShaderCodeSharedPtr>;
 class HdRenderIndex;
+class HdSt_ResourceBinder;
 
 /// \class HdStRenderPassState
 ///
@@ -115,8 +118,18 @@ public:
         return _renderPassShader;
     }
 
+<<<<<<< HEAD
     /// scene materials
     HDST_API
+=======
+    HDST_API
+    void ApplyStateFromGeometricShader(
+        HdSt_ResourceBinder const &binder,
+        HdSt_GeometricShaderSharedPtr const &geometricShader);
+
+    /// scene materials
+    HDST_API
+>>>>>>> upstream/dev
     void SetUseSceneMaterials(bool state);
     bool GetUseSceneMaterials() const {
         return _useSceneMaterials;
@@ -130,14 +143,34 @@ public:
     size_t GetShaderHash() const;
 
     /// Camera setter API
-    /// Option 1: Specify matrices, viewport and clipping planes (defined in
-    /// camera space) directly.
-    HD_API
+    ///
+    /// Set matrices, viewport and clipping planes explicitly that are used
+    /// when there is no HdCamera in the render pass state.
+    ///
+    /// This is used by render pass that do not have an associated HdCamera
+    /// such as the shadow render pass.
+    HDST_API
     void SetCameraFramingState(GfMatrix4d const &worldToViewMatrix,
                                GfMatrix4d const &projectionMatrix,
                                GfVec4d const &viewport,
                                ClipPlanesVector const & clipPlanes);
     
+    GfMatrix4d GetCullMatrix() const { return _cullMatrix; }
+
+    /// Overrides the case when no HdCamera is given. In the case, uses
+    /// matrix specified by SetCameraFramingState.
+    HDST_API
+    GfMatrix4d GetWorldToViewMatrix() const override;
+
+    /// Overrides the case when no HdCamera is given. In the case, uses
+    /// matrix specified by SetCameraFramingState.
+    HDST_API
+    GfMatrix4d GetProjectionMatrix() const override;
+
+    /// Overrides the case when no HdCamera is given. In the case, uses
+    /// clip planes specified by SetCameraFramingState.
+    HDST_API ClipPlanesVector const & GetClipPlanes() const override;
+
     // Helper to get graphics cmds descriptor describing textures
     // we render into and the blend state, constructed from
     // AOV bindings.
@@ -147,6 +180,16 @@ public:
 
 private:
     bool _UseAlphaMask() const;
+
+    // ---------------------------------------------------------------------- //
+    // Camera state used when no HdCamera available
+    // ---------------------------------------------------------------------- //
+    
+    GfMatrix4d _worldToViewMatrix;
+    GfMatrix4d _projectionMatrix;
+    ClipPlanesVector _clipPlanes;
+
+    GfMatrix4d _cullMatrix; // updated during Prepare(..)
 
     // ---------------------------------------------------------------------- //
     // Shader Objects

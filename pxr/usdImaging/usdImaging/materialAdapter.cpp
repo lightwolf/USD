@@ -121,14 +121,22 @@ UsdImagingMaterialAdapter::TrackVariability(
 
     const TfTokenVector contextVector = _GetMaterialRenderContexts();
     if (UsdShadeShader s = material.ComputeSurfaceSource(contextVector)) {
+<<<<<<< HEAD
         if (UsdImaging_IsHdMaterialNetworkTimeVarying(s.GetPrim())) {
+=======
+        if (UsdImagingIsHdMaterialNetworkTimeVarying(s.GetPrim())) {
+>>>>>>> upstream/dev
             *timeVaryingBits |= HdMaterial::DirtyResource;
             return;
         }
         // Only check if displacement is timeVarying if we also have a surface 
         if (UsdShadeShader d = 
                 material.ComputeDisplacementSource(contextVector)) {
+<<<<<<< HEAD
             if (UsdImaging_IsHdMaterialNetworkTimeVarying(d.GetPrim())) {
+=======
+            if (UsdImagingIsHdMaterialNetworkTimeVarying(d.GetPrim())) {
+>>>>>>> upstream/dev
                 *timeVaryingBits |= HdMaterial::DirtyResource;
             }
         }
@@ -136,7 +144,11 @@ UsdImagingMaterialAdapter::TrackVariability(
     }
 
     if (UsdShadeShader v = material.ComputeVolumeSource(contextVector)) {
+<<<<<<< HEAD
         if (UsdImaging_IsHdMaterialNetworkTimeVarying(v.GetPrim())) {
+=======
+        if (UsdImagingIsHdMaterialNetworkTimeVarying(v.GetPrim())) {
+>>>>>>> upstream/dev
             *timeVaryingBits |= HdMaterial::DirtyResource;
         }
         return;
@@ -256,7 +268,11 @@ UsdImagingMaterialAdapter::GetMaterialResource(UsdPrim const &prim,
     TfTokenVector shaderSourceTypes = _GetShaderSourceTypes();
 
     if (UsdShadeShader surface = material.ComputeSurfaceSource(contextVector)) {
+<<<<<<< HEAD
         UsdImaging_BuildHdMaterialNetworkFromTerminal(
+=======
+        UsdImagingBuildHdMaterialNetworkFromTerminal(
+>>>>>>> upstream/dev
             surface.GetPrim(), 
             HdMaterialTerminalTokens->surface,
             shaderSourceTypes,
@@ -267,7 +283,11 @@ UsdImagingMaterialAdapter::GetMaterialResource(UsdPrim const &prim,
         // Only build a displacement materialNetwork if we also have a surface
         if (UsdShadeShader displacement = 
                     material.ComputeDisplacementSource(contextVector)) {
+<<<<<<< HEAD
             UsdImaging_BuildHdMaterialNetworkFromTerminal(
+=======
+            UsdImagingBuildHdMaterialNetworkFromTerminal(
+>>>>>>> upstream/dev
                 displacement.GetPrim(),
                 HdMaterialTerminalTokens->displacement,
                 shaderSourceTypes,
@@ -280,7 +300,11 @@ UsdImagingMaterialAdapter::GetMaterialResource(UsdPrim const &prim,
     // Only build a volume materialNetwork if we do not have a surface
     else if (UsdShadeShader volume = 
                     material.ComputeVolumeSource(contextVector)) {
+<<<<<<< HEAD
         UsdImaging_BuildHdMaterialNetworkFromTerminal(
+=======
+        UsdImagingBuildHdMaterialNetworkFromTerminal(
+>>>>>>> upstream/dev
             volume.GetPrim(),
             HdMaterialTerminalTokens->volume,
             shaderSourceTypes,

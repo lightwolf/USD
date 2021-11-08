@@ -21,8 +21,20 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/sdr/debugCodes.h
 #ifndef PXR_USD_SDR_DEBUG_CODES_H
 #define PXR_USD_SDR_DEBUG_CODES_H
+=======
+#ifndef PXR_IMAGING_HGI_DEBUG_CODES_H
+#define PXR_IMAGING_HGI_DEBUG_CODES_H
+
+/// \file hgi/debugCodes.h
+>>>>>>> upstream/dev:pxr/imaging/hgi/debugCodes.h
+=======
+#ifndef PXR_USD_SDR_DEBUG_CODES_H
+#define PXR_USD_SDR_DEBUG_CODES_H
+>>>>>>> upstream/dev
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/debug.h"
@@ -31,10 +43,28 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 
 TF_DEBUG_CODES(
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/sdr/debugCodes.h
     SDR_TYPE_CONFORMANCE
+=======
+
+    HGI_DEBUG_DEVICE_CAPABILITIES
+
+>>>>>>> upstream/dev:pxr/imaging/hgi/debugCodes.h
+=======
+    SDR_TYPE_CONFORMANCE
+>>>>>>> upstream/dev
 );
 
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/sdr/debugCodes.h
 #endif // PXR_USD_SDR_DEBUG_CODES_H
+=======
+#endif
+>>>>>>> upstream/dev:pxr/imaging/hgi/debugCodes.h
+=======
+#endif // PXR_USD_SDR_DEBUG_CODES_H
+>>>>>>> upstream/dev

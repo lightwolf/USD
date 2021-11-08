@@ -29,6 +29,10 @@
 #include "pxr/imaging/hd/task.h"
 #include "pxr/imaging/hd/renderPass.h"
 #include "pxr/imaging/hd/renderPassState.h"
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
+=======
+#include "pxr/imaging/hd/camera.h"
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
 #include "pxr/imaging/cameraUtil/screenWindowParameters.h"
 
 #include "pxr/usd/usd/stage.h"
@@ -52,7 +56,11 @@
 #include "pxr/base/trace/reporter.h"
 #include "pxr/base/work/threadLimits.h"
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
 #include "hdPrman/offlineContext.h"
+=======
+#include "hdPrman/offlineRenderParam.h"
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
 #include "hdPrman/renderDelegate.h"
 #include "hdPrman/rixStrings.h"
 
@@ -74,6 +82,7 @@ TF_DEFINE_PRIVATE_TOKENS(
 
  static const RtUString us_A("A");
  static const RtUString us_default("default");
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
  static const RtUString us_defaultColor("defaultColor");
  static const RtUString us_density("density");
  static const RtUString us_densityFloatPrimVar("densityFloatPrimVar");
@@ -100,6 +109,16 @@ TF_DEFINE_PRIVATE_TOKENS(
  static const RtUString us_style("style");
  static const RtUString us_traceLightPaths("traceLightPaths");
  static const RtUString us_varname("varname");
+=======
+ static const RtUString us_lightA("lightA");
+ static const RtUString us_lightGroup("lightGroup");
+ static const RtUString us_PathTracer("PathTracer");
+ static const RtUString us_PxrDomeLight("PxrDomeLight");
+ static const RtUString us_PxrPathTracer("PxrPathTracer");
+ static const RtUString us_PxrVisualizer("PxrVisualizer");
+ static const RtUString us_style("style");
+ static const RtUString us_traceLightPaths("traceLightPaths");
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
  static const RtUString us_wireframe("wireframe");
 
 static TfStopwatch timer_prmanRender;
@@ -150,6 +169,39 @@ private:
     TfTokenVector _renderTags;
 };
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
+=======
+GfVec2i
+MultiplyAndRound(const GfVec2f &a, const GfVec2i &b)
+{
+    return GfVec2i(std::roundf(a[0] * b[0]),
+                   std::roundf(a[1] * b[1]));
+}
+
+CameraUtilFraming
+ComputeFraming(const UsdRenderSpec::Product &product)
+{
+    const GfRange2f displayWindow(GfVec2f(0.0f), GfVec2f(product.resolution));
+
+    // We use rounding to nearest integer when computing the dataWindow
+    // from the dataWindowNDC. This is to conform about the UsdRenderSpec's
+    // specification of the pixels that make up the data window, namely it
+    // is exactly those pixels whose centers are contained in the dataWindowNDC
+    // in NDC space.
+    //
+    // Note that we subtract 1 from the maximum - that's because of GfRect2i's
+    // unusual API.
+    const GfRect2i dataWindow(
+        MultiplyAndRound(
+            product.dataWindowNDC.GetMin(), product.resolution),
+        MultiplyAndRound(
+            product.dataWindowNDC.GetMax(), product.resolution) - GfVec2i(1));
+
+    return CameraUtilFraming(
+        displayWindow, dataWindow, product.pixelAspectRatio);
+}
+
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
 void
 PrintUsage(const char* cmd, const char *err=nullptr)
 {
@@ -157,7 +209,7 @@ PrintUsage(const char* cmd, const char *err=nullptr)
         fprintf(stderr, err);
     }
     fprintf(stderr, "Usage: %s INPUT.usd "
-            "[--out OUTPUT] [--frame FRAME] [--freeCamProj CAM_PROJECTION] "
+            "[--out OUTPUT] [--frame FRAME] "
             "[--sceneCamPath CAM_PATH] [--settings RENDERSETTINGS_PATH] "
             "[--sceneCamAspect aspectRatio] "
             "[--visualize STYLE] [--perf PERF] [--trace TRACE]\n"
@@ -213,7 +265,7 @@ _ConvertSettings(VtDictionary const& settings, RtParamList& params)
 int main(int argc, char *argv[])
 {
     // Pixar studio config
-    TfRegistryManager::GetInstance().SubscribeTo<HdPrman_Context>();
+    TfRegistryManager::GetInstance().SubscribeTo<HdPrman_RenderParam>();
 
     //////////////////////////////////////////////////////////////////////// 
     //
@@ -229,7 +281,6 @@ int main(int argc, char *argv[])
     std::string perfOutput, traceOutput;
 
     int frameNum = 0;
-    bool isOrthographic = false;
     std::string cameraProjection("PxrPerspective");
     static const std::string PxrOrthographic("PxrOrthographic");
     SdfPath sceneCamPath, renderSettingsPath;
@@ -243,9 +294,6 @@ int main(int argc, char *argv[])
             sceneCamPath = SdfPath(argv[++i]);
         } else if (std::string(argv[i]) == "--sceneCamAspect") {
             sceneCamAspect = atof(argv[++i]);
-        } else if (std::string(argv[i]) == "--freeCamProj") {
-            cameraProjection = argv[++i];
-            isOrthographic = cameraProjection == PxrOrthographic;
         } else if (std::string(argv[i]) == "--out") {
             outputFilename = argv[++i];
         } else if (std::string(argv[i]) == "--settings") {
@@ -384,8 +432,13 @@ int main(int argc, char *argv[])
     for (auto product: renderSpec.products) {
         printf("Rendering %s...\n", product.name.GetText());
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
         std::shared_ptr<HdPrman_OfflineContext> context =
             std::make_shared<HdPrman_OfflineContext>();
+=======
+        std::shared_ptr<HdPrman_OfflineRenderParam> renderParam =
+            std::make_shared<HdPrman_OfflineRenderParam>();
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
 
         // Find USD camera prim.
         UsdGeomCamera usdCam;
@@ -410,7 +463,6 @@ int main(int argc, char *argv[])
         // future the shutterInterval will be moved to new attributes on
         // the cameras, and shutterCurve will exist an a UsdRi schema.
         //
-        float shutterCurve[10] = {0, 0, 0, 0, 0, 0, 0, 1, 0.3, 0};
         if (usdCam) {
             float interval[2] = {0.0, 0.5};
             if (usdCam.GetShutterOpenAttr().Get(&interval[0], frameNum) ||
@@ -422,9 +474,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Use two samples (start and end) of a frame for now.
-        std::vector<double> timeSampleOffsets = {0.0, 1.0};
-
         // Options
         RtParamList rileyOptions;
         {
@@ -433,6 +482,7 @@ int main(int argc, char *argv[])
 
             // Product extraSettings become Riley options.
             _ConvertSettings(product.extraSettings, rileyOptions);
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
             
             rileyOptions.SetIntegerArray(RixStr.k_Ri_FormatResolution,
                 (int*) &product.resolution, 2);
@@ -471,6 +521,8 @@ int main(int argc, char *argv[])
             cropWindow[2] -= dy;
             cropWindow[3] -= dy;
             rileyOptions.SetFloatArray(RixStr.k_Ri_CropWindow, cropWindow, 4);
+=======
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
         }
 
         // Integrator
@@ -493,6 +545,7 @@ int main(int argc, char *argv[])
                     RtUString(visualizerStyle.c_str()));
             }
         }
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
 
         // Camera
         riley::ShadingNode cameraNode;
@@ -588,6 +641,11 @@ int main(int argc, char *argv[])
 
         // Displays & Display Channels
         std::vector<HdPrman_OfflineContext::RenderOutput> renderOutputs;
+=======
+
+        // Displays & Display Channels
+        std::vector<HdPrman_OfflineRenderParam::RenderOutput> renderOutputs;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
         for (size_t index: product.renderVarIndices) {
             auto const& renderVar = renderSpec.renderVars[index];
 
@@ -616,7 +674,11 @@ int main(int argc, char *argv[])
             // RenderVar extraSettings become Riley channel params.
             _ConvertSettings(renderVar.extraSettings, params);
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
             HdPrman_OfflineContext::RenderOutput ro;
+=======
+            HdPrman_OfflineRenderParam::RenderOutput ro;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
             ro.name = RtUString(name.c_str());
             ro.type = renderOutputType;
             ro.params = params;
@@ -627,6 +689,7 @@ int main(int argc, char *argv[])
         TF_VERIFY(product.type == TfToken("raster"));
         riley::Extent const format = {
             uint32_t(product.resolution[0]), uint32_t(product.resolution[1]),1};    
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
 
         // Fallback materials
         std::vector<riley::ShadingNode> materialNodes;
@@ -707,6 +770,43 @@ int main(int argc, char *argv[])
                                       us_default);
             context->SetFallbackLight(lightNode, xform, lightAttributes);
         }
+=======
+
+        // Basic configuration       
+        renderParam->Initialize(
+                rileyOptions,
+                integratorNode,
+                format,
+                product.name,
+                renderOutputs);
+
+        // Optionally add a fallback light if no lights present in USD file.
+        if (UsdLuxListAPI(stage->GetPseudoRoot()).ComputeLightList(
+            UsdLuxListAPI::ComputeModeIgnoreCache).empty()) {
+            // Light shader
+            riley::ShadingNode lightNode {
+                riley::ShadingNode::Type::k_Light, // type
+                us_PxrDomeLight, // name
+                us_lightA, // handle
+                RtParamList() 
+            };
+            lightNode.params.SetFloat(RixStr.k_intensity, 1.0f);
+            lightNode.params.SetInteger(us_traceLightPaths, 1);
+            lightNode.params.SetString(us_lightGroup, us_A);            
+
+            // Light instance
+            float const zerotime = 0.0f;
+            RtMatrix4x4 matrix = RixConstants::k_IdentityMatrix;
+            riley::Transform xform = { 1, &matrix, &zerotime };
+            RtParamList lightAttributes;
+            lightAttributes.SetInteger(RixStr.k_visibility_camera, 0);
+            lightAttributes.SetInteger(RixStr.k_visibility_indirect, 1);
+            lightAttributes.SetInteger(RixStr.k_visibility_transmission, 1);
+            lightAttributes.SetString(RixStr.k_grouping_membership,
+                                      us_default);
+            renderParam->SetFallbackLight(lightNode, xform, lightAttributes);
+        }
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
 
         // Hydra setup
         //
@@ -730,7 +830,11 @@ int main(int argc, char *argv[])
             // We should also configure the scene to filter for the
             // requested includedPurposes.
             HdRenderSettingsMap settingsMap;
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/testenv/testHdPrman.cpp
             HdPrmanRenderDelegate hdPrmanBackend(context, settingsMap);
+=======
+            HdPrmanRenderDelegate hdPrmanBackend(renderParam, settingsMap);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/testenv/testHdPrman.cpp
             std::unique_ptr<HdRenderIndex> hdRenderIndex(
                 HdRenderIndex::New(&hdPrmanBackend, HdDriverVector()));
             UsdImagingDelegate hdUsdFrontend(hdRenderIndex.get(),
@@ -757,6 +861,15 @@ int main(int argc, char *argv[])
                                                 hdCollection);
             HdRenderPassStateSharedPtr hdRenderPassState =
                 hdPrmanBackend.CreateRenderPassState();
+
+            HdCamera * camera = 
+                dynamic_cast<HdCamera*>(
+                    hdRenderIndex->GetSprim(HdTokens->camera, sceneCamPath));
+
+            hdRenderPassState->SetCameraAndFraming(
+                camera,
+                ComputeFraming(product),
+                { false, CameraUtilFit });
 
             // The task execution graph and engine configuration is also simple.
             HdTaskSharedPtrVector tasks = {

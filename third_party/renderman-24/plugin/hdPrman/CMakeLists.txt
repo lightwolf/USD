@@ -57,7 +57,7 @@ pxr_plugin(${PXR_PACKAGE}
     PUBLIC_CLASSES
         basisCurves
         camera
-        context
+        cameraContext
         coordSys
         debugCodes
         gprim
@@ -70,16 +70,29 @@ pxr_plugin(${PXR_PACKAGE}
         matfiltFilterChain
         matfiltResolveVstructs
         mesh
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/CMakeLists.txt
         offlineContext
+=======
+        offlineRenderParam
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/CMakeLists.txt
         points
+        paramsSetter
         renderDelegate
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/CMakeLists.txt
+=======
+        renderParam
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/CMakeLists.txt
         rixStrings
         volume
         xcpt
         ${optionalPublicClasses}
 
     PRIVATE_CLASSES
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/CMakeLists.txt
         interactiveContext
+=======
+        interactiveRenderParam
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/CMakeLists.txt
         interactiveRenderPass
         framebuffer
         offlineRenderPass
@@ -90,7 +103,6 @@ pxr_plugin(${PXR_PACKAGE}
 
     PUBLIC_HEADERS
         api.h
-        renderParam.h
 
     PRIVATE_HEADERS
         interactiveRenderParam.h

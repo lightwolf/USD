@@ -24,11 +24,18 @@
 
 #include "hdPrman/lightFilterUtils.h"
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
 #include "hdPrman/context.h"
 #include "hdPrman/debugCodes.h"
 #include "hdPrman/light.h"
 #include "hdPrman/material.h"
 #include "hdPrman/renderParam.h"
+=======
+#include "hdPrman/renderParam.h"
+#include "hdPrman/debugCodes.h"
+#include "hdPrman/light.h"
+#include "hdPrman/material.h"
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
 #include "hdPrman/rixStrings.h"
 
 #include "pxr/imaging/hd/material.h"
@@ -46,6 +53,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
 
     // tokens for RenderMan-specific light filter parameters
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
     ((analyticApex, "inputs:analytic:apex"))
     ((analyticDensityExponent, "inputs:analytic:density:exponent"))
     ((analyticDensityFarDistance, "inputs:analytic:density:farDistance"))
@@ -92,6 +100,54 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((scaleHeight, "inputs:scale:height"))
     ((scaleWidth, "inputs:scale:width"))
     ((width, "inputs:width"))
+=======
+    ((analyticApex, "inputs:ri:lightFilter:apex"))
+    ((analyticDensityExponent, "inputs:ri:lightFilter:densityPow"))
+    ((analyticDensityFarDistance, "inputs:ri:lightFilter:densityFarDist"))
+    ((analyticDensityFarValue, "inputs:ri:lightFilter:densityFarVal"))
+    ((analyticDensityNearDistance, "inputs:ri:lightFilter:densityNearDist"))
+    ((analyticDensityNearValue, "inputs:ri:lightFilter:densityNearVal"))
+    ((analyticDirectional, "inputs:ri:lightFilter:directional"))
+    ((analyticShearX, "inputs:ri:lightFilter:shearX"))
+    ((analyticShearY, "inputs:ri:lightFilter:shearY"))
+    ((analyticUseLightDirection, "inputs:ri:lightFilter:useLightDirection"))
+    ((barnMode, "inputs:ri:lightFilter:barnMode"))
+    ((colorRampColors, "inputs:ri:lightFilter:colorRamp_Colors"))
+    ((colorRampInterpolation, "inputs:ri:lightFilter:colorRamp_Interpolation"))
+    ((colorRampKnots, "inputs:ri:lightFilter:colorRamp_Knots"))
+    ((colorSaturation, "inputs:ri:lightFilter:saturation"))
+    ((depth, "inputs:ri:lightFilter:depth"))
+    ((edgeScaleBack, "inputs:ri:lightFilter:backEdge"))
+    ((edgeScaleBottom, "inputs:ri:lightFilter:bottomEdge"))
+    ((edgeScaleFront, "inputs:ri:lightFilter:frontEdge"))
+    ((edgeScaleLeft, "inputs:ri:lightFilter:leftEdge"))
+    ((edgeScaleRight, "inputs:ri:lightFilter:rightEdge"))
+    ((edgeScaleTop, "inputs:ri:lightFilter:topEdge"))
+    ((edgeThickness, "inputs:ri:lightFilter:edge"))
+    ((falloffFloats, "inputs:ri:lightFilter:falloff_Floats"))
+    ((falloffInterpolation, "inputs:ri:lightFilter:falloff_Interpolation"))
+    ((falloffKnots, "inputs:ri:lightFilter:falloff_Knots"))
+    ((height, "inputs:ri:lightFilter:height"))
+    ((preBarnEffect, "inputs:ri:lightFilter:preBarn"))
+    ((radius, "inputs:ri:lightFilter:radius"))
+    ((refineBack, "inputs:ri:lightFilter:back"))
+    ((refineBottom, "inputs:ri:lightFilter:bottom"))
+    ((refineFront, "inputs:ri:lightFilter:front"))
+    ((refineLeft, "inputs:ri:lightFilter:left"))
+    ((refineRight, "inputs:ri:lightFilter:right"))
+    ((refineTop, "inputs:ri:lightFilter:top"))
+    ((combineMode, "inputs:ri:lightFilter:combineMode"))
+    ((density, "inputs:ri:lightFilter:density"))
+    ((diffuse, "inputs:ri:lightFilter:diffuse"))
+    ((exposure, "inputs:ri:lightFilter:exposure"))
+    ((intensity, "inputs:ri:lightFilter:intensity"))
+    ((invert, "inputs:ri:lightFilter:invert"))
+    ((specular, "inputs:ri:lightFilter:specular"))
+    ((scaleDepth, "inputs:ri:lightFilter:scaleDepth"))
+    ((scaleHeight, "inputs:ri:lightFilter:scaleHeight"))
+    ((scaleWidth, "inputs:ri:lightFilter:scaleWidth"))
+    ((width, "inputs:ri:lightFilter:width"))
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
 
     (analytic)
     (cone)
@@ -128,64 +184,86 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
 
     VtValue pval;
 
-    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->riIntensity);
+    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->intensity);
     if (pval.IsHolding<float>()) {
         float intensity = pval.UncheckedGet<float>();
         TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
             .Msg("      ri:intensity %f\n", intensity);
+=======
+            .Msg("      %s %f\n", _tokens->intensity.GetText(), intensity);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
         filter.params.SetFloat(RtUString("intensity"), intensity);
     }
-    // XXX -- usdRi/schema.usda says exposure is a param of all light filters
-    // but its only implemented on the IntMult.
     if (filterType == _tokens->PxrIntMultLightFilter) {
         pval = sceneDelegate->GetLightParamValue(filterPath,
-                                                 _tokens->riExposure);
+                                                 _tokens->exposure);
         if (pval.IsHolding<float>()) {
             float exposure = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      ri:exposure %f\n", exposure);
+=======
+                .Msg("      %s %f\n", _tokens->exposure.GetText(), 
+                        exposure);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("exposure"), exposure);
         }
     }
-    // XXX -- usdRi/schema.usda says density is a param of all light filters but
-    // its not implemented on the IntMult.
     if (filterType != _tokens->PxrIntMultLightFilter) {
         pval = sceneDelegate->GetLightParamValue(filterPath,
-                                                 _tokens->riDensity);
+                                                 _tokens->density);
         if (pval.IsHolding<float>()) {
             float density = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      ri:density %f\n", density);
+=======
+                .Msg("      %s %f\n", _tokens->density.GetText(), density);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("density"), density);
         }
     }
-    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->riInvert);
+    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->invert);
     if (pval.IsHolding<bool>()) {
         bool invert = pval.UncheckedGet<bool>();
         TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
             .Msg("      ri:invert %d\n", invert);
+=======
+            .Msg("      %s %d\n", _tokens->invert.GetText(), invert);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
         filter.params.SetInteger(RtUString("invert"), invert);
     }
-    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->riDiffuse);
+    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->diffuse);
     if (pval.IsHolding<float>()) {
         float diffuse = pval.UncheckedGet<float>();
         TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
             .Msg("      ri:diffuse %f\n", diffuse);
+=======
+            .Msg("      %s %f\n", _tokens->diffuse.GetText(), diffuse);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
         filter.params.SetFloat(RtUString("diffuse"), diffuse);
     }
-    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->riSpecular);
+    pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->specular);
     if (pval.IsHolding<float>()) {
         float specular = pval.UncheckedGet<float>();
         TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
             .Msg("      ri:specular %f\n", specular);
+=======
+            .Msg("      %s %f\n", _tokens->specular.GetText(), specular);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
         filter.params.SetFloat(RtUString("specular"), specular);
     }
     pval = sceneDelegate->GetLightParamValue(filterPath,
-                                             _tokens->riCombineMode);
+                                             _tokens->combineMode);
     if (pval.IsHolding<TfToken>()) {
         TfToken combineMode = pval.UncheckedGet<TfToken>();
         TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-            .Msg("      ri:combineMode %s\n", combineMode.GetText());
+            .Msg("      %s %s\n", _tokens->combineMode.GetText(), 
+                    combineMode.GetText());
         // XXX -- what to do with this
         //filter.params.SetFloat(RtUString("combineMode"), combineMode);
         // XXX -- what to do with this
@@ -200,11 +278,20 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
 
         // XXX -- note this token is not color:saturation so be specific
         pval = sceneDelegate->GetLightParamValue(filterPath,
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                                                  TfToken("inputs:colorSaturation"));
         if (pval.IsHolding<float>()) {
             float saturation = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
                 .Msg("      colorSaturation %f\n", saturation);
+=======
+                                                 _tokens->colorSaturation);
+        if (pval.IsHolding<float>()) {
+            float saturation = pval.UncheckedGet<float>();
+            TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+                .Msg("      %s %f\n", _tokens->colorSaturation.GetText(), 
+                        saturation);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("saturation"), saturation);
         }
 
@@ -216,7 +303,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<TfToken>()) {
             barnMode = pval.UncheckedGet<TfToken>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                .Msg("      barnMode %s\n", barnMode.GetText());
+                .Msg("      %s %s\n", _tokens->barnMode.GetText(), 
+                        barnMode.GetText());
             int bm = -1;
             if (barnMode == _tokens->physical)
                 bm = 0;
@@ -229,21 +317,33 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float width = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      width %f\n", width);
+=======
+                .Msg("      %s %f\n", _tokens->width.GetText(), width);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("width"), width);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->height);
         if (pval.IsHolding<float>()) {
             float height = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      height %f\n", height);
+=======
+                .Msg("      %s %f\n", _tokens->height.GetText(), height);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("height"), height);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->radius);
         if (pval.IsHolding<float>()) {
             float radius = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      radius %f\n", radius);
+=======
+                .Msg("      %s %f\n", _tokens->radius.GetText(), radius);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("radius"), radius);
         }
         if (barnMode == _tokens->analytic) {
@@ -252,7 +352,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<bool>()) {
                 bool directional = pval.UncheckedGet<bool>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:directional %d\n", directional);
+=======
+                    .Msg("      %s %d\n", 
+                            _tokens->analyticDirectional.GetText(), 
+                            directional);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetInteger(RtUString("directional"),
                                           directional);
             }
@@ -261,7 +367,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float shearX = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:shearX %f\n", shearX);
+=======
+                    .Msg("      %s %f\n", _tokens->analyticShearX.GetText(),
+                            shearX);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("shearX"), shearX);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -269,7 +380,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float shearY = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:shearY %f\n", shearY);
+=======
+                    .Msg("      %s %f\n", _tokens->analyticShearY.GetText(), 
+                            shearY);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("shearY"), shearY);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -277,7 +393,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float apex = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:apex %f\n", apex);
+=======
+                    .Msg("      %s %f\n", _tokens->analyticApex.GetText(), 
+                            apex);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("apex"), apex);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -285,7 +406,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<bool>()) {
                 bool useLightDirection = pval.UncheckedGet<bool>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      analytic:useLightDirection %d\n",
+                    .Msg("      %s %d\n", 
+                            _tokens->analyticUseLightDirection.GetText(),
                                             useLightDirection);
                 filter.params.SetInteger(RtUString("useLightDirection"),
                                         useLightDirection);
@@ -295,7 +417,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float nearDistance = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      analytic:density:nearDistance %f\n",
+                    .Msg("      %s %f\n",
+                            _tokens->analyticDensityNearDistance.GetText(),
                                         nearDistance);
                 filter.params.SetFloat(RtUString("densityNear"), nearDistance);
             }
@@ -304,7 +427,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float farDistance = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      analytic:density:farDistance %f\n",
+                    .Msg("      %s %f\n",
+                            _tokens->analyticDensityFarDistance.GetText(),
                                         farDistance);
                 filter.params.SetFloat(RtUString("densityFar"), farDistance);
             }
@@ -313,7 +437,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float nearValue = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:density:nearValue %f\n", nearValue);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->analyticDensityNearValue.GetText(),
+                            nearValue);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("densityNearVal"), nearValue);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -321,7 +451,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float farValue = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:density:farValue %f\n", farValue);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->analyticDensityFarValue.GetText(),
+                            farValue);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("densityFarVal"), farValue);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -329,7 +465,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float exponent = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      analytic:density:exponent %f\n", exponent);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->analyticDensityExponent.GetText(),
+                            exponent);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("densityPow"), exponent);
             }
         }
@@ -339,7 +481,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             edgeThickness = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      edgeThickness %f\n", edgeThickness);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->edgeThickness.GetText(), 
+                        edgeThickness);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("edge"), edgeThickness);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -347,7 +495,9 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<TfToken>()) {
             TfToken preBarnEffect = pval.UncheckedGet<TfToken>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                .Msg("      preBarn %s\n", preBarnEffect.GetText());
+                .Msg("      %s %s\n", 
+                        _tokens->preBarnEffect.GetText(),
+                        preBarnEffect.GetText());
             int preBarn = -1;
             if (preBarnEffect == _tokens->noEffect)
                 preBarn = 0;
@@ -363,7 +513,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float width = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      scaleWidth %f\n", width);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->scaleWidth.GetText(), width);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("scaleWidth"), width);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -371,7 +526,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float height = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      scaleHeight %f\n", height);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->scaleHeight.GetText(), height);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("scaleHeight"), height);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -379,7 +539,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float top = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:top %f\n", top);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineTop.GetText(), top);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("top"), top);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -387,7 +552,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float bottom = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:bottom %f\n", bottom);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineBottom.GetText(), bottom);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("bottom"), bottom);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -395,7 +565,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float left = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:left %f\n", left);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineLeft.GetText(), left);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("left"), left);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -403,7 +578,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float right = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:right %f\n", right);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineRight.GetText(), right);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("right"), right);
         }
         if (edgeThickness > 0.0) {
@@ -412,7 +592,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float top = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:top %f\n", top);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleTop.GetText(), top);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("topEdge"), top);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -420,7 +605,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float bottom = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:bottom %f\n", bottom);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleBottom.GetText(), bottom);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("bottomEdge"), bottom);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -428,7 +618,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float left = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:left %f\n", left);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleLeft.GetText(), left);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("leftEdge"), left);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -436,7 +631,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float right = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:right %f\n", right);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleRight.GetText(), right);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("rightEdge"), right);
             }
         }
@@ -448,28 +648,48 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float width = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      width %f\n", width);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->width.GetText(), width);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("width"), width);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->height);
         if (pval.IsHolding<float>()) {
             float height = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      height %f\n", height);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->height.GetText(), height);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("height"), height);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->depth);
         if (pval.IsHolding<float>()) {
             float depth = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      depth %f\n", depth);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->depth.GetText(), depth);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("depth"), depth);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath, _tokens->radius);
         if (pval.IsHolding<float>()) {
             float radius = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      radius %f\n", radius);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->radius.GetText(), radius);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("radius"), radius);
         }
         float edgeThickness = 0.0;
@@ -478,7 +698,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             edgeThickness = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      edgeThickness %f\n", edgeThickness);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->edgeThickness.GetText(), edgeThickness);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("edge"), edgeThickness);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -486,7 +711,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float width = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      scaleWidth %f\n", width);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->scaleWidth.GetText(), width);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("scaleWidth"), width);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -494,7 +724,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float height = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      scaleHeight %f\n", height);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->scaleHeight.GetText(), height);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("scaleHeight"), height);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -502,7 +737,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float depth = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      scaleDepth %f\n", depth);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->scaleDepth.GetText(), depth);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("scaleDepth"), depth);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -510,7 +750,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float top = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:top %f\n", top);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineTop.GetText(), top);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("top"), top);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -518,7 +763,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float bottom = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:bottom %f\n", bottom);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineBottom.GetText(), bottom);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("bottom"), bottom);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -526,7 +776,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float left = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:left %f\n", left);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineLeft.GetText(), left);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("left"), left);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -534,7 +789,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float right = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:right %f\n", right);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineRight.GetText(), right);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("right"), right);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -542,7 +802,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float front = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:front %f\n", front);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineFront.GetText(), front);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("front"), front);
         }
         pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -550,7 +815,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float back = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      refine:back %f\n", back);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->refineBack.GetText(), back);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("back"), back);
         }
         if (edgeThickness > 0.0) {
@@ -559,7 +829,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float top = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:top %f\n", top);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleTop.GetText(), top);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("topEdge"), top);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -567,7 +842,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float bottom = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:bottom %f\n", bottom);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleBottom.GetText(), bottom);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("bottomEdge"), bottom);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -575,7 +855,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float left = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:left %f\n", left);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleLeft.GetText(), left);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("leftEdge"), left);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -583,7 +868,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float right = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:right %f\n", right);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleRight.GetText(), right);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("rightEdge"), right);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -591,7 +881,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float front = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:front %f\n", front);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleFront.GetText(), front);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("frontEdge"), front);
             }
             pval = sceneDelegate->GetLightParamValue(filterPath,
@@ -599,7 +894,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
             if (pval.IsHolding<float>()) {
                 float back = pval.UncheckedGet<float>();
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                     .Msg("      edgeScale:back %f\n", back);
+=======
+                    .Msg("      %s %f\n", 
+                            _tokens->edgeScaleBack.GetText(), back);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
                 filter.params.SetFloat(RtUString("backEdge"), back);
             }
         }
@@ -608,7 +908,12 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<float>()) {
             float saturation = pval.UncheckedGet<float>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      color:saturation %f\n", saturation);
+=======
+                .Msg("      %s %f\n", 
+                        _tokens->colorSaturation.GetText(), saturation);
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetFloat(RtUString("saturation"), saturation);
         }
 
@@ -620,7 +925,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
                                 pval.UncheckedGet<std::vector<float>>();
             if (TfDebug::IsEnabled(HDPRMAN_LIGHT_FILTER_LINKING)) {
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      falloff:knots size %d\n", (int)(v.size()));
+                    .Msg("      %s size %d\n", 
+                            _tokens->falloffKnots.GetText(), (int)(v.size()));
                 for(size_t ii = 0; ii < v.size(); ii++)
                     TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
                         .Msg("        %2zu: %f\n", ii, v[ii]);
@@ -637,7 +943,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
                                 pval.UncheckedGet<std::vector<float>>();
             if (TfDebug::IsEnabled(HDPRMAN_LIGHT_FILTER_LINKING)) {
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      falloff:floats size %d\n", (int)(v.size()));
+                    .Msg("      %s size %d\n", 
+                            _tokens->falloffFloats.GetText(), (int)(v.size()));
                 for(size_t ii = 0; ii < v.size(); ii++)
                     TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
                         .Msg("        %2zu: %f\n", ii, v[ii]);
@@ -650,7 +957,13 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<TfToken>()) {
             TfToken interpolation = pval.UncheckedGet<TfToken>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      falloff:interpolation %s\n", interpolation.GetText());
+=======
+                .Msg("      %s %s\n", 
+                        _tokens->falloffInterpolation.GetText(), 
+                        interpolation.GetText());
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetString(RtUString("falloff_Interpolation"),
                                      RtUString(interpolation.GetText()));
         }
@@ -662,7 +975,8 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
                                 pval.UncheckedGet<std::vector<float>>();
             if (TfDebug::IsEnabled(HDPRMAN_LIGHT_FILTER_LINKING)) {
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      colorRamp:knots size %d\n", (int)(v.size()));
+                    .Msg("      %s size %d\n", 
+                            _tokens->colorRampKnots.GetText(), (int)(v.size()));
                 for(size_t ii = 0; ii < v.size(); ii++)
                     TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
                         .Msg("        %2zu: %f\n", ii, v[ii]);
@@ -679,7 +993,9 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
                                 pval.UncheckedGet<std::vector<GfVec3f>>();
             if (TfDebug::IsEnabled(HDPRMAN_LIGHT_FILTER_LINKING)) {
                 TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
-                    .Msg("      colorRamp:colors size %d\n", (int)(v.size()));
+                    .Msg("      %s size %d\n", 
+                            _tokens->colorRampColors.GetText(), 
+                            (int)(v.size()));
                 for(size_t ii = 0; ii < v.size(); ii++)
                     TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
                         .Msg("      %2zu: %f %f %f\n",
@@ -693,8 +1009,14 @@ bool HdPrmanLightFilterPopulateNodesFromLightParams(
         if (pval.IsHolding<TfToken>()) {
             TfToken interpolation = pval.UncheckedGet<TfToken>();
             TF_DEBUG(HDPRMAN_LIGHT_FILTER_LINKING)
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
                 .Msg("      colorRamp:spline:interpolation %s\n",
                                         interpolation.GetText());
+=======
+                .Msg("      %s %s\n",
+                        _tokens->colorRampInterpolation.GetText(), 
+                        interpolation.GetText());
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
             filter.params.SetString(RtUString("colorRamp_Interpolation"),
                                      RtUString(interpolation.GetText()));
         }
@@ -715,7 +1037,11 @@ void HdPrmanLightFilterGenerateCoordSysAndLinks(
     std::vector<riley::CoordinateSystemId> *coordsysIds,
     std::vector<TfToken> *filterLinks,
     HdSceneDelegate *sceneDelegate,
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/lightFilterUtils.cpp
     HdPrman_Context *context,
+=======
+    HdPrman_RenderParam *renderParam,
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdPrman/lightFilterUtils.cpp
     riley::Riley *riley,
     const riley::ShadingNode &lightNode)
 {
@@ -766,7 +1092,7 @@ void HdPrmanLightFilterGenerateCoordSysAndLinks(
     }
     
     if (!lightFilterLink.IsEmpty()) {
-        context->IncrementLightFilterCount(lightFilterLink);
+        renderParam->IncrementLightFilterCount(lightFilterLink);
         (*filterLinks).push_back(lightFilterLink);
         // For light filters to link geometry, the light filters must
         // be assigned a grouping membership, and the

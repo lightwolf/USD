@@ -23,6 +23,7 @@
 //
 #include "renderBuffer.h"
 #include "pxr/base/gf/half.h"
+#include "pxr/base/gf/vec3i.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -37,9 +38,13 @@ HdPrmanRenderBuffer::HdPrmanRenderBuffer(SdfPath const& id)
 {
 }
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/renderBuffer.cpp
 HdPrmanRenderBuffer::~HdPrmanRenderBuffer()
 {
 }
+=======
+HdPrmanRenderBuffer::~HdPrmanRenderBuffer() = default;
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/renderBuffer.cpp
 
 void
 HdPrmanRenderBuffer::_Deallocate()
@@ -66,8 +71,13 @@ HdPrmanRenderBuffer::_GetBufferSize(GfVec2i const &dims, HdFormat format)
 /*virtual*/
 bool
 HdPrmanRenderBuffer::Allocate(GfVec3i const& dimensions,
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/renderBuffer.cpp
                                HdFormat format,
                                bool multiSampled)
+=======
+                              HdFormat format,
+                              bool multiSampled)
+>>>>>>> upstream/dev:third_party/renderman-23/plugin/hdxPrman/renderBuffer.cpp
 {
     _Deallocate();
 

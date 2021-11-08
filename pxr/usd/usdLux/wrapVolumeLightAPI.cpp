@@ -21,7 +21,15 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/wrapVolumeLightAPI.cpp
 #include "pxr/usd/usdLux/volumeLightAPI.h"
+=======
+#include "pxr/usd/usdContrived/derivedNonAppliedAPI.h"
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/namespace/wrapDerivedNonAppliedAPI.cpp
+=======
+#include "pxr/usd/usdLux/volumeLightAPI.h"
+>>>>>>> upstream/dev
 #include "pxr/usd/usd/schemaBase.h"
 
 #include "pxr/usd/sdf/primSpec.h"
@@ -39,7 +47,11 @@
 
 using namespace boost::python;
 
+<<<<<<< HEAD
+using namespace foo;
+=======
 PXR_NAMESPACE_USING_DIRECTIVE
+>>>>>>> upstream/dev
 
 namespace {
 
@@ -51,11 +63,25 @@ WRAP_CUSTOM;
 
 
 static std::string
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/wrapVolumeLightAPI.cpp
+=======
+>>>>>>> upstream/dev
 _Repr(const UsdLuxVolumeLightAPI &self)
 {
     std::string primRepr = TfPyRepr(self.GetPrim());
     return TfStringPrintf(
         "UsdLux.VolumeLightAPI(%s)",
+<<<<<<< HEAD
+=======
+_Repr(const UsdContrivedDerivedNonAppliedAPI &self)
+{
+    std::string primRepr = TfPyRepr(self.GetPrim());
+    return TfStringPrintf(
+        "UsdContrived.DerivedNonAppliedAPI(%s)",
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/namespace/wrapDerivedNonAppliedAPI.cpp
+=======
+>>>>>>> upstream/dev
         primRepr.c_str());
 }
 
@@ -76,6 +102,10 @@ _WrapCanApply(const UsdPrim& prim)
 
 } // anonymous namespace
 
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/wrapVolumeLightAPI.cpp
+=======
+>>>>>>> upstream/dev
 void wrapUsdLuxVolumeLightAPI()
 {
     typedef UsdLuxVolumeLightAPI This;
@@ -85,6 +115,17 @@ void wrapUsdLuxVolumeLightAPI()
 
     class_<This, bases<UsdAPISchemaBase> >
         cls("VolumeLightAPI");
+<<<<<<< HEAD
+=======
+void wrapUsdContrivedDerivedNonAppliedAPI()
+{
+    typedef UsdContrivedDerivedNonAppliedAPI This;
+
+    class_<This, bases<UsdContrivedNonAppliedAPI> >
+        cls("DerivedNonAppliedAPI");
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/namespace/wrapDerivedNonAppliedAPI.cpp
+=======
+>>>>>>> upstream/dev
 
     cls
         .def(init<UsdPrim>(arg("prim")))
@@ -94,12 +135,21 @@ void wrapUsdLuxVolumeLightAPI()
         .def("Get", &This::Get, (arg("stage"), arg("path")))
         .staticmethod("Get")
 
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/wrapVolumeLightAPI.cpp
+=======
+>>>>>>> upstream/dev
         .def("CanApply", &_WrapCanApply, (arg("prim")))
         .staticmethod("CanApply")
 
         .def("Apply", &This::Apply, (arg("prim")))
         .staticmethod("Apply")
 
+<<<<<<< HEAD
+=======
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/namespace/wrapDerivedNonAppliedAPI.cpp
+=======
+>>>>>>> upstream/dev
         .def("GetSchemaAttributeNames",
              &This::GetSchemaAttributeNames,
              arg("includeInherited")=true,

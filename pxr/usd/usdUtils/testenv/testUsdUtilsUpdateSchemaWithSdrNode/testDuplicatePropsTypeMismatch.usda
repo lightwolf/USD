@@ -7,7 +7,11 @@
 def Shader "TestDuplicatePropsAPI" (
     sdrMetadata = {
         token schemaName = "TestDuplicatePropsAPI"
+<<<<<<< HEAD
         token usdSchemaClass = "RectLight"
+=======
+        token apiSchemasForAttrPruning = "BaseOneAPI|BaseTwoAPI"
+>>>>>>> upstream/dev
         token schemaKind = "singleApply"
         token schemaBase = "APISchemaBase"
         token apiSchemaAutoApplyTo = "RectLight"
@@ -16,6 +20,7 @@ def Shader "TestDuplicatePropsAPI" (
 {
     uniform token info:implementationSource = "sourceAsset"
     uniform asset info:glslfx:sourceAsset = @testDummy.glslfx@
+<<<<<<< HEAD
     
     int inputs:intensity = 1.0 (
         connectability = "interfaceOnly"
@@ -27,6 +32,12 @@ def Shader "TestDuplicatePropsAPI" (
                 """
         }
     )
+=======
+
+    int inputs:one = 1
+    int inputs:two = 2
+    
+>>>>>>> upstream/dev
     string inputs:colorMapGamma (
         connectability = "interfaceOnly"
         sdrMetadata = {

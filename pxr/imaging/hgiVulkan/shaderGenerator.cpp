@@ -34,7 +34,14 @@ _GetMacroBlob()
     // On the metal side, the ref(space,type) parameter defines
     // if items are in device or thread domain.
     const static std::string header =
+<<<<<<< HEAD
         "#define REF(space,type) inout type\n";
+=======
+        "#define REF(space,type) inout type\n"
+        "#define HD_NEEDS_FORWARD_DECL\n"
+        "#define HD_FWD_DECL(decl) decl\n"
+        ;
+>>>>>>> upstream/dev
     return header;
 }
 

@@ -21,6 +21,37 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
+#ifndef EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+#define EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+
+#include "pxr/pxr.h"
+#include "pxr/imaging/hd/renderDelegate.h"
+#include "hdPrman/interactiveContext.h"
+#include "hdPrman/renderParam.h"
+
+PXR_NAMESPACE_OPEN_SCOPE
+
+class HdPrman_InteractiveRenderParam : public HdPrman_RenderParam 
+{
+public:
+    HdPrman_InteractiveRenderParam(
+        std::shared_ptr<HdPrman_InteractiveContext> const & context)
+        : HdPrman_RenderParam(context)
+        {}
+    virtual ~HdPrman_InteractiveRenderParam() = default;
+
+    // Request edit access to the Riley scene and then return the context.
+    HdPrman_Context* AcquireContext() override {
+        HdPrman_InteractiveContext* ctx =
+            static_cast<HdPrman_InteractiveContext*>(_context.get());
+        ctx->StopRender();
+        ctx->sceneVersion++;
+        return _context.get();
+=======
+>>>>>>> upstream/dev
 #ifndef PXR_IMAGING_HD_LEGACY_PRIM_SCENE_INDEX_H
 #define PXR_IMAGING_HD_LEGACY_PRIM_SCENE_INDEX_H
 
@@ -46,6 +77,10 @@ public:
 
     static HdLegacyPrimSceneIndexRefPtr New() {
         return TfCreateRefPtr(new HdLegacyPrimSceneIndex);
+<<<<<<< HEAD
+=======
+>>>>>>> upstream/dev:pxr/imaging/hd/legacyPrimSceneIndex.h
+>>>>>>> upstream/dev
     }
 
     /// custom insertion wrapper called by HdRenderIndex during population
@@ -60,4 +95,12 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+<<<<<<< HEAD
 #endif
+=======
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/interactiveRenderParam.h
+#endif // EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_INT_RENDER_PARAM_H
+=======
+#endif
+>>>>>>> upstream/dev:pxr/imaging/hd/legacyPrimSceneIndex.h
+>>>>>>> upstream/dev

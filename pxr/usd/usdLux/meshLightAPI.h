@@ -21,6 +21,10 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
+=======
+>>>>>>> upstream/dev
 #ifndef USDLUX_GENERATED_MESHLIGHTAPI_H
 #define USDLUX_GENERATED_MESHLIGHTAPI_H
 
@@ -29,6 +33,19 @@
 #include "pxr/pxr.h"
 #include "pxr/usd/usdLux/api.h"
 #include "pxr/usd/usd/apiSchemaBase.h"
+<<<<<<< HEAD
+=======
+#ifndef USDCONTRIVED_GENERATED_DERIVEDNONAPPLIEDAPI_H
+#define USDCONTRIVED_GENERATED_DERIVEDNONAPPLIEDAPI_H
+
+/// \file usdContrived/derivedNonAppliedAPI.h
+
+#include "pxr/pxr.h"
+#include "pxr/usd/usdContrived/api.h"
+#include "pxr/usd/usdContrived/nonAppliedAPI.h"
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
+>>>>>>> upstream/dev
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usdLux/tokens.h"
@@ -47,6 +64,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 class SdfAssetPath;
 
 // -------------------------------------------------------------------------- //
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
+=======
+>>>>>>> upstream/dev
 // MESHLIGHTAPI                                                               //
 // -------------------------------------------------------------------------- //
 
@@ -69,11 +90,27 @@ class SdfAssetPath;
 /// as the value.
 ///
 class UsdLuxMeshLightAPI : public UsdAPISchemaBase
+<<<<<<< HEAD
+=======
+// DERIVEDNONAPPLIEDAPI                                                       //
+// -------------------------------------------------------------------------- //
+
+/// \class UsdContrivedDerivedNonAppliedAPI
+///
+///
+class UsdContrivedDerivedNonAppliedAPI : public UsdContrivedNonAppliedAPI
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
+>>>>>>> upstream/dev
 {
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
     /// \sa UsdSchemaKind
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
+=======
+>>>>>>> upstream/dev
     static const UsdSchemaKind schemaKind = UsdSchemaKind::SingleApplyAPI;
 
     /// Construct a UsdLuxMeshLightAPI on UsdPrim \p prim .
@@ -90,26 +127,73 @@ public:
     /// as it preserves SchemaBase state.
     explicit UsdLuxMeshLightAPI(const UsdSchemaBase& schemaObj)
         : UsdAPISchemaBase(schemaObj)
+<<<<<<< HEAD
+=======
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::NonAppliedAPI;
+
+    /// Construct a UsdContrivedDerivedNonAppliedAPI on UsdPrim \p prim .
+    /// Equivalent to UsdContrivedDerivedNonAppliedAPI::Get(prim.GetStage(), prim.GetPath())
+    /// for a \em valid \p prim, but will not immediately throw an error for
+    /// an invalid \p prim
+    explicit UsdContrivedDerivedNonAppliedAPI(const UsdPrim& prim=UsdPrim())
+        : UsdContrivedNonAppliedAPI(prim)
+    {
+    }
+
+    /// Construct a UsdContrivedDerivedNonAppliedAPI on the prim held by \p schemaObj .
+    /// Should be preferred over UsdContrivedDerivedNonAppliedAPI(schemaObj.GetPrim()),
+    /// as it preserves SchemaBase state.
+    explicit UsdContrivedDerivedNonAppliedAPI(const UsdSchemaBase& schemaObj)
+        : UsdContrivedNonAppliedAPI(schemaObj)
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
+>>>>>>> upstream/dev
     {
     }
 
     /// Destructor.
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
     USDLUX_API
     virtual ~UsdLuxMeshLightAPI();
+=======
+    USDCONTRIVED_API
+    virtual ~UsdContrivedDerivedNonAppliedAPI();
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
+    USDLUX_API
+    virtual ~UsdLuxMeshLightAPI();
+>>>>>>> upstream/dev
 
     /// Return a vector of names of all pre-declared attributes for this schema
     /// class and all its ancestor classes.  Does not include attributes that
     /// may be authored by custom/extended methods of the schemas involved.
+<<<<<<< HEAD
+    USDCONTRIVED_API
+    static const TfTokenVector &
+    GetSchemaAttributeNames(bool includeInherited=true);
+
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
+    /// Return a UsdLuxMeshLightAPI holding the prim adhering to this
+=======
+    /// Return a UsdContrivedDerivedNonAppliedAPI holding the prim adhering to this
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
     USDLUX_API
     static const TfTokenVector &
     GetSchemaAttributeNames(bool includeInherited=true);
 
     /// Return a UsdLuxMeshLightAPI holding the prim adhering to this
+>>>>>>> upstream/dev
     /// schema at \p path on \p stage.  If no prim exists at \p path on
     /// \p stage, or if the prim at that path does not adhere to this schema,
     /// return an invalid schema object.  This is shorthand for the following:
     ///
     /// \code
+<<<<<<< HEAD
+<<<<<<< HEAD:pxr/usd/usdLux/meshLightAPI.h
+=======
+>>>>>>> upstream/dev
     /// UsdLuxMeshLightAPI(stage->GetPrimAtPath(path));
     /// \endcode
     ///
@@ -156,24 +240,48 @@ public:
     USDLUX_API
     static UsdLuxMeshLightAPI 
     Apply(const UsdPrim &prim);
+<<<<<<< HEAD
+=======
+    /// UsdContrivedDerivedNonAppliedAPI(stage->GetPrimAtPath(path));
+    /// \endcode
+    ///
+    USDCONTRIVED_API
+    static UsdContrivedDerivedNonAppliedAPI
+    Get(const UsdStagePtr &stage, const SdfPath &path);
+
+>>>>>>> upstream/dev:pxr/usd/usd/testenv/testUsdSchemaGen/baseline/headerTerminatorString/derivedNonAppliedAPI.h
+=======
+>>>>>>> upstream/dev
 
 protected:
     /// Returns the kind of schema this class belongs to.
     ///
     /// \sa UsdSchemaKind
+<<<<<<< HEAD
+    USDCONTRIVED_API
+=======
     USDLUX_API
+>>>>>>> upstream/dev
     UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
     friend class UsdSchemaRegistry;
+<<<<<<< HEAD
+    USDCONTRIVED_API
+=======
     USDLUX_API
+>>>>>>> upstream/dev
     static const TfType &_GetStaticTfType();
 
     static bool _IsTypedSchema();
 
     // override SchemaBase virtuals.
+<<<<<<< HEAD
+    USDCONTRIVED_API
+=======
     USDLUX_API
+>>>>>>> upstream/dev
     const TfType &_GetTfType() const override;
 
 public:
@@ -191,4 +299,8 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+<<<<<<< HEAD
+#endif // custom terminator string
+=======
 #endif
+>>>>>>> upstream/dev

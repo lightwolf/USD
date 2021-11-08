@@ -82,6 +82,17 @@ bool operator!=(
 ///   The name written from the codegen into shader file for the texture.</li>
 /// <li>type:
 ///   Type of the param within the shader file.</li>
+<<<<<<< HEAD
+=======
+/// <li>bindIndex:
+///   The index of the resource.
+/// <li>arraySize:
+///   The array size of array type bindings.
+/// <li>bindingType:
+///   The binding type.
+/// <li>writeable:
+///   Whether the resource is writable.
+>>>>>>> upstream/dev
 /// </ul>
 ///
 struct HgiShaderFunctionBufferDesc
@@ -91,6 +102,13 @@ struct HgiShaderFunctionBufferDesc
 
     std::string nameInShader;
     std::string type;
+<<<<<<< HEAD
+=======
+    int32_t bindIndex;
+    uint32_t arraySize;
+    HgiBindingType binding;
+    bool writable;
+>>>>>>> upstream/dev
 };
 
 using HgiShaderFunctionBufferDescVector =
@@ -148,6 +166,40 @@ bool operator!=(
     const HgiShaderFunctionParamDesc& lhs,
     const HgiShaderFunctionParamDesc& rhs);
 
+/// \struct HgiShaderFunctionTessellationDesc
+///
+/// Describes a tessellation function's description
+///
+/// <ul>
+/// <li>patchType:
+///   The type of patch</li>
+/// <li>numVertsInPerPatch:
+///   The number of vertices in per patch</li>
+/// <li>numVertsOutPerPatch:
+///   The number of vertices out per patch</li>
+/// </ul>
+///
+struct HgiShaderFunctionTessellationDesc
+{
+    enum class PatchType { Quad, Triangle };
+    HGI_API
+    HgiShaderFunctionTessellationDesc();
+
+    PatchType patchType = PatchType::Triangle;
+    uint32_t numVertsPerPatchIn = 3;
+    uint32_t numVertsPerPatchOut = 3;
+};
+
+HGI_API
+bool operator==(
+        const HgiShaderFunctionTessellationDesc& lhs,
+        const HgiShaderFunctionTessellationDesc& rhs);
+
+HGI_API
+bool operator!=(
+        const HgiShaderFunctionTessellationDesc& lhs,
+        const HgiShaderFunctionTessellationDesc& rhs);
+
 /// \struct HgiShaderFunctionDesc
 ///
 /// Describes the properties needed to create a GPU shader function.
@@ -169,6 +221,8 @@ bool operator!=(
 ///   List of descriptions of the inputs of the shader.</li>
 /// <li>stageOutputs:
 ///   List of descriptions of the outputs of the shader.</li>
+/// <li>tessellationDesc:
+///   Description of tessellation shader function.</li>
 /// </ul>
 ///
 struct HgiShaderFunctionDesc
@@ -183,6 +237,7 @@ struct HgiShaderFunctionDesc
     std::vector<HgiShaderFunctionParamDesc> constantParams;
     std::vector<HgiShaderFunctionParamDesc> stageInputs;
     std::vector<HgiShaderFunctionParamDesc> stageOutputs;
+    HgiShaderFunctionTessellationDesc tessellationDescriptor;
 };
 
 using HgiShaderFunctionDescVector =
@@ -213,7 +268,25 @@ void
 HgiShaderFunctionAddBuffer(
     HgiShaderFunctionDesc *desc,
     const std::string &nameInShader,
+<<<<<<< HEAD
     const std::string &type);
+=======
+    const std::string &type,
+    const uint32_t bindIndex,
+    HgiBindingType binding,
+    const uint32_t arraySize = 0
+    );
+
+/// Adds buffer descriptor to given shader function descriptor.
+HGI_API
+void
+HgiShaderFunctionAddWritableBuffer(
+    HgiShaderFunctionDesc *desc,
+    const std::string &nameInShader,
+    const std::string &type,
+    const uint32_t bindIndex
+    );
+>>>>>>> upstream/dev
 
 /// Adds constant function param descriptor to given shader function
 /// descriptor.

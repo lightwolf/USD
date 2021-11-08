@@ -21,8 +21,13 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.h
 #ifndef EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_CONTEXT_H
 #define EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_CONTEXT_H
+=======
+#ifndef EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_RENDER_PARAM_H
+#define EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_RENDER_PARAM_H
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.h
 
 #include "pxr/pxr.h"
 #include "hdPrman/api.h"
@@ -31,6 +36,7 @@
 #include "pxr/base/tf/token.h"
 #include "pxr/usd/sdf/path.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/renderDelegate.h"
 #include "pxr/imaging/hd/coordSys.h"
 
 #include "Riley.h"
@@ -52,13 +58,18 @@ PXR_NAMESPACE_OPEN_SCOPE
 class SdfPath;
 class HdSceneDelegate;
 class HdPrmanCamera;
+class HdPrmanCameraContext;
 class HdPrmanRenderDelegate;
 
-// Context for HdPrman to communicate with an instance of PRMan.
-struct HdPrman_Context
+// Render Param for HdPrman to communicate with an instance of PRMan.
+class HdPrman_RenderParam : public HdRenderParam
 {
+public:
     HDPRMAN_API
-    HdPrman_Context();
+    HdPrman_RenderParam();
+
+    HDPRMAN_API
+    ~HdPrman_RenderParam() override;
 
     virtual ~HdPrman_Context();
 
@@ -68,9 +79,9 @@ struct HdPrman_Context
     ConvertAttributes(HdSceneDelegate *sceneDelegate, SdfPath const& id);
 
     // A vector of Riley coordinate system id's.
-    typedef std::vector<riley::CoordinateSystemId> RileyCoordSysIdVec;
+    using RileyCoordSysIdVec = std::vector<riley::CoordinateSystemId>;
     // A ref-counting ptr to a vector of coordinate systems.
-    typedef std::shared_ptr<RileyCoordSysIdVec> RileyCoordSysIdVecRefPtr;
+    using RileyCoordSysIdVecRefPtr = std::shared_ptr<RileyCoordSysIdVec>;
 
     /// Convert any coordinate system bindings for the given rprim id
     /// into a Riley equivalent form.  Retain the result internally
@@ -155,29 +166,54 @@ struct HdPrman_Context
 
     // Get RIX vs XPU
     bool IsXpu() const { return _xpu; }
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.h
+=======
+
+    // Adds VtValue contents to RtParamList
+    bool SetParamFromVtValue(
+        RtUString const& name,
+        VtValue const& val,
+        TfToken const& role,
+        RtParamList& params);
+
+    // Request edit access to the Riley scene and return it.
+    virtual riley::Riley * AcquireRiley() = 0;
+
+    // Provides external access to resources used to set parameters for
+    // options and the active integrator.
+    virtual RtParamList &GetOptions() = 0;
+    virtual riley::IntegratorId GetActiveIntegratorId() = 0;
+    virtual riley::ShadingNode & GetActiveIntegratorShadingNode() = 0;
+    virtual HdPrmanCameraContext &GetCameraContext() = 0;
+
+    const riley::MaterialId GetFallbackMaterialId() const {
+        return _fallbackMaterialId;
+    }
+
+    const riley::MaterialId GetFallbackVolumeMaterialId() const {
+        return _fallbackVolumeMaterialId;
+    }
+
+protected:
+    void _InitializePrman();
+    void _CreateFallbackMaterials();
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.h
 
     // Top-level entrypoint to PRMan.
     // Singleton used to access RixInterfaces.
-    RixContext *rix;
+    RixContext *_rix;
 
     // RixInterface for PRManBegin/End.
-    RixRiCtl *ri;
+    RixRiCtl *_ri;
 
     // RixInterface for Riley.
-    RixRileyManager *mgr;
-
-    // Riley instance.
-    riley::Riley *riley;
+    RixRileyManager *_mgr;
 
     // Xcpt Handler
-    HdPrman_Xcpt xcpt;
+    HdPrman_Xcpt _xcpt;
 
-    // A fallback material to use for any geometry that
-    // does not have a bound material.
-    riley::MaterialId fallbackMaterial;
-
-    // Fallback material for volumes that don't have materials.
-    riley::MaterialId fallbackVolumeMaterial;
+    // Riley instance.
+    riley::Riley *_riley;
 
 protected:
     void _InitializePrman();
@@ -205,6 +241,13 @@ private:
     typedef std::unordered_map<
         SdfPath, HdIdVectorSharedPtr, SdfPath::Hash>
         _GeomToHdCoordSysMap;
+
+    // A fallback material to use for any geometry that
+    // does not have a bound material.
+    riley::MaterialId _fallbackMaterialId;
+
+    // Fallback material for volumes that don't have materials.
+    riley::MaterialId _fallbackVolumeMaterialId;
 
     // Coordinate system conversion cache.
     _GeomToHdCoordSysMap _geomToHdCoordSysMap;
@@ -275,4 +318,8 @@ HdPrman_UpdateSearchPathsFromEnvironment(RtParamList& options);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+<<<<<<< HEAD:third_party/renderman-24/plugin/hdPrman/context.h
 #endif // EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_CONTEXT_H
+=======
+#endif // EXT_RMANPKG_24_0_PLUGIN_RENDERMAN_PLUGIN_HD_PRMAN_RENDER_PARAM_H
+>>>>>>> upstream/dev:third_party/renderman-24/plugin/hdPrman/renderParam.h

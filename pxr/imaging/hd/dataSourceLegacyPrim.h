@@ -109,16 +109,27 @@ private:
     HdDataSourceBaseHandle _GetExtentDataSource();
     HdDataSourceBaseHandle _GetCategoriesDataSource();
     HdDataSourceBaseHandle _GetInstanceCategoriesDataSource();
+<<<<<<< HEAD
+=======
+    HdDataSourceBaseHandle _GetPrmanParamsDataSource();
+>>>>>>> upstream/dev
 
 private:
     SdfPath _id;
     TfToken _type;
     HdSceneDelegate *_sceneDelegate;
 
+<<<<<<< HEAD
     bool _primvarsBuilt : 1;
     bool _extComputationPrimvarsBuilt : 1;
 
     HdContainerDataSourceHandle _primvars;
+=======
+    std::atomic_bool _primvarsBuilt;
+    bool _extComputationPrimvarsBuilt : 1;
+
+    HdContainerDataSourceAtomicHandle _primvars;
+>>>>>>> upstream/dev
     HdContainerDataSourceHandle _extComputationPrimvars;
 
     // Note: _instancerTopology needs to be an atomic handle, since

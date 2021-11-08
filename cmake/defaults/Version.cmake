@@ -23,7 +23,12 @@
 #
 # Versioning information
 set(PXR_MAJOR_VERSION "0")
+<<<<<<< HEAD
 set(PXR_MINOR_VERSION "21")
 set(PXR_PATCH_VERSION "11")
+=======
+set(PXR_MINOR_VERSION "22")
+set(PXR_PATCH_VERSION "2")
+>>>>>>> upstream/dev
 
 math(EXPR PXR_VERSION "${PXR_MAJOR_VERSION} * 10000 + ${PXR_MINOR_VERSION} * 100 + ${PXR_PATCH_VERSION}")

@@ -45,6 +45,12 @@ public:
 
     HGIGL_API
     HgiGLCapabilities();
+<<<<<<< HEAD
+=======
+
+private:
+    void _LoadCapabilities();
+>>>>>>> upstream/dev
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

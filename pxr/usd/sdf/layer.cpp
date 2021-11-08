@@ -1025,8 +1025,16 @@ SdfLayer::_Reload(bool force)
         }
 
         // Get the layer's modification timestamp.
+<<<<<<< HEAD
         VtValue timestamp(ArGetResolver().GetModificationTimestamp(
             GetIdentifier(), resolvedPath));
+=======
+        std::string layerPath, args;
+        Sdf_SplitIdentifier(GetIdentifier(), &layerPath, &args);
+
+        VtValue timestamp(ArGetResolver().GetModificationTimestamp(
+            layerPath, resolvedPath));
+>>>>>>> upstream/dev
 #if AR_VERSION == 1
         if (timestamp.IsEmpty()) {
             TF_CODING_ERROR(
@@ -2503,9 +2511,15 @@ SdfLayer::SetIdentifier(const string &identifier)
     // Create an identifier for the layer based on the desired identifier
     // that was passed in. Since this may identifier may point to an asset
     // that doesn't exist yet, use CreateIdentifierForNewAsset.
+<<<<<<< HEAD
     const string absIdentifier = Sdf_CreateIdentifier(
         ArGetResolver().CreateIdentifierForNewAsset(newLayerPath),
         newArguments);
+=======
+    newLayerPath = ArGetResolver().CreateIdentifierForNewAsset(newLayerPath);
+    const string absIdentifier = 
+        Sdf_CreateIdentifier(newLayerPath, newArguments);
+>>>>>>> upstream/dev
 #endif
     const ArResolvedPath oldResolvedPath = GetResolvedPath();
 
@@ -2555,9 +2569,15 @@ SdfLayer::SetIdentifier(const string &identifier)
             GetIdentifier(), newResolvedPath);
 #else
         const ArTimestamp timestamp = ArGetResolver().GetModificationTimestamp(
+<<<<<<< HEAD
             GetIdentifier(), newResolvedPath);
         _assetModificationTime =
             (timestamp.IsValid() || Sdf_ResolvePath(GetIdentifier())) ?
+=======
+            newLayerPath, newResolvedPath);
+        _assetModificationTime =
+            (timestamp.IsValid() || Sdf_ResolvePath(newLayerPath)) ?
+>>>>>>> upstream/dev
             VtValue(timestamp) : VtValue();
 #endif
     }
@@ -3311,7 +3331,11 @@ SdfLayer::_OpenLayerAndUnlockRegistry(
     if (!info.isAnonymous) {
         // Grab modification timestamp.
         VtValue timestamp(ArGetResolver().GetModificationTimestamp(
+<<<<<<< HEAD
             info.identifier, ArResolvedPath(readFilePath)));
+=======
+            info.layerPath, ArResolvedPath(readFilePath)));
+>>>>>>> upstream/dev
 #if AR_VERSION == 1
         if (timestamp.IsEmpty()) {
             TF_CODING_ERROR(

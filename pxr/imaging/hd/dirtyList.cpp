@@ -35,7 +35,11 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 struct _DirtyFilterParam {
+<<<<<<< HEAD
     const HdRenderIndex* renderIndex;
+=======
+    HdRenderIndex* renderIndex;
+>>>>>>> upstream/dev
     const TfTokenVector& renderTags;
     HdDirtyBits mask;
 };
@@ -49,6 +53,7 @@ _DirtyRprimIdsFilterPredicate(
     const _DirtyFilterParam* filterParam =
         static_cast<const _DirtyFilterParam*>(predicateParam);
 
+<<<<<<< HEAD
     const HdRenderIndex* renderIndex = filterParam->renderIndex;
     HdDirtyBits mask = filterParam->mask;
 
@@ -56,6 +61,15 @@ _DirtyRprimIdsFilterPredicate(
     
     if (mask == HdChangeTracker::Clean ||
         tracker.GetRprimDirtyBits(rprimID) & mask) {
+=======
+    HdRenderIndex* renderIndex = filterParam->renderIndex;
+    const HdDirtyBits mask = filterParam->mask;
+
+    const HdChangeTracker& tracker = renderIndex->GetChangeTracker();
+    const HdDirtyBits bits = tracker.GetRprimDirtyBits(rprimID);
+    
+    if (mask == HdChangeTracker::Clean || bits & mask) {
+>>>>>>> upstream/dev
         // XXX An empty render tag set means everything passes the filter
         //     We should use an explicit token to indicate all render tags.
         //     When aggregating render tags from the tasks, an empty render
@@ -68,7 +82,12 @@ _DirtyRprimIdsFilterPredicate(
 
         // As the number of tags is expected to be low (<10)
         // use a simple linear search.
+<<<<<<< HEAD
         const TfToken& primRenderTag = renderIndex->GetRenderTag(rprimID);
+=======
+        const TfToken& primRenderTag =
+            renderIndex->UpdateRenderTag(rprimID, bits);
+>>>>>>> upstream/dev
         const size_t numRenderTags = filterParam->renderTags.size();
         for (size_t tagNum = 0u; tagNum < numRenderTags; ++tagNum) {
             if (filterParam->renderTags[tagNum] == primRenderTag) {

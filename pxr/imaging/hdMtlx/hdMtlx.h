@@ -57,9 +57,19 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
     HdMaterialNode2 const& hdMaterialXNode,
     SdfPath const& materialPath,
     MaterialX::DocumentPtr const& libraries,
+<<<<<<< HEAD
     std::set<SdfPath> * hdTextureNodes,
     MaterialX::StringMap * mxHdTextureMap);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
 #endif
+=======
+    std::set<SdfPath> * hdTextureNodes = nullptr,
+    MaterialX::StringMap * mxHdTextureMap = nullptr,
+    std::set<SdfPath> * hdPrimvarNodes = nullptr);
+
+PXR_NAMESPACE_CLOSE_SCOPE
+
+#endif
+>>>>>>> upstream/dev
