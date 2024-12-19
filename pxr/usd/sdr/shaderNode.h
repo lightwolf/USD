@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #ifndef PXR_USD_SDR_SHADER_NODE_H
@@ -32,6 +15,8 @@
 #include "pxr/base/tf/staticTokens.h"
 #include "pxr/usd/ndr/node.h"
 #include "pxr/usd/sdr/declare.h"
+
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -47,27 +32,31 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((Pages, "pages"))             \
     ((Primvars, "primvars"))       \
     ((ImplementationName, "__SDR__implementationName"))\
-    ((Target, "__SDR__target"))
+    ((Target, "__SDR__target"))    \
+    ((SdrUsdEncodingVersion, "sdrUsdEncodingVersion")) \
+    ((SdrDefinitionNameFallbackPrefix, "sdrDefinitionNameFallbackPrefix"))
 
 // Note: The concept of context is defined on NdrNode and can be queried with
 // the GetContext() method. Sdr categorizes shaders by the context in which they
 // are used inside of a renderer. For instance during 'pattern' evaluation to
 // feed into a surface or volume shader. For BXDFs used in 'surface' and
 // 'volume' rendering situations.
-#define SDR_NODE_CONTEXT_TOKENS      \
-    ((Pattern, "pattern"))           \
-    ((Surface, "surface"))           \
-    ((Volume, "volume"))             \
-    ((Displacement, "displacement")) \
-    ((Light, "light"))               \
-    ((LightFilter, "lightFilter"))   \
-    ((SampleFilter, "sampleFilter")) \
-    ((PixelFilter, "pixelFilter"))
+#define SDR_NODE_CONTEXT_TOKENS         \
+    ((Pattern, "pattern"))              \
+    ((Surface, "surface"))              \
+    ((Volume, "volume"))                \
+    ((Displacement, "displacement"))    \
+    ((Light, "light"))                  \
+    ((DisplayFilter, "displayFilter"))  \
+    ((LightFilter, "lightFilter"))      \
+    ((PixelFilter, "pixelFilter"))      \
+    ((SampleFilter, "sampleFilter"))    
 
 #define SDR_NODE_ROLE_TOKENS         \
     ((Primvar, "primvar"))           \
     ((Texture, "texture"))           \
-    ((Field, "field"))
+    ((Field, "field"))               \
+    ((Math, "math"))                 \
 
 TF_DECLARE_PUBLIC_TOKENS(SdrNodeMetadata, SDR_API, SDR_NODE_METADATA_TOKENS);
 TF_DECLARE_PUBLIC_TOKENS(SdrNodeContext, SDR_API, SDR_NODE_CONTEXT_TOKENS);
@@ -88,8 +77,8 @@ public:
                   const TfToken& family,
                   const TfToken& context,
                   const TfToken& sourceType,
-                  const std::string& uri,
-                  const std::string& resolvedUri,
+                  const std::string& definitionURI,
+                  const std::string& implementationURI,
                   NdrPropertyUniquePtrVec&& properties,
                   const NdrTokenMap& metadata = NdrTokenMap(),
                   const std::string &sourceCode = std::string());
@@ -148,11 +137,11 @@ public:
     /// volume fields (like extinction or scattering). This is done to identify
     /// resources used by a shading network.
     SDR_API
-    const std::string &GetRole() const;
+    std::string GetRole() const;
 
     /// The help message assigned to this node, if any.
     SDR_API
-    const std::string& GetHelp() const;
+    std::string GetHelp() const;
 
     /// The departments this node is associated with, if any.
     SDR_API
@@ -194,7 +183,7 @@ public:
     /// this method to get the correct name;  using \c getName() is not
     /// correct.
     SDR_API
-    const std::string& GetImplementationName() const;
+    std::string GetImplementationName() const;
 
     /// @}
 
@@ -214,6 +203,26 @@ public:
 
     /// @}
 
+    // Stores the result of the compliance check of property names to
+    // sdrShaderNodeIdentifiers
+    using ComplianceResults = std::unordered_map<TfToken,
+                              std::vector<NdrIdentifier>, 
+                              TfToken::HashFunctor>;
+
+    /// This method checks if same named properties of \p shaderNodes are
+    /// compatible with each other.
+    ///
+    /// Checks if the same name properties have matching types and default
+    /// values. In order to determine if same name properties from different
+    /// shader nodes are compliant, we assume that the first shaderNode in the 
+    /// list providing this property is authoritative, and other nodes differing
+    /// wrt this property are non-compliant. A map of property names and their 
+    /// respective shaderNodes are stored in the map. An empty map returned 
+    /// represents no compliance issues.
+    SDR_API
+    static
+    ComplianceResults CheckPropertyCompliance(
+        const std::vector<SdrShaderNodeConstPtr> &shaderNodes);
 
     /// \cond
     /// Hide from the API.

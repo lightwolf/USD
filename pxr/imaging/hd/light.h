@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_LIGHT_H
 #define PXR_IMAGING_HD_LIGHT_H
@@ -30,8 +13,6 @@
 #include "pxr/imaging/hd/sprim.h"
 
 #include "pxr/base/tf/staticTokens.h"
-#include "pxr/base/vt/dictionary.h"
-#include "pxr/base/vt/value.h"
 
 #include <vector>
 
@@ -42,17 +23,20 @@ PXR_NAMESPACE_OPEN_SCOPE
     (color)                                                 \
     (colorTemperature)                                      \
     (enableColorTemperature)                                \
+    (domeOffset)                                            \
     (exposure)                                              \
     (height)                                                \
     (intensity)                                             \
     (radius)                                                \
     (length)                                                \
     ((textureFile, "texture:file"))                         \
-    (textureResource)                                       \
+    ((textureFormat, "texture:format"))                     \
     (width)                                                 \
+    (ambient)                                               \
     (diffuse)                                               \
     (specular)                                              \
     (normalize)                                             \
+    (hasShadow)                                             \
     ((shapingFocus, "shaping:focus"))                       \
     ((shapingFocusTint, "shaping:focusTint"))               \
     ((shapingConeAngle, "shaping:cone:angle"))              \
@@ -68,37 +52,61 @@ PXR_NAMESPACE_OPEN_SCOPE
                                                             \
     (params)                                                \
     (shadowCollection)                                      \
-    (shadowParams)                                          \
-    (transform)
+    (shadowParams)
 
 TF_DECLARE_PUBLIC_TOKENS(HdLightTokens, HD_API, HD_LIGHT_TOKENS);
 
 class HdSceneDelegate;
-typedef std::vector<class HdLight const *> HdLightPtrConstVector;
+using HdLightPtrConstVector = std::vector<class HdLight const *>;
 
 /// \class HdLight
 ///
 /// A light model, used in conjunction with HdRenderPass.
 ///
-class HdLight : public HdSprim {
+class HdLight : public HdSprim
+{
 public:
     HD_API
     HdLight(SdfPath const & id);
     HD_API
-    virtual ~HdLight();
+    ~HdLight() override;
 
     // Change tracking for HdLight
     enum DirtyBits : HdDirtyBits {
         Clean                 = 0,
         DirtyTransform        = 1 << 0,
+        // Note: Because DirtyVisibility wasn't added, DirtyParams does double
+        //       duty for params and visibility.
         DirtyParams           = 1 << 1,
         DirtyShadowParams     = 1 << 2,
         DirtyCollection       = 1 << 3,
+        DirtyResource         = 1 << 4,
+
+        // XXX: This flag is important for instanced lights, and must have
+        // the same value as it does for Rprims
+        DirtyInstancer        = 1 << 16,
         AllDirty              = (DirtyTransform
                                  |DirtyParams
                                  |DirtyShadowParams
-                                 |DirtyCollection)
+                                 |DirtyCollection
+                                 |DirtyResource
+                                 |DirtyInstancer)
     };
+
+    HD_API
+    static std::string StringifyDirtyBits(HdDirtyBits dirtyBits);
+
+    /// Returns the identifier of the instancer (if any) for this Sprim. If this
+    /// Sprim is not instanced, an empty SdfPath will be returned.
+    const SdfPath& GetInstancerId() const { return _instancerId; }
+
+    HD_API
+    void _UpdateInstancer(
+        HdSceneDelegate* sceneDelegate,
+        HdDirtyBits* dirtyBits);
+
+private:
+    SdfPath _instancerId;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

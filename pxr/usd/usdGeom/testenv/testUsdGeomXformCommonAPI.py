@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from pxr import Gf, Tf, Usd, UsdGeom, Vt
 import unittest, math
@@ -304,7 +287,7 @@ class TestUsdGeomXformAPI(unittest.TestCase):
                         [ztrans.GetRow(i) for i in range(4)]):
             if any(map(math.isnan, a)) or any(map(math.isnan, b)):
                 continue
-            self.assertTrue(Gf.IsClose(a,b,1e-5))
+            self._AssertGfIsClose(a,b,1e-5)
 
 
     def test_Bug116955(self):
@@ -346,6 +329,10 @@ class TestUsdGeomXformAPI(unittest.TestCase):
         UsdGeom.XformCommonAPI(x).SetResetXformStack(False)
         self.assertFalse(UsdGeom.XformCommonAPI(x).GetResetXformStack())
 
+    def _AssertGfIsClose(self, a, b, eps):
+        if not Gf.IsClose(a, b, eps):
+            self.fail("%s is not close to %s (eps=%f)" % (a, b, eps))
+
     def _ValidateXformVectorsByAccumulation(self, xformable,
             expectedTranslation, expectedRotation, expectedScale, expectedPivot,
             expectedRotOrder, time=None):
@@ -355,10 +342,10 @@ class TestUsdGeomXformAPI(unittest.TestCase):
         (translation, rotation, scale, pivot, rotOrder) = UsdGeom.XformCommonAPI(
             xformable).GetXformVectorsByAccumulation(time)
 
-        self.assertTrue(Gf.IsClose(expectedTranslation, translation, 1e-5))
-        self.assertTrue(Gf.IsClose(expectedRotation, rotation, 1e-5))
-        self.assertTrue(Gf.IsClose(expectedScale, scale, 1e-5))
-        self.assertTrue(Gf.IsClose(expectedPivot, pivot, 1e-5))
+        self._AssertGfIsClose(expectedTranslation, translation, 1e-5)
+        self._AssertGfIsClose(expectedRotation, rotation, 1e-5)
+        self._AssertGfIsClose(expectedScale, scale, 1e-5)
+        self._AssertGfIsClose(expectedPivot, pivot, 1e-5)
         self.assertEqual(expectedRotOrder, rotOrder)
 
     def test_GetXformVectorsByAccumulation(self):
@@ -758,6 +745,45 @@ class TestUsdGeomXformAPI(unittest.TestCase):
                 UsdGeom.XformCommonAPI.CanConvertOpTypeToRotationOrder(opType))
             with self.assertRaises(Tf.ErrorException):
                 UsdGeom.XformCommonAPI.ConvertOpTypeToRotationOrder(opType)
+
+    def test_Doulbe3AndFloat3PivotPosition(self):
+        # tests that GetXformVectorsByAccumulation() properly extract pivot
+        # position, whether it was authored as double3 or float3.
+
+        layerContents = '''#usda 1.0
+def Xform "Double"
+{
+    double3 xformOp:translate:pivot = (0.5, 0.0, 0.0)
+    uniform token[] xformOpOrder = ["xformOp:translate:pivot", "!invert!xformOp:translate:pivot"]
+}
+
+def Xform "Float"
+{
+    float3 xformOp:translate:pivot = (0.5, 0.0, 0.0)
+    uniform token[] xformOpOrder = ["xformOp:translate:pivot", "!invert!xformOp:translate:pivot"]
+}
+        '''
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(layerContents)
+
+        time = Usd.TimeCode.Default()
+
+        doubleXf = stage.GetPrimAtPath('/Double')
+        self._ValidateXformVectorsByAccumulation(doubleXf,
+            Gf.Vec3d(0.0, 0.0, 0.0),
+            Gf.Vec3f(0.0, 0.0, 0.0),
+            Gf.Vec3f(1.0, 1.0, 1.0),
+            Gf.Vec3f(0.5, 0.0, 0.0),
+            UsdGeom.XformCommonAPI.RotationOrderXYZ)
+
+        floatXf = stage.GetPrimAtPath('/Float')
+        self._ValidateXformVectorsByAccumulation(floatXf,
+            Gf.Vec3d(0.0, 0.0, 0.0),
+            Gf.Vec3f(0.0, 0.0, 0.0),
+            Gf.Vec3f(1.0, 1.0, 1.0),
+            Gf.Vec3f(0.5, 0.0, 0.0),
+            UsdGeom.XformCommonAPI.RotationOrderXYZ)
+
 
 if __name__ == "__main__":
     unittest.main()

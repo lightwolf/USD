@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_UNIT_TEST_GLDRAWING_H
 #define PXR_IMAGING_HD_ST_UNIT_TEST_GLDRAWING_H
@@ -54,17 +37,20 @@ public:
     int GetHeight() const;
     HDST_API
     void RunTest(int argc, char *argv[]);
+    HDST_API
+    void RunOffscreenTest();
 
     virtual void InitTest() = 0;
+    HDST_API virtual void UninitTest();
     virtual void DrawTest() = 0;        // interactive mode
     virtual void OffscreenTest() = 0;   // offscreen mode (automated test)
 
     HDST_API
-    virtual void MousePress(int button, int x, int y);
+    virtual void MousePress(int button, int x, int y, int modKeys);
     HDST_API
-    virtual void MouseRelease(int button, int x, int y);
+    virtual void MouseRelease(int button, int x, int y, int modKeys);
     HDST_API
-    virtual void MouseMove(int x, int y);
+    virtual void MouseMove(int x, int y, int modKeys);
     HDST_API
     virtual void KeyRelease(int key);
 
@@ -72,8 +58,9 @@ public:
     virtual void Idle();
 
     HDST_API
-    bool WriteToFile(std::string const & attachment,
-                     std::string const & filename) const;
+    virtual void Present(uint32_t framebuffer) {
+        // do nothing
+    }
 
 protected:
     HDST_API
@@ -94,6 +81,8 @@ protected:
     GfMatrix4d GetProjectionMatrix() const;
     HDST_API
     GfFrustum GetFrustum() const;
+
+    GfVec2i GetMousePos() const { return GfVec2i(_mousePos[0], _mousePos[1]); }
 
 private:
     HdSt_UnitTestWindow *_widget;

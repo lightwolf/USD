@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_SHADER_KEY_H
 #define PXR_IMAGING_HD_ST_SHADER_KEY_H
@@ -72,9 +55,15 @@ struct HdSt_ShaderKey {
     HDST_API
     virtual TfToken const *GetTES() const;
     HDST_API
+    virtual TfToken const *GetPTCS() const;
+    HDST_API
+    virtual TfToken const *GetPTVS() const;
+    HDST_API
     virtual TfToken const *GetGS() const;
     HDST_API
-    virtual TfToken const *GetFS() const; 
+    virtual TfToken const *GetFS() const;
+    HDST_API
+    virtual TfToken const *GetCS() const;
 
     // An implementation detail of code gen, which generates slightly
     // different code for the VS stage for the frustum culling pass.
@@ -86,14 +75,29 @@ struct HdSt_ShaderKey {
     virtual HdSt_GeometricShader::PrimitiveType GetPrimitiveType() const = 0; 
     
     // Implementation details of the geometric shader that sets hardware
-    // pipeline state (polygon mode, line width) or queues upload of data
-    // (cullstyle) to the GPU.
+    // pipeline state (cull face, polygon mode, line width) or queues upload of
+    // data (cullstyle) to the GPU.
     HDST_API
     virtual HdCullStyle GetCullStyle() const;
+    HDST_API
+    virtual bool UseHardwareFaceCulling() const;
+    HDST_API
+    virtual bool HasMirroredTransform() const;
+    HDST_API
+    virtual bool IsDoubleSided() const;
+    HDST_API
+    virtual bool UseMetalTessellation() const;
     HDST_API
     virtual HdPolygonMode GetPolygonMode() const;
     HDST_API
     virtual float GetLineWidth() const;
+
+    // Returns the face-varying patch type used in code gen during creation
+    // of the face-varying primvar accessors. Only relevant for mesh prims with 
+    // face-varying primvars.
+    HDST_API
+    virtual HdSt_GeometricShader::FvarPatchType GetFvarPatchType() const; 
+
 };
 
 

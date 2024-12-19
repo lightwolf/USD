@@ -1,32 +1,18 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hio/glslfxConfig.h"
 #include "pxr/imaging/hio/debugCodes.h"
+#include "pxr/imaging/hio/dictionary.h"
 
+#include "pxr/base/tf/envSetting.h"
 #include "pxr/base/tf/staticTokens.h"
 #include "pxr/base/tf/stl.h"
 #include "pxr/base/tf/type.h"
+#include "pxr/base/trace/trace.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -50,17 +36,182 @@ TF_DEFINE_PRIVATE_TOKENS(
     (type)
 );
 
-VtDictionary Hio_GetDictionaryFromInput
-    (const string &input, const string &filename, string *errorStr);
+TF_DEFINE_ENV_SETTING(HIO_GLSLFX_DEFAULT_VALUE_VALIDATION, true,
+    "If true, there is no check that the default value of an attribute matches "
+    "the type declared in the glslfx config section.");
+                      
+static
+bool
+_IsFloatOrDouble(const VtValue &v)
+{
+    return v.IsHolding<float>() || v.IsHolding<double>();
+}
+
+static
+bool
+_IsInt(const VtValue &v)
+{
+    return v.IsHolding<int>();
+}
+
+// Is VtValue holding a vector of floats or doubles of length n.
+template<size_t n>
+static
+bool
+_IsVec(const VtValue &v)
+{
+    if (!v.IsHolding<std::vector<VtValue>>()) {
+        return false;
+    }
+
+    const std::vector<VtValue> &vec = v.UncheckedGet<std::vector<VtValue>>();
+    if (vec.size() != n) {
+        return false;
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        if (!_IsFloatOrDouble(vec[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Extract default value from the dictionary.
+//
+// This looks at the default and type key. If a default is given, it is used
+// if it is matching the type. Otherwise, a default value for that type is
+// constructed.
+//
+// errorStr is set if the given type is invalid or does not match the given
+// default value.
+//
+// We would like the 'attribute' section to start using 'default:' to
+// describe the value type of primvar inputs, but currently they often
+// use 'type: "vec4"'.
+// The awkward looking 'std::vector<VtValue>(...)' usage below is to
+// match the json parser return for "default: (0,0,0)".
+static
+VtValue
+_GetDefaultValue(
+    const std::string &attributeName,
+    const VtDictionary &attributeDataDict,
+    std::string * const errorStr)
+{
+    TRACE_FUNCTION();
+
+    // Get default key
+    VtValue defaultValue;
+    const bool hasDefaultValue =
+        TfMapLookup(attributeDataDict, _tokens->defVal, &defaultValue);
+
+    // Old behavior - so that assets where the default value and the
+    // type do not match still work.
+    if (hasDefaultValue &&
+        !TfGetEnvSetting(HIO_GLSLFX_DEFAULT_VALUE_VALIDATION)) {
+        return defaultValue;
+    }
+
+    // Get type key
+    VtValue typeNameValue;
+    const bool hasTypeNameValue =
+        TfMapLookup(attributeDataDict, _tokens->type, &typeNameValue);
+
+    if (!hasTypeNameValue) {
+        if (hasDefaultValue) {
+            // If value but not type specified, just use it.
+            return defaultValue;
+        }
+        *errorStr = TfStringPrintf("No type or default value for %s",
+                                   attributeName.c_str());
+        return VtValue(std::vector<float>(4, 0.0f));
+    }
+
+    if (!typeNameValue.IsHolding<std::string>()) {
+        *errorStr = TfStringPrintf("Type name for %s is not a string",
+                                   attributeName.c_str());
+        if (hasDefaultValue) {
+            return defaultValue;
+        }
+        return VtValue(std::vector<float>(4, 0.0f));
+    }
+    
+    struct TypeInfo {
+        std::string name;
+        VtValue defaultValue;
+        // Is VtValue of given type?
+        bool (*predicate)(const VtValue &);
+    };
+    
+    static const TypeInfo typeInfos[] = {
+        { "float",
+          VtValue(0.0f),
+          _IsFloatOrDouble },
+        { "double",
+          VtValue(0.0),
+          _IsFloatOrDouble },
+        { "int",
+          VtValue(0),
+          _IsInt },
+        { "vec2",
+          VtValue(std::vector<VtValue>(2, VtValue(0.0f))),
+          _IsVec<2> },
+        { "vec3",
+          VtValue(std::vector<VtValue>(3, VtValue(0.0f))),
+          _IsVec<3> },
+        { "vec4",
+          VtValue(std::vector<VtValue>(4, VtValue(0.0f))),
+          _IsVec<4> }
+    };
+
+    std::string const& typeName = typeNameValue.UncheckedGet<std::string>();
+    
+    // Find respective typeInfo
+    for (TypeInfo const& typeInfo : typeInfos) {
+        if (typeInfo.name == typeName) {
+            if (hasDefaultValue) {
+                // Check that our default value matches
+                if (typeInfo.predicate(defaultValue)) {
+                    return defaultValue;
+                }
+                *errorStr = TfStringPrintf(
+                    "Default value for %s is not of type %s",
+                    attributeName.c_str(), typeName.c_str());
+            }
+            // If no default value, use one based on the type.
+            return typeInfo.defaultValue;
+        }
+    }
+    
+    // Invalid type name, use or construct default value.
+    if (hasDefaultValue) {
+        *errorStr = TfStringPrintf(
+            "Invalid type %s for %s",
+            typeName.c_str(), attributeName.c_str());
+        return defaultValue;
+    } 
+    
+    *errorStr = TfStringPrintf(
+        "Invalid type and no default value for %s",
+        attributeName.c_str());
+    return VtValue(std::vector<float>(4, 0.0f));
+}
 
 HioGlslfxConfig *
-HioGlslfxConfig::Read(string const & input, string const & filename, string *errorStr)
+HioGlslfxConfig::Read(TfToken const & technique,
+                      string const & input,
+                      string const & filename,
+                      string *errorStr)
 {
-    return new HioGlslfxConfig(
+    return new HioGlslfxConfig(technique,
         Hio_GetDictionaryFromInput(input, filename, errorStr), errorStr );
 }
 
-HioGlslfxConfig::HioGlslfxConfig(VtDictionary const & dict, string * errors)
+HioGlslfxConfig::HioGlslfxConfig(TfToken const & technique,
+                                 VtDictionary const & dict,
+                                 string * errors)
+: _technique(technique)
 {
     _Init(dict, errors);
 }
@@ -68,6 +219,8 @@ HioGlslfxConfig::HioGlslfxConfig(VtDictionary const & dict, string * errors)
 void
 HioGlslfxConfig::_Init(VtDictionary const & dict, string * errors)
 {
+    TRACE_FUNCTION();
+
     _params = _GetParameters(dict, errors);
     _textures = _GetTextures(dict, errors);
     _attributes = _GetAttributes(dict, errors);
@@ -119,14 +272,15 @@ HioGlslfxConfig::_GetSourceKeyMap(VtDictionary const & dict,
         return ret;
     }
 
-    if (techniquesDict.size() > 1) {
-        *errorStr = TfStringPrintf("Expect only one entry for %s",
-                                   _tokens->techniques.GetText());
+    VtDictionary::const_iterator entry = techniquesDict.find(_technique);
+    if (entry == techniquesDict.end()) {
+        *errorStr = TfStringPrintf("No entry for %s: %s",
+                                   _tokens->techniques.GetText(), 
+                                   _technique.GetText());
         return ret;
     }
-
-    // get the value of the first technique spec
-    VtDictionary::const_iterator entry = techniquesDict.begin();
+    
+    // get the value of the technique spec
     VtValue techniqueSpec = entry->second;
     
     // verify that it also holds a VtDictionary
@@ -139,7 +293,7 @@ HioGlslfxConfig::_GetSourceKeyMap(VtDictionary const & dict,
 
     const VtDictionary& specDict = techniqueSpec.UncheckedGet<VtDictionary>();
     // get all of the shader stages specified in the spec
-    for (const std::pair<std::string, VtValue>& p : specDict) {
+    for (const auto& p : specDict) {
         const string& shaderStageKey = p.first;
         const VtValue& shaderStageSpec = p.second;
 
@@ -267,8 +421,8 @@ HioGlslfxConfig::_GetParameters(VtDictionary const & dict,
 
     const VtDictionary& paramsDict = params.UncheckedGet<VtDictionary>();
     // pre-process the paramsDict in order to get the merged ordering
-    for (const std::pair<std::string, VtValue>& p : paramsDict) {
-        string paramName = p.first;
+    for (const auto& p : paramsDict) {
+        const string& paramName = p.first;
         if (std::find(paramOrder.begin(), paramOrder.end(), paramName) ==
                 paramOrder.end()) {
             paramOrder.push_back(paramName);
@@ -375,7 +529,7 @@ HioGlslfxConfig::_GetTextures(VtDictionary const & dict,
     }
 
     const VtDictionary& texturesDict = textures.UncheckedGet<VtDictionary>();
-    for (const std::pair<std::string, VtValue>& p : texturesDict) {
+    for (const auto& p : texturesDict) {
         const string& textureName = p.first;
         const VtValue& textureData = p.second;
         if (!textureData.IsHolding<VtDictionary>()) {
@@ -446,7 +600,7 @@ HioGlslfxConfig::_GetAttributes(VtDictionary const & dict,
 
     const VtDictionary& attributesDict =
         attributes.UncheckedGet<VtDictionary>();
-    for (const std::pair<std::string, VtValue>& p : attributesDict) {
+    for (const auto& p : attributesDict) {
         const string& attributeName = p.first;
         const VtValue& attributeData = p.second;
         if (!attributeData.IsHolding<VtDictionary>()) {
@@ -460,47 +614,6 @@ HioGlslfxConfig::_GetAttributes(VtDictionary const & dict,
         const VtDictionary& attributeDataDict =
             attributeData.UncheckedGet<VtDictionary>();
 
-        // We would like the 'attribute' section to start using 'default:' to
-        // describe the value type of primvar inputs, but currently they often
-        // use 'type: "vec4"'.
-        // The awkward looking 'std::vector<VtValue>(...)' usage below is to
-        // match the json parser return for "default: (0,0,0)".
-        
-        struct _TypeToDefault {
-            std::string type;
-            VtValue defaultValue;
-        };
-
-        static const _TypeToDefault _TypeToDefaultTable[] = {
-            { "float", VtValue(0.0f) },
-            { "double", VtValue(0.0) },
-            { "vec2", VtValue(std::vector<VtValue>(2, VtValue(0.0f))) },
-            { "vec3", VtValue(std::vector<VtValue>(3, VtValue(0.0f))) },
-            { "vec4", VtValue(std::vector<VtValue>(4, VtValue(0.0f))) }
-        };
-
-        VtValue defVal;
-        if (!TfMapLookup(attributeDataDict, _tokens->defVal, &defVal)) {
-            // If we didn't find 'default:' in glslfx, try 'type:'
-            if (TfMapLookup(attributeDataDict, _tokens->type, &defVal) &&
-                defVal.IsHolding<std::string>()) {
-
-                std::string const& str = defVal.UncheckedGet<std::string>();
-
-                for (_TypeToDefault const& t : _TypeToDefaultTable) {
-                    if (t.type == str) {
-                        defVal = t.defaultValue;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (defVal.IsEmpty()) {
-            *errorStr = TfStringPrintf("Invalid type or default value for %s",
-                                       attributeName.c_str());
-            defVal = VtValue(std::vector<float>(4, 0.0f));
-        }
 
         // optional documentation string
         VtValue docVal;
@@ -520,7 +633,12 @@ HioGlslfxConfig::_GetAttributes(VtDictionary const & dict,
         TF_DEBUG(HIO_DEBUG_GLSLFX).Msg("        attribute: %s\n",
             attributeName.c_str());
 
-        ret.push_back(Attribute(attributeName, defVal, docString));
+        ret.push_back(
+            Attribute(attributeName,
+                      _GetDefaultValue(attributeName,
+                                       attributeDataDict,
+                                       errorStr),
+                      docString));
     }
 
     return ret;

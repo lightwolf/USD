@@ -1,34 +1,39 @@
 //
-// Copyright 2018 Pixar
+// Copyright 2021 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 
 #include "pxr/pxr.h"
 #include "pxr/usd/ar/filesystemAsset.h"
+#include "pxr/usd/ar/resolvedPath.h"
 
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/arch/errno.h"
 #include "pxr/base/arch/fileSystem.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+std::shared_ptr<ArFilesystemAsset>
+ArFilesystemAsset::Open(const ArResolvedPath& resolvedPath)
+{
+    FILE* f = ArchOpenFile(resolvedPath.GetPathString().c_str(), "rb");
+    if (!f) {
+        return nullptr;
+    }
+
+    return std::make_shared<ArFilesystemAsset>(f);
+}
+
+ArTimestamp
+ArFilesystemAsset::GetModificationTimestamp(const ArResolvedPath& resolvedPath)
+{
+    double time;
+    if (ArchGetModificationTime(resolvedPath.GetPathString().c_str(), &time)) {
+        return ArTimestamp(time);
+    }
+    return ArTimestamp();
+}
 
 ArFilesystemAsset::ArFilesystemAsset(FILE* file) 
     : _file(file) 
@@ -44,13 +49,13 @@ ArFilesystemAsset::~ArFilesystemAsset()
 }
 
 size_t
-ArFilesystemAsset::GetSize()
+ArFilesystemAsset::GetSize() const
 {
     return ArchGetFileLength(_file);
 }
 
 std::shared_ptr<const char> 
-ArFilesystemAsset::GetBuffer()
+ArFilesystemAsset::GetBuffer() const
 {
     ArchConstFileMapping mapping = ArchMapFileReadOnly(_file);
     if (!mapping) {
@@ -75,7 +80,7 @@ ArFilesystemAsset::GetBuffer()
 }
 
 size_t
-ArFilesystemAsset::Read(void* buffer, size_t count, size_t offset)
+ArFilesystemAsset::Read(void* buffer, size_t count, size_t offset) const
 {
     int64_t numRead = ArchPRead(_file, buffer, count, offset);
     if (numRead == -1) {
@@ -87,7 +92,7 @@ ArFilesystemAsset::Read(void* buffer, size_t count, size_t offset)
 }
         
 std::pair<FILE*, size_t>
-ArFilesystemAsset::GetFileUnsafe()
+ArFilesystemAsset::GetFileUnsafe() const
 {
     return std::make_pair(_file, 0);
 }

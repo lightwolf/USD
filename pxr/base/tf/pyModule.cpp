@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 // Do not include pyModule.h or we'd need an implementation of WrapModule().
 //#include "pxr/base/tf/pyModule.h"
@@ -32,7 +15,6 @@
 #include "pxr/base/tf/hash.h"
 #include "pxr/base/tf/hashset.h"
 #include "pxr/base/tf/mallocTag.h"
-#include "pxr/base/tf/py3Compat.h"
 #include "pxr/base/tf/pyError.h"
 #include "pxr/base/tf/pyModuleNotice.h"
 #include "pxr/base/tf/pyTracing.h"
@@ -42,23 +24,24 @@
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/token.h"
 
-#include <boost/python/docstring_options.hpp>
-#include <boost/python/extract.hpp>
-#include <boost/python/handle.hpp>
-#include <boost/python/object.hpp>
-#include <boost/python/object/function.hpp>
-#include <boost/python/tuple.hpp>
-#include <boost/python/dict.hpp>
-#include <boost/python/raw_function.hpp>
-#include <boost/python/scope.hpp>
+#include "pxr/external/boost/python/docstring_options.hpp"
+#include "pxr/external/boost/python/extract.hpp"
+#include "pxr/external/boost/python/handle.hpp"
+#include "pxr/external/boost/python/object.hpp"
+#include "pxr/external/boost/python/object/function.hpp"
+#include "pxr/external/boost/python/tuple.hpp"
+#include "pxr/external/boost/python/dict.hpp"
+#include "pxr/external/boost/python/raw_function.hpp"
+#include "pxr/external/boost/python/scope.hpp"
+#include "pxr/external/boost/python/type_list.hpp"
 
 #include <string>
 
 using std::string;
 
-using namespace boost::python;
-
 PXR_NAMESPACE_OPEN_SCOPE
+
+using namespace pxr_boost::python;
 
 class Tf_ModuleProcessor {
 public:
@@ -72,7 +55,7 @@ public:
     {
         if (!_cachedBPFuncType) {
             handle<> typeStr(PyObject_Str((PyObject *)obj.ptr()->ob_type));
-            if (strstr(TfPyString_AsString(typeStr.get()), "Boost.Python.function")) {
+            if (strstr(PyUnicode_AsUTF8(typeStr.get()), "Boost.Python.function")) {
                 _cachedBPFuncType = (PyObject *)obj.ptr()->ob_type;
                 return true;
             }
@@ -85,7 +68,7 @@ public:
     { 
         if (!_cachedBPClassType) {
             handle<> typeStr(PyObject_Str((PyObject *)obj.ptr()->ob_type));
-            if (strstr(TfPyString_AsString(typeStr.get()), "Boost.Python.class")) {
+            if (strstr(PyUnicode_AsUTF8(typeStr.get()), "Boost.Python.class")) {
                 _cachedBPClassType = (PyObject *)obj.ptr()->ob_type;
                 return true;
             }
@@ -114,24 +97,20 @@ private:
                      TfHashSet<PyObject *, TfHash> *visitedObjs)
     {
         if (PyObject_HasAttrString(obj.ptr(), "__dict__")) {
-#if PY_MAJOR_VERSION >= 3
             // In python 3 dict.items() returns a proxy view object, not a list.
-            // boost::python::extract<list> fails on these views, and raises:
+            // pxr_boost::python::extract<list> fails on these views, and raises:
             // 
             // TypeError: Expecting an object of type list; got an object of type
             // dict_items instead
             //
-            // A workaround is to use the boost::python::list constructor
+            // A workaround is to use the pxr_boost::python::list constructor
             object items_view = obj.attr("__dict__").attr("items")();
             list items(items_view);
-#else
-            list items = extract<list>(obj.attr("__dict__").attr("items")());
-#endif
             size_t lenItems = len(items);
             for (size_t i = 0; i < lenItems; ++i) {
                 object value = items[i][1];
                 if (!visitedObjs->count(value.ptr())) {
-                    const std::string name = TfPyString_AsString(object(items[i][0]).ptr());
+                    const std::string name = PyUnicode_AsUTF8(object(items[i][0]).ptr());
                     bool keepGoing = (this->*callback)(name.c_str(), obj, value);
                     visitedObjs->insert(value.ptr());
                     if (IsBoostPythonClass(value) && keepGoing) {
@@ -160,7 +139,7 @@ public:
             , _fileName(fileName)
         {}
 
-        handle<> operator()(tuple const &args, dict const &kw) const {
+        PyObject *operator()(PyObject *args, PyObject *kw) const {
 
             // Fabricate a python tracing event to record the python -> c++ ->
             // python transition.
@@ -178,8 +157,7 @@ public:
             TfErrorMark m;
 
             // Call the function.
-            handle<> ret(allow_null(
-                             PyObject_Call(_fn.ptr(), args.ptr(), kw.ptr())));
+            PyObject *ret = PyObject_Call(_fn.ptr(), args, kw);
 
             // Fabricate the return tracing event.
             info.what = PyTrace_RETURN;
@@ -196,6 +174,7 @@ public:
             // errors occurred, and if so, convert them to python exceptions.
             if (ARCH_UNLIKELY(!m.IsClean() &&
                               TfPyConvertTfErrorsToPythonException(m))) {
+                Py_DECREF(ret);
                 throw_error_already_set();
             }
 
@@ -221,7 +200,7 @@ public:
             string localPrefix;
             if (PyObject_HasAttrString(owner.ptr(), "__module__")) {
                 char const *ownerName =
-                    TfPyString_AsString(PyObject_GetAttrString
+                    PyUnicode_AsUTF8(PyObject_GetAttrString
                                        (owner.ptr(), "__name__"));
                 localPrefix.append(_newModuleName);
                 localPrefix.push_back('.');
@@ -229,10 +208,16 @@ public:
                 fullNamePrefix = &localPrefix;
             }
 
-            ret = raw_function(
-                _InvokeWithErrorHandling(
-                    fn, *fullNamePrefix + "." + name, *fullNamePrefix));
-
+            ret = pxr_boost::python::detail::make_raw_function(
+                pxr_boost::python::objects::py_function(
+                    _InvokeWithErrorHandling(
+                        fn, *fullNamePrefix + "." + name, *fullNamePrefix),
+                    pxr_boost::python::type_list<PyObject *>(),
+                    /*min_args =*/ 0,
+                    /*max_args =*/ ~0
+                    )
+                );
+            
             ret.attr("__doc__") = fn.attr("__doc__");
         }
 
@@ -275,12 +260,14 @@ public:
         } else if (IsProperty(obj)) {
             // Replace owner's name attribute with a new property, decorating the
             // get, set, and del functions.
-            if (owner.attr(name) != obj) {
-                // XXX If accessing the attribute by normal lookup does not produce
-                // the same object, descriptors are likely at play (even on the
-                // class) which at least for now means that this is likely a static
-                // property.  For now, just not wrapping static properties with
-                // error handling.
+
+            // XXX: In Python 3.9+ this is equivalent to
+            // if (!Py_IS_TYPE(obj.ptr(), &PyProperty_Type)) {
+            if (Py_TYPE(obj.ptr()) != &PyProperty_Type) {
+                // XXX If the type of this object is not Python's built-in
+                // property descriptor, this at least for now means that this 
+                // is likely a static property. For now, we just don't wrap
+                // static properties with error handling.
             } else {
                 object propType(handle<>(borrowed(&PyProperty_Type)));
                 object newfget =
@@ -308,7 +295,7 @@ public:
             return false;
         } else if (IsClassMethod(obj)) {
             object underlyingFn =
-                obj.attr("__get__")(owner).attr(TfPyClassMethodFuncName);
+                obj.attr("__get__")(owner).attr("__func__");
             if (IsBoostPythonFunc(underlyingFn)) {
                 // Replace owner's name attribute with a new classmethod, decorating
                 // the underlying function.
@@ -356,7 +343,7 @@ public:
     {
         auto obj = object(module.attr("__name__"));
         _oldModuleName =
-            TfPyString_AsString(obj.ptr());
+            PyUnicode_AsUTF8(obj.ptr());
         _newModuleName = TfStringGetBeforeSuffix(_oldModuleName);
         _newModuleNameObj = object(_newModuleName);
     }
@@ -399,8 +386,12 @@ void Tf_PyInitWrapModule(
     const char* packageTag,
     const char* packageTag2)
 {
+    // Starting with Python 3.7, the GIL is initialized as part of
+    // Py_Initialize(). Python 3.9 deprecated explicit GIL initialization.
+#if PY_VERSION_HEX < 0x03070000
     // Ensure the python GIL is created.
     PyEval_InitThreads();
+#endif
 
     // Tell the tracing mechanism that python is alive.
     Tf_PyTracingPythonInitialized();
@@ -412,8 +403,7 @@ void Tf_PyInitWrapModule(
         throw_error_already_set();
     }
 
-    TfAutoMallocTag2 tag2(packageTag2, "WrapModule");
-    TfAutoMallocTag tag(packageTag);
+    TfAutoMallocTag tag(packageTag2, "WrapModule", packageTag);
     
     // Set up the wrap context.
     Tf_PyWrapContextManager::GetInstance().PushContext(packageModule);
@@ -421,10 +411,10 @@ void Tf_PyInitWrapModule(
     // Provide a way to find the full mfb name of the package.  Can't use the
     // TfToken, because when we get here in loading Tf, TfToken has not yet been
     // wrapped.
-    boost::python::scope().attr("__MFB_FULL_PACKAGE_NAME") = packageName;
+    pxr_boost::python::scope().attr("__MFB_FULL_PACKAGE_NAME") = packageName;
 
     // Disable docstring auto signatures.
-    boost::python::docstring_options docOpts(true /*show user-defined*/,
+    pxr_boost::python::docstring_options docOpts(true /*show user-defined*/,
                                              false /*show signatures*/);
 
     // Do the wrapping.

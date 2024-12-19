@@ -1,7 +1,6 @@
 /*!
 \page usdRender_page_front UsdRender : USD Render Schema
 \if ( PIXAR_MFB_BUILD )
-\publicLib
 \mainpage UsdRender : USD Render Schema
 \endif
 
@@ -46,10 +45,16 @@ process follows.
 - UsdRenderSpec is a self-contained, evaluated specification
   of render settings, suitable for consumption by a backend.
 
-- UsdRenderSettingsAPI is a base class for renderer-specific
-  API schemas (provided by other schema libraries) that encode
-  renderer-specific settings.
-
+- UsdRenderPass bridges the rest of usdRender to the broader set
+  of renderers in order to facilitate multiple invocations
+  of different renderers, some of which may not describe a render 
+  in terms of UsdRenderSettings. In addition to organizing the 
+  different renders and processes (like denoising) that composite to 
+  produce a "final frame", UsdRenderPass codifies the dependencies 
+  between passes, and that a single Pass generally represents not 
+  a single set of Products, but a sequence of temporally varying 
+  frames of outputs that depend on temporally varying inputs.
+  
 ## Reading settings {#UsdRenderReadingSettings}
 
 A UsdStage may contain multiple UsdRenderSettings prims representing
@@ -216,45 +221,6 @@ API schemas to generically inspect the settings.
 
 The following example is provided to illustrate the above concepts.
 
-    #usda1.0
-    (
-        renderSettingsPrimPath = "/Render/PrimarySettings"
-    )
-
-    def Scope "Render"
-    {
-        def RenderSettings "PrimarySettings" {
-            rel products = </Render/PrimaryProduct>
-            int2 resolution = (512, 512)
-        }
-        def RenderProduct "PrimaryProduct" {
-            rel camera = </World/main_cam>
-            token productName = "/scratch/tmp/render000009.exr"
-            rel orderedVars = [
-                </Render/Vars/color>,
-                </Render/Vars/alpha>,
-                </Render/Vars/directDiffuse>,
-                </Render/Vars/id>
-            ]
-        }
-        def Scope "Vars"
-        {
-            def RenderVar "color" {
-                string sourceName = "Ci"
-            }
-            def RenderVar "alpha" {
-                token dataType = "float"
-                string sourceName = "a"
-            }
-            def RenderVar "directDiffuse" {
-                string sourceName = "C<RD>[<L.>O]"
-                token sourceType = lpe"
-            }
-            def RenderVar "id" {
-                token dataType = "int"
-                string sourceName = "id"
-            }
-        }
-    }
+\include doxygen/renderSettings.usda
 
 */

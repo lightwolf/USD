@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDLUX_GENERATED_SPHERELIGHT_H
 #define USDLUX_GENERATED_SPHERELIGHT_H
@@ -28,7 +11,7 @@
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usdLux/api.h"
-#include "pxr/usd/usdLux/light.h"
+#include "pxr/usd/usdLux/boundableLightBase.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usdLux/tokens.h"
@@ -54,20 +37,20 @@ class SdfAssetPath;
 ///
 /// Light emitted outward from a sphere.
 ///
-class UsdLuxSphereLight : public UsdLuxLight
+class UsdLuxSphereLight : public UsdLuxBoundableLightBase
 {
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::ConcreteTyped;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::ConcreteTyped;
 
     /// Construct a UsdLuxSphereLight on UsdPrim \p prim .
     /// Equivalent to UsdLuxSphereLight::Get(prim.GetStage(), prim.GetPath())
     /// for a \em valid \p prim, but will not immediately throw an error for
     /// an invalid \p prim
     explicit UsdLuxSphereLight(const UsdPrim& prim=UsdPrim())
-        : UsdLuxLight(prim)
+        : UsdLuxBoundableLightBase(prim)
     {
     }
 
@@ -75,7 +58,7 @@ public:
     /// Should be preferred over UsdLuxSphereLight(schemaObj.GetPrim()),
     /// as it preserves SchemaBase state.
     explicit UsdLuxSphereLight(const UsdSchemaBase& schemaObj)
-        : UsdLuxLight(schemaObj)
+        : UsdLuxBoundableLightBase(schemaObj)
     {
     }
 
@@ -130,11 +113,11 @@ public:
     Define(const UsdStagePtr &stage, const SdfPath &path);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -156,7 +139,7 @@ public:
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `float radius = 0.5` |
+    /// | Declaration | `float inputs:radius = 0.5` |
     /// | C++ Type | float |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
     USDLUX_API

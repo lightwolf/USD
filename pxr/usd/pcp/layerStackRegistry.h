@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_PCP_LAYER_STACK_REGISTRY_H
 #define PXR_USD_PCP_LAYER_STACK_REGISTRY_H
@@ -29,6 +12,7 @@
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/errors.h"
 #include "pxr/base/tf/declarePtrs.h"
+#include "pxr/base/tf/functionRef.h"
 #include "pxr/base/tf/refBase.h"
 
 #include <memory>
@@ -50,6 +34,7 @@ class Pcp_LayerStackRegistry : public TfRefBase, public TfWeakBase {
 public:
     /// Create a new Pcp_LayerStackRegistry.
     static Pcp_LayerStackRegistryRefPtr New(
+        const PcpLayerStackIdentifier& rootLayerStackIdentifier,
         const std::string& fileFormatTarget = std::string(),
         bool isUsd=false);
 
@@ -86,6 +71,9 @@ public:
     /// returns \c NULL.
     PcpLayerStackPtr Find(const PcpLayerStackIdentifier&) const;
 
+    /// Return true if this registry contains \p layerStack, false otherwise.
+    bool Contains(const PcpLayerStackPtr &layerStack) const;
+
     /// Returns every layer stack that includes \p layer.
     const PcpLayerStackPtrVector&
     FindAllUsingLayer(const SdfLayerHandle& layer) const;
@@ -99,9 +87,25 @@ public:
     /// Returns every layer stack known to this registry.
     std::vector<PcpLayerStackPtr> GetAllLayerStacks() const;
 
+    /// Runs \p fn on all layer stacks known to this registry.
+    void 
+    ForEachLayerStack(const TfFunctionRef<void(const PcpLayerStackPtr&)>& fn);
+
+    /// Sets a list of layer stacks that will override the results returned by
+    /// the \ref FindAllUsingLayer function.  This is currently used when
+    /// operating on layers that are being unmuted or sublayers that are being
+    /// added.  In these cases, we know what stacks will be affected by these
+    /// operations and want to operate on them before Pcp changes are applied.
+    void SetLayerStackVectorOverride(const SdfLayerHandle& layer, 
+                                     const PcpLayerStackPtrVector& layerStacks);
+
+    /// Clears all overrides set with \ref SetLayerStackVectorOverride
+    void ClearLayerStackVectorOverrides();
+
 private:
     /// Private constructor -- see New().
-    Pcp_LayerStackRegistry(const std::string& fileFormatTarget,
+    Pcp_LayerStackRegistry(const PcpLayerStackIdentifier& rootLayerStackId,
+                           const std::string& fileFormatTarget,
                            bool isUsd);
     ~Pcp_LayerStackRegistry();
 
@@ -109,12 +113,16 @@ private:
     PcpLayerStackPtr _Find(const PcpLayerStackIdentifier&) const;
 
     // Remove the layer stack with the given identifier from the registry.
-    void _Remove(const PcpLayerStackIdentifier&,
-                 const PcpLayerStack *);
+    void _SetLayersAndRemove(const PcpLayerStackIdentifier&,
+                             const PcpLayerStack *);
 
     // Update the layer-stack-by-layer maps by setting the layers for the
     // given layer stack.
     void _SetLayers(const PcpLayerStack*);
+
+    // Returns the identifier of the root layer stack associated with
+    // this registry.
+    const PcpLayerStackIdentifier& _GetRootLayerStackIdentifier() const;
 
     // Returns the file format target for layer stacks managed by this
     // registry.
@@ -129,7 +137,7 @@ private:
     const Pcp_MutedLayers& _GetMutedLayers() const;
 
     // PcpLayerStack can access private _GetFileFormatTarget(), 
-    // _Remove(), and _SetLayers().
+    // _SetLayersAndRemove(), and _SetLayers().
     friend class PcpLayerStack;
 
 private:
@@ -143,6 +151,8 @@ private:
 class Pcp_MutedLayers
 {
 public:
+    explicit Pcp_MutedLayers(const std::string& fileFormatTarget);
+
     const std::vector<std::string>& GetMutedLayers() const;
     void MuteAndUnmuteLayers(const SdfLayerHandle& anchorLayer,
                              std::vector<std::string>* layersToMute,
@@ -152,6 +162,11 @@ public:
                       std::string* canonicalLayerIdentifier = nullptr) const;
 
 private:
+    std::string 
+    _GetCanonicalLayerId(const SdfLayerHandle& anchorLayer, 
+                         const std::string& layerId) const;
+
+    std::string _fileFormatTarget;
     std::vector<std::string> _layers;
 };
 

@@ -1,4 +1,10 @@
 #usda 1.0
+(
+    relocates = {
+        </Sphere/ChildFromPayload> : </Sphere/SubReloChildFromPayload>,
+        </Sphere/ChildFromReference> : </Sphere/SubReloChildFromReference>
+    }
+)
 
 def Sphere "Sphere" (
     inherits = </_class_Sphere>
@@ -54,21 +60,11 @@ def Sphere "ListOpTest"
     delete rel foo = </Del_sub>
 }
 
-def Sphere "SphereUsingClip_LegacyForm" (
-    clipAssetPaths = [ @./clip_moving_sphere.usda@ ]
-    clipManifestAssetPath = @./clip_static_sphere.usda@
-    clipPrimPath = "/Sphere"
-    clipActive = [ (1, 0) ]
-    clipTimes = [ (1, 1), (10, 10) ]
-    references = @./clip_static_sphere.usda@</Sphere>
-)
-{
-}
-
 def Sphere "SphereUsingClip" (
     clips = {
         dictionary default = {
             asset[] assetPaths = [@./clip_moving_sphere.usda@]
+            asset manifestAssetPath = @./clip_static_sphere.usda@
             string primPath = "/Sphere"
             double2[] active = [(1, 0)]
             double2[] times = [(1, 1), (10,10)]

@@ -1,28 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
+#include "pxr/usd/sdf/opaqueValue.h"
 #include "pxr/usd/sdf/parserHelpers.h"
 #include "pxr/usd/sdf/schema.h"
 #include "pxr/base/gf/half.h"
@@ -44,34 +28,29 @@
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/gf/vec4h.h"
 #include "pxr/base/gf/vec4i.h"
-#include "pxr/base/tf/instantiateSingleton.h"
 #include "pxr/base/tf/iterator.h"
-#include "pxr/base/tf/staticData.h"
+#include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/vt/value.h"
 
-#include <boost/mpl/for_each.hpp>
-
-#include <functional>
-#include <type_traits>
-#include <utility>
+#include <algorithm>
+#include <array>
+#include <map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 namespace Sdf_ParserHelpers {
 
-using std::pair;
-using std::make_pair;
-
-using boost::get;
+using std::string;
+using std::vector;
 
 // Check that there are enough values to parse so we don't overflow
 #define CHECK_BOUNDS(count, name)                                          \
     if (index + count > vars.size()) {                                     \
         TF_CODING_ERROR("Not enough values to parse value of type %s",     \
                         name);                                             \
-        throw boost::bad_get();                                            \
+        throw std::bad_variant_access();                                            \
     }
 
 inline void
@@ -113,7 +92,7 @@ MakeScalarValueImpl(
 }
 
 template <class Int>
-inline typename boost::enable_if<boost::is_integral<Int> >::type
+inline std::enable_if_t<std::is_integral<Int>::value>
 MakeScalarValueImpl(Int *out, vector<Value> const &vars, size_t &index) {
     CHECK_BOUNDS(1, ArchGetDemangled<Int>().c_str());
     *out = vars[index++].Get<Int>();
@@ -300,6 +279,20 @@ MakeScalarValueImpl(
     *out = vars[index++].Get<SdfAssetPath>();
 }
 
+inline void
+MakeScalarValueImpl(
+    SdfPathExpression *out, vector<Value> const &vars, size_t &index) {
+    CHECK_BOUNDS(1, "pathExpression");
+    *out = SdfPathExpression(vars[index++].Get<std::string>());
+}
+
+inline void
+MakeScalarValueImpl(
+    SdfOpaqueValue *out, vector<Value> const &vars, size_t &index) {
+    TF_CODING_ERROR("Found authored opinion for opaque attribute");
+    throw std::bad_variant_access();
+}
+
 template <typename T>
 inline VtValue
 MakeScalarValueTemplate(vector<unsigned int> const &,
@@ -309,7 +302,7 @@ MakeScalarValueTemplate(vector<unsigned int> const &,
     size_t origIndex = index;
     try {
         MakeScalarValueImpl(&t, vars, index);
-    } catch (const boost::bad_get &) {
+    } catch (const std::bad_variant_access &) {
         *errStrPtr = TfStringPrintf("Failed to parse value (at sub-part %zd "
                                     "if there are multiple parts)",
                                     (index - origIndex) - 1);
@@ -338,7 +331,7 @@ MakeShapedValueTemplate(vector<unsigned int> const &shape,
             MakeScalarValueImpl(&(*i), vars, index);
             shapeIndex++;
         }
-    } catch (const boost::bad_get &) {
+    } catch (const std::bad_variant_access &) {
         *errStrPtr = TfStringPrintf("Failed to parse at element %zd "
                                     "(at sub-part %zd if there are "
                                     "multiple parts)", shapeIndex,
@@ -348,7 +341,7 @@ MakeShapedValueTemplate(vector<unsigned int> const &shape,
     return VtValue(array);
 }
 
-typedef map<std::string, ValueFactory> _ValueFactoryMap;
+typedef std::map<std::string, ValueFactory> _ValueFactoryMap;
 
 // Walk through types and register factories.
 struct _MakeFactoryMap {
@@ -359,8 +352,6 @@ struct _MakeFactoryMap {
     template <class CppType>
     void add(const SdfValueTypeName& scalar, const char* alias = NULL)
     {
-        namespace ph = std::placeholders;
-
         static const bool isShaped = true;
 
         const SdfValueTypeName array = scalar.GetArrayType();
@@ -371,14 +362,12 @@ struct _MakeFactoryMap {
             alias ? std::string(alias) + "[]" : array.GetAsToken().GetString();
 
         _ValueFactoryMap &f = *_factories;
-        f[scalarName] =
-            ValueFactory(scalarName, scalar.GetDimensions(), !isShaped,
-                         std::bind(MakeScalarValueTemplate<CppType>,
-                                   ph::_1, ph::_2, ph::_3, ph::_4));
-        f[arrayName] =
-            ValueFactory(arrayName, array.GetDimensions(), isShaped,
-                         std::bind(MakeShapedValueTemplate<CppType>,
-                                   ph::_1, ph::_2, ph::_3, ph::_4));
+        f[scalarName] = ValueFactory(
+            scalarName, scalar.GetDimensions(), !isShaped,
+            MakeScalarValueTemplate<CppType>);
+        f[arrayName] = ValueFactory(
+            arrayName, array.GetDimensions(), isShaped,
+            MakeShapedValueTemplate<CppType>);
     }
     
     _ValueFactoryMap *_factories;
@@ -413,6 +402,10 @@ TF_MAKE_STATIC_DATA(_ValueFactoryMap, _valueFactories) {
     builder.add<std::string>(SdfValueTypeNames->String);
     builder.add<TfToken>(SdfValueTypeNames->Token);
     builder.add<SdfAssetPath>(SdfValueTypeNames->Asset);
+    builder.add<SdfOpaqueValue>(SdfValueTypeNames->Opaque);
+    builder.add<SdfOpaqueValue>(SdfValueTypeNames->Group);
+    builder.add<SdfPathExpression>(SdfValueTypeNames->PathExpression);
+
     builder.add<GfVec2i>(SdfValueTypeNames->Int2);
     builder.add<GfVec2h>(SdfValueTypeNames->Half2);
     builder.add<GfVec2f>(SdfValueTypeNames->Float2);
@@ -516,7 +509,7 @@ ValueFactory const &GetValueFactoryForMenvaName(std::string const &name,
     return none;
 }
 
-};
+} // namespace Sdf_ParserHelpers
 
 bool
 Sdf_BoolFromString( const std::string &str, bool *parseOk )
@@ -561,27 +554,42 @@ Sdf_EvalQuotedString(const char* x, size_t n, size_t trimBothSides,
     // Use local buf, or malloc one if not enough space.
     // (this is a little too much if there are escape chars in the string,
     // but we can live with it to avoid traversing the string twice)
-    static const size_t LocalSize = 128;
+    static const size_t LocalSize = 2048;
     char localBuf[LocalSize];
     char *buf = n <= LocalSize ? localBuf : (char *)malloc(n);
 
     char *s = buf;
-    for (const char *p = x + trimBothSides,
-             *end = x + trimBothSides + n; p != end; ++p) {
-        if (*p != '\\') {
-            *s++ = *p;
-        } else {
+
+    const char *p = x + trimBothSides;
+    const char * const end = x + trimBothSides + n;
+
+    while (p < end) {
+        const char *escOrEnd =
+            static_cast<const char *>(memchr(p, '\\', std::distance(p, end)));
+        if (!escOrEnd) {
+            escOrEnd = end;
+        }
+               
+        const size_t nchars = std::distance(p, escOrEnd);
+        memcpy(s, p, nchars);
+        s += nchars;
+        p += nchars;
+
+        if (escOrEnd != end) {
             TfEscapeStringReplaceChar(&p, &s);
+            ++p;
         }
     }
 
     // Trim to final length.
     std::string(buf, s-buf).swap(ret);
-    if (buf != localBuf)
+    if (buf != localBuf) {
         free(buf);
+    }
 
-    if (numLines)
+    if (numLines) {
         *numLines = std::count(ret.begin(), ret.end(), '\n');
+    }
     
     return ret;
 }
@@ -593,13 +601,15 @@ Sdf_EvalAssetPath(const char* x, size_t n, bool tripleDelimited)
 
     // Asset paths are assumed to only contain printable characters and 
     // no escape sequences except for the "@@@" delimiter.
-    size_t numDelimiters = tripleDelimited ? 3 : 1;
+    const int numDelimiters = tripleDelimited ? 3 : 1;
     std::string ret(x + numDelimiters, n - (2 * numDelimiters));
     if (tripleDelimited) {
         ret = TfStringReplace(ret, "\\@@@", "@@@");
     }
 
-    return ret;
+    // Go through SdfAssetPath for validation -- this will raise an error and
+    // produce the empty asset path if 'ret' contains invalid characters.
+    return SdfAssetPath(ret).GetAssetPath();
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

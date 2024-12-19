@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_TF_ANY_WEAK_PTR_H
 #define PXR_BASE_TF_ANY_WEAK_PTR_H
@@ -36,10 +19,9 @@
 
 #ifdef PXR_PYTHON_SUPPORT_ENABLED
 #include "pxr/base/tf/pyUtils.h"
-#include <boost/python/object.hpp>
 #endif // PXR_PYTHON_SUPPORT_ENABLED
 
-#include <boost/operators.hpp>
+#include "pxr/base/tf/pyObjWrapper.h"
 
 #include <cstddef>
 #include <type_traits>
@@ -51,7 +33,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 /// Provides the ability to hold an arbitrary TfWeakPtr in a non-type-specific
 /// manner in order to observe whether it has expired or not
-class TfAnyWeakPtr : boost::totally_ordered<TfAnyWeakPtr>
+class TfAnyWeakPtr
 {
     struct _Data {
         void* space[4];
@@ -118,8 +100,28 @@ public:
     /// equality operator
     TF_API bool operator ==(const TfAnyWeakPtr &rhs) const;
 
+    /// inequality operator
+    bool operator !=(const TfAnyWeakPtr &rhs) const {
+        return !(*this == rhs);
+    }
+
     /// comparison operator
     TF_API bool operator <(const TfAnyWeakPtr &rhs) const;
+
+    /// less than or equal operator
+    bool operator <=(const TfAnyWeakPtr& rhs) const {
+        return !(rhs < *this);
+    }
+
+    /// greater than operator
+    bool operator >(const TfAnyWeakPtr& rhs) const {
+        return rhs < *this;
+    }
+
+    /// greater than or equal operator
+    bool operator >=(const TfAnyWeakPtr& rhs) const {
+        return !(*this < rhs);
+    }
 
     /// returns the type_info of the underlying WeakPtr
     TF_API const std::type_info & GetTypeInfo() const;
@@ -136,13 +138,13 @@ public:
 #ifdef PXR_PYTHON_SUPPORT_ENABLED
     // This grants friend access to a function in the wrapper file for this
     // class.  This lets the wrapper reach down into an AnyWeakPtr to get a
-    // boost::python wrapped object corresponding to the held type.  This
+    // pxr_boost::python wrapped object corresponding to the held type.  This
     // facility is necessary to get the python API we want.
-    friend boost::python::api::object
+    friend pxr_boost::python::api::object
     Tf_GetPythonObjectFromAnyWeakPtr(This const &self);
 
     TF_API
-    boost::python::api::object _GetPythonObject() const;
+    pxr_boost::python::api::object _GetPythonObject() const;
 #endif // PXR_PYTHON_SUPPORT_ENABLED
 
     template <class WeakPtr>
@@ -157,9 +159,7 @@ public:
         virtual TfWeakBase const *GetWeakBase() const = 0;
         virtual operator bool() const = 0;
         virtual bool _IsConst() const = 0;
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
-        virtual boost::python::api::object GetPythonObject() const = 0;
-#endif // PXR_PYTHON_SUPPORT_ENABLED
+        virtual TfPyObjWrapper GetPythonObject() const = 0;
         virtual const std::type_info & GetTypeInfo() const = 0;
         virtual TfType const& GetType() const = 0;
         virtual const void* _GetMostDerivedPtr() const = 0;
@@ -174,9 +174,7 @@ public:
         TF_API virtual TfWeakBase const *GetWeakBase() const;
         TF_API virtual operator bool() const;
         TF_API virtual bool _IsConst() const;
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
-        TF_API virtual boost::python::api::object GetPythonObject() const;
-#endif // PXR_PYTHON_SUPPORT_ENABLED
+        TF_API virtual TfPyObjWrapper GetPythonObject() const;
         TF_API virtual const std::type_info & GetTypeInfo() const;
         TF_API virtual TfType const& GetType() const;
         TF_API virtual const void* _GetMostDerivedPtr() const;
@@ -195,9 +193,7 @@ public:
         virtual TfWeakBase const *GetWeakBase() const;
         virtual operator bool() const;
         virtual bool _IsConst() const;
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
-        virtual boost::python::api::object GetPythonObject() const;
-#endif // PXR_PYTHON_SUPPORT_ENABLED
+        virtual TfPyObjWrapper GetPythonObject() const;
         virtual const std::type_info & GetTypeInfo() const;
         virtual TfType const& GetType() const;
         virtual const void* _GetMostDerivedPtr() const;
@@ -212,6 +208,19 @@ public:
     
     _Data _ptrStorage;
 };
+
+// TfHash support.  We don't want to choose the TfAnyWeakPtr overload unless the
+// passed argument is exactly TfAnyWeakPtr.  By making this a function template
+// that's only enabled for TfAnyWeakPtr, C++ will not perform implicit
+// conversions since T is deduced.
+template <class HashState,
+          class T, class = typename std::enable_if<
+                       std::is_same<T, TfAnyWeakPtr>::value>::type>
+inline void
+TfHashAppend(HashState &h, const T& ptr)
+{
+    h.Append(ptr.GetUniqueIdentifier());
+}
 
 template <class Ptr>
 TfAnyWeakPtr::_PointerHolder<Ptr>::~_PointerHolder() {}
@@ -250,15 +259,16 @@ TfAnyWeakPtr::_PointerHolder<Ptr>::operator bool() const
     return bool(_ptr);
 }
 
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
 template <class Ptr>
-boost::python::api::object
+TfPyObjWrapper
 TfAnyWeakPtr::_PointerHolder<Ptr>::GetPythonObject() const
 {
+#ifdef PXR_PYTHON_SUPPORT_ENABLED
     return TfPyObject(_ptr);
-}
+#else
+    return {};
 #endif // PXR_PYTHON_SUPPORT_ENABLED
-
+}
 template <class Ptr>
 const std::type_info &
 TfAnyWeakPtr::_PointerHolder<Ptr>::GetTypeInfo() const

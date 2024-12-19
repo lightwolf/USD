@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 ///
 /// \file Sdf/fileFormat.cpp
@@ -30,6 +13,7 @@
 #include "pxr/usd/sdf/data.h"
 #include "pxr/usd/sdf/fileFormatRegistry.h"
 #include "pxr/usd/sdf/layer.h"
+#include "pxr/usd/sdf/layerHints.h"
 
 #include "pxr/usd/ar/resolver.h"
 #include "pxr/base/trace/trace.h"
@@ -116,8 +100,11 @@ SdfFileFormat::GetDefaultFileFormatArguments() const
     return FileFormatArguments();
 }
 
+namespace
+{
+
 SdfAbstractDataRefPtr
-SdfFileFormat::InitData(const FileFormatArguments& args) const
+_CreateData(const SdfFileFormat::FileFormatArguments& args)
 {
     SdfData* metadata = new SdfData;
 
@@ -126,6 +113,25 @@ SdfFileFormat::InitData(const FileFormatArguments& args) const
     metadata->CreateSpec(SdfPath::AbsoluteRootPath(), SdfSpecTypePseudoRoot);
 
     return TfCreateRefPtr(metadata);
+}
+
+} // end anonymous namespace
+
+SdfAbstractDataRefPtr
+SdfFileFormat::InitData(const FileFormatArguments& args) const
+{
+    return _CreateData(args);
+}
+
+SdfAbstractDataRefPtr
+SdfFileFormat::InitDetachedData(const FileFormatArguments& args) const
+{
+    SdfAbstractDataRefPtr detachedData = _InitDetachedData(args);
+    if (detachedData && !detachedData->IsDetached()) {
+        TF_CODING_ERROR("File format did not return detached data object.");
+        return _CreateData(args);
+    }
+    return detachedData;
 }
 
 SdfLayerRefPtr
@@ -146,10 +152,10 @@ SdfFileFormat::ShouldSkipAnonymousReload() const
     return _ShouldSkipAnonymousReload();
 }
 
-bool
-SdfFileFormat::LayersAreFileBased() const
+bool 
+SdfFileFormat::ShouldReadAnonymousLayers() const
 {
-    return _LayersAreFileBased();
+    return _ShouldReadAnonymousLayers();
 }
 
 const SdfSchemaBase&
@@ -233,6 +239,122 @@ SdfFileFormat::WriteToFile(
     return false;
 }
 
+bool
+SdfFileFormat::SaveToFile(
+    const SdfLayer& layer,
+    const std::string& filePath,
+    const std::string& comment,
+    const FileFormatArguments& args) const
+{
+    return WriteToFile(layer, filePath, comment, args);
+}
+
+bool
+SdfFileFormat::ReadDetached(
+    SdfLayer* layer,
+    const std::string& resolvedPath,
+    bool metadataOnly) const
+{
+    const bool readSuccess = _ReadDetached(layer, resolvedPath, metadataOnly);
+    if (readSuccess && !_GetLayerData(*layer)->IsDetached()) {
+        TF_CODING_ERROR(
+            "File format did not return detached layer when reading layer %s.", 
+            layer->GetIdentifier() == resolvedPath || resolvedPath.empty() ? 
+            TfStringPrintf("@%s@", layer->GetIdentifier().c_str()).c_str() :
+            TfStringPrintf("@%s@ (%s)",
+                layer->GetIdentifier().c_str(), resolvedPath.c_str()).c_str());
+        return false;
+    }
+    return readSuccess;
+}
+
+SdfAbstractDataRefPtr
+SdfFileFormat::_InitDetachedData(
+    const FileFormatArguments& args) const
+{
+    return _CreateData(args);
+}
+
+namespace
+{
+
+class _WarnedFormatTracker
+{
+public:
+    bool NeedToWarn(const SdfFileFormat& format) const
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return _formatIds.insert(format.GetFormatId()).second;
+    };
+
+private:
+    mutable std::set<TfToken> _formatIds;
+    mutable std::mutex _mutex;
+};
+
+} // end anonymous namespace
+
+static TfStaticData<_WarnedFormatTracker> _WarnedFormats;
+
+bool
+SdfFileFormat::_ReadDetached(
+    SdfLayer* layer,
+    const std::string& resolvedPath,
+    bool metadataOnly) const
+{
+    bool didCopyData = false;
+    if (!_ReadAndCopyLayerDataToMemory(
+            layer, resolvedPath, metadataOnly, &didCopyData)) {
+        return false;
+    }
+
+    if (didCopyData && _WarnedFormats->NeedToWarn(*this)) {
+        TF_WARN(
+            "File format plugin '%s' did not produce a detached layer when "
+            "requested. Layer data has been copied to produce a detached "
+            "layer, which may impact performance. The file format should be "
+            "updated to avoid this issue. This was first encountered when"
+            "reading %s",
+            GetFormatId().GetText(),
+            layer->GetIdentifier() == resolvedPath || resolvedPath.empty() ? 
+            TfStringPrintf("@%s@", layer->GetIdentifier().c_str()).c_str() :
+            TfStringPrintf("@%s@ (%s)",
+                layer->GetIdentifier().c_str(), resolvedPath.c_str()).c_str());
+    }
+
+    return true;
+}
+
+bool
+SdfFileFormat::_ReadAndCopyLayerDataToMemory(
+    SdfLayer* layer,
+    const std::string& resolvedPath,
+    bool metadataOnly,
+    bool* didCopyData) const
+{
+    if (!Read(layer, resolvedPath, metadataOnly)) {
+        return false;
+    }
+
+    SdfAbstractDataConstPtr layerData = _GetLayerData(*layer);
+    if (layerData && !layerData->IsDetached()) {
+        SdfAbstractDataRefPtr detachedData = TfCreateRefPtr(new SdfData);
+        detachedData->CopyFrom(layerData);
+        _SetLayerData(layer, detachedData);
+
+        if (didCopyData) {
+            *didCopyData = true;
+        }
+    }
+    else {
+        if (didCopyData) {
+            *didCopyData = false;
+        }
+    }
+
+    return true;
+}
+
 bool 
 SdfFileFormat::ReadFromString(
     SdfLayer* layer,
@@ -259,6 +381,35 @@ SdfFileFormat::WriteToString(
     return false;
 }
 
+std::set<std::string> 
+SdfFileFormat::GetExternalAssetDependencies(
+    const SdfLayer& layer) const
+{
+    return std::set<std::string>();
+}
+
+// XXX:
+// fileFormatRegistry.cpp: file format creation does not provide a
+// straightforward way to pass parsed capabilities to format constructor.
+// As a result, instance methods defer this check to the registry itself.
+bool SdfFileFormat::SupportsReading() const
+{
+    return _FileFormatRegistry->FormatSupportsReading(
+        GetPrimaryFileExtension(), GetTarget());
+}
+
+bool SdfFileFormat::SupportsWriting() const
+{
+    return _FileFormatRegistry->FormatSupportsWriting(
+        GetPrimaryFileExtension(), GetTarget());
+}
+
+bool SdfFileFormat::SupportsEditing() const
+{
+    return _FileFormatRegistry->FormatSupportsEditing(
+        GetPrimaryFileExtension(), GetTarget());
+}
+
 /* static */
 std::string
 SdfFileFormat::GetFileExtension(
@@ -268,18 +419,7 @@ SdfFileFormat::GetFileExtension(
         return s;
     }
 
-    // We remove any file format arguments that may be appended to the layer
-    // path so we can get just the raw extension.
-    std::string layerPath;
-    std::string dummyArgs;
-    // XXX: if it is a dot file (e.g. .sdf) we append a temp
-    // name to retain behavior of specifier stripping.
-    // this is in place for backwards compatibility
-    Sdf_SplitIdentifier((s[0] == '.' ? "temp_file_name" + s : s), 
-                        &layerPath, &dummyArgs);
-
-    std::string extension = Sdf_GetExtension(layerPath);
-       
+    const std::string extension = Sdf_GetExtension(s);
     return extension.empty() ? s : extension;
 }
 
@@ -289,6 +429,38 @@ SdfFileFormat::FindAllFileFormatExtensions()
 {
     return _FileFormatRegistry->FindAllFileFormatExtensions();
 }
+
+/* static */
+std::set<std::string>
+SdfFileFormat::FindAllDerivedFileFormatExtensions(const TfType& baseType)
+{
+    return _FileFormatRegistry->FindAllDerivedFileFormatExtensions(baseType);
+}
+
+/* static */
+bool SdfFileFormat::FormatSupportsReading(
+    const std::string& extension,
+    const std::string& target)
+{
+    return _FileFormatRegistry->FormatSupportsReading(extension, target);
+}
+
+/* static */
+bool SdfFileFormat::FormatSupportsWriting(
+    const std::string& extension,
+    const std::string& target)
+{
+    return _FileFormatRegistry->FormatSupportsWriting(extension, target);
+}
+
+/* static */
+bool SdfFileFormat::FormatSupportsEditing(
+    const std::string& extension,
+    const std::string& target)
+{
+    return _FileFormatRegistry->FormatSupportsEditing(extension, target);
+}
+
 
 /* static */
 SdfFileFormatConstPtr
@@ -307,6 +479,34 @@ SdfFileFormat::FindByExtension(
     return _FileFormatRegistry->FindByExtension(extension, target);
 }
 
+/* static */
+SdfFileFormatConstPtr
+SdfFileFormat::FindByExtension(
+    const std::string &path,
+    const FileFormatArguments &args)
+{
+    // Find a file format that can handle this extension and the
+    // specified target (if any).
+    const std::string* targets = 
+        TfMapLookupPtr(args, SdfFileFormatTokens->TargetArg);
+    if (targets) {
+        for (std::string& target : TfStringTokenize(*targets, ",")) {
+            target = TfStringTrim(target);
+            if (target.empty()) {
+                continue;
+            }
+
+            if (const SdfFileFormatConstPtr format = 
+                SdfFileFormat::FindByExtension(path, target)) {
+                return format;
+            }
+        }
+        return TfNullPtr;
+    }
+
+    return SdfFileFormat::FindByExtension(path);
+}
+
 bool
 SdfFileFormat::_ShouldSkipAnonymousReload() const
 {
@@ -314,15 +514,24 @@ SdfFileFormat::_ShouldSkipAnonymousReload() const
 }
 
 bool 
-SdfFileFormat::_LayersAreFileBased() const
+SdfFileFormat::_ShouldReadAnonymousLayers() const
 {
-    return true;
+    return false;
 }
 
 void
 SdfFileFormat::_SetLayerData(
     SdfLayer* layer,
     SdfAbstractDataRefPtr& data)
+{
+    _SetLayerData(layer, data, SdfLayerHints{});
+}
+
+void
+SdfFileFormat::_SetLayerData(
+    SdfLayer* layer,
+    SdfAbstractDataRefPtr& data,
+    SdfLayerHints hints)
 {
     // If layer initialization has not completed, then this
     // is being loaded as a new layer; otherwise we are loading
@@ -336,8 +545,37 @@ SdfFileFormat::_SetLayerData(
         layer->_SwapData(data);
     }
     else {
-        layer->_SetData(data);
+        // If we're reading into an existing layer (e.g. due to a Reload), we
+        // want the layer to use whatever data implementation the file format
+        // wants to set because that object may have special behaviors specific
+        // to the format. If we detect the layer is currently using a different
+        // implementation, call _AdoptData to have the layer take ownership of
+        // the new data object and emit coarse invalidation. However, if we
+        // detect the layer is already using the same implementation, we call
+        // _SetData, which may perform finer-grained copies and change
+        // notification.
+        //
+        // We consider data implementations to differ if the object types don't
+        // match or if one streams data and the other doesn't, or if one is
+        // detached and the other isn't. In the latter cases, we want the layer
+        // to have the qualities the file format dictates, even if the
+        // underlying data object type is the same.
+        const SdfAbstractDataConstPtr oldData = _GetLayerData(*layer);
+        const bool differentDataImpl = 
+            data->StreamsData() != oldData->StreamsData() ||
+            data->IsDetached() != oldData->IsDetached() ||
+            !TfSafeTypeCompare(
+                typeid(*get_pointer(data)), typeid(*get_pointer(oldData)));
+
+        if (differentDataImpl) {
+            layer->_AdoptData(data);
+        }
+        else {
+            layer->_SetData(data);
+        }
     }
+
+    layer->_hints = hints;
 }
 
 SdfAbstractDataConstPtr
@@ -357,5 +595,9 @@ SdfFileFormat::_InstantiateNewLayer(
 {
     return new SdfLayer(fileFormat, identifier, realPath, assetInfo, args);
 }
+
+// ------------------------------------------------------------
+
+Sdf_FileFormatFactoryBase::~Sdf_FileFormatFactoryBase() = default;
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -1,13 +1,12 @@
 #usda 1.0
 (
-    defaultPrim = "Collection"
     endFrame = 10
     startFrame = 1
 )
 
 def "CollectionTest" (
-    kind = "prop"
-    prepend apiSchemas = ["CollectionAPI:leafGeom", "CollectionAPI:allGeom", "CollectionAPI:allGeomProperties", "CollectionAPI:hasRelationships", "CollectionAPI:hasInstanceProxy", "CollectionAPI:coneProperties", "CollectionAPI:includesCollection", "CollectionAPI:excludeInstanceGeom", "CollectionAPI:invalidExpansionRule", "CollectionAPI:invalidExcludesExplicitOnly", "CollectionAPI:invalidExcludesExpandPrims", "CollectionAPI:invalidTopLevelRules"]
+    kind = "component"
+    prepend apiSchemas = ["CollectionAPI:leafGeom", "CollectionAPI:allGeom", "CollectionAPI:allGeomProperties", "CollectionAPI:hasRelationships", "CollectionAPI:hasInstanceProxy", "CollectionAPI:coneProperties", "CollectionAPI:includesCollection", "CollectionAPI:includesNestedCollection", "CollectionAPI:excludeInstanceGeom", "CollectionAPI:invalidExpansionRule", "CollectionAPI:invalidExcludesExplicitOnly", "CollectionAPI:invalidExcludesExpandPrims", "CollectionAPI:invalidTopLevelRules", "CollectionAPI:withMembershipExpr", "CollectionAPI:expressionRef"]
 )
 {
     # simple explicit collection
@@ -42,7 +41,6 @@ def "CollectionTest" (
         </CollectionTest/Geom/Box/Geom>,
     ]
 
-
     # we can include properties explicitly in a collection with expansionRule=
     # "expandPrims"
     token collection:coneProperties:expansionRule = "expandPrims"
@@ -61,6 +59,11 @@ def "CollectionTest" (
         </CollectionTest/Geom/Shapes/Sphere>
     ]
 
+    # Collection that includes a collection that includes a collection.
+    rel collection:includesNestedCollection:includes = [
+        </CollectionTest/Geom.collection:allGeom>
+    ]
+
     # Collection that includes an instance but excludes geometry under it
     token collection:excludeInstanceGeom:expansionRule = "expandPrims"
     rel collection:excludeInstanceGeom:includes = [
@@ -72,7 +75,7 @@ def "CollectionTest" (
 
     token collection:invalidExpansionRule:expansionRule = "freeLove"
 
-    token collection:invalidExcludesExplicitOnly:expasionRule = "explicitOnly"
+    token collection:invalidExcludesExplicitOnly:expansionRule = "explicitOnly"
     rel collection:invalidExcludesExplicitOnly:includes = [
         </CollectionTest/Geom/Shapes/Cone>,
         </CollectionTest/Geom/Shapes/Cylinder>
@@ -82,7 +85,7 @@ def "CollectionTest" (
         </CollectionTest/Geom/Shapes/Sphere>
     ]
 
-    token collection:invalidExcludesExpandPrims:expasionRule = "expandPrims"
+    token collection:invalidExcludesExpandPrims:expansionRule = "expandPrims"
     rel collection:invalidExcludesExpandPrims:includes = [
         </CollectionTest/Geom/Shapes>
     ]
@@ -90,7 +93,7 @@ def "CollectionTest" (
         </CollectionTest/Geom/Box>
     ]
 
-    token collection:invalidTopLevelRules:expasionRule = "explicitOnly"
+    token collection:invalidTopLevelRules:expansionRule = "explicitOnly"
     rel collection:invalidTopLevelRules:includes = [
         </A>,
     ]
@@ -98,9 +101,22 @@ def "CollectionTest" (
         </B>
     ]
 
+    uniform token collection:explicitOnlyAndIncludeRoot:expansionRule = "explicitOnly"
+    uniform bool collection:explicitOnlyAndIncludeRoot:includeRoot = true
 
-    def "Geom"
+    pathExpression collection:withMembershipExpr:membershipExpression = "/CollectionTest/Geom//C* //{model} //Box %:expressionRef"
+
+    pathExpression collection:expressionRef:membershipExpression = "/CollectionTest/Geom/Shapes//H*"    
+    
+    def "Geom" (
+        prepend apiSchemas = ["CollectionAPI:allGeom"]
+    )
     {
+        rel collection:allGeom:includes = [
+            </CollectionTest/Geom/Box>,
+            </CollectionTest/Geom/Shapes.collection:allShapes>
+        ]
+
         def "Box" (
             instanceable = true
             add references = @./Cube.usda@</Cube>
@@ -168,3 +184,11 @@ def "CollectionTest" (
     }
 }
 
+def "CollectionExprTest" (
+    prepend apiSchemas = ["CollectionAPI:root", "CollectionAPI:ref1", "CollectionAPI:ref2"]
+)
+{
+    pathExpression collection:root:membershipExpression = "/root %:ref1 - %:ref2"
+    pathExpression collection:ref1:membershipExpression = "/ref1 %:ref2"
+    pathExpression collection:ref2:membershipExpression = "/ref2 %:root"
+}

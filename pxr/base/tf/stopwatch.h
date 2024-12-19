@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_TF_STOPWATCH_H
 #define PXR_BASE_TF_STOPWATCH_H
@@ -33,8 +16,6 @@
 #include "pxr/base/tf/api.h"
 
 #include <iosfwd>
-#include <string>
-#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -44,33 +25,19 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// Low-cost, high-resolution timer datatype.
 ///
 /// A \c TfStopwatch can be used to perform very precise timings at runtime,
-/// even in very tight loops.  The cost of "starting" or "stopping" a \c
-/// TfStopwatch is very small: approximately 40 nanoseconds on a 900 Mhz
+/// even in very tight loops.  The cost of "starting" or "stopping" a
+/// \c TfStopwatch is very small: approximately 40 nanoseconds on a 900 Mhz
 /// Pentium III Linux box, 300 nanoseconds on a 400 Mhz Sun, and 200
 /// nanoseconds on a 250 Mhz SGI.
 ///
 /// Note that this class is not thread-safe: if you need to take timings in a
-/// multi-threaded region of a process, let each thread have its own \c
-/// TfStopwatch and then combine results using the \c AddFrom() member
+/// multi-threaded region of a process, let each thread have its own
+/// \c TfStopwatch and then combine results using the \c AddFrom() member
 /// function.
 ///
-class TfStopwatch {
+class TfStopwatch
+{
 public:
-    /// Constructor with optionally supplied name, which is used only by
-    /// GetName().  If \c share is true, then this stopwatch is saved in an
-    /// internal set and can be retrieved via \c GetNamedStopwatch.  No
-    /// provision is made for multiple stopwatches with the same name.  So if
-    /// you want to retrieve it, make sure you name it uniquely.
-    TF_API TfStopwatch(const std::string& name = std::string(),
-                bool share = false);
-
-    /// Copy constructor.
-    ///
-    /// We have a copy constructor because copies are never shared.
-    TF_API TfStopwatch(const TfStopwatch& other);
-
-    /// Destroy a stopwatch.
-    TF_API virtual ~TfStopwatch();
 
     /// Record the current time for use by the next \c Stop() call.
     ///
@@ -79,7 +46,7 @@ public:
     /// current time, but does not change the accumulated time of the \c
     /// TfStopwatch.
     inline void Start() {
-        _startTick = ArchGetTickTime();
+        _startTick = ArchGetStartTickTime();
     }
 
     /// Increases the accumulated time stored in the \c TfStopwatch.
@@ -93,7 +60,7 @@ public:
     /// "sample count" is simply the number of times that \c Stop() has been
     /// called.
     inline void Stop() {
-        _nTicks += ArchGetTickTime() - _startTick;
+        _nTicks += ArchGetStopTickTime() - _startTick;
         _sampleCount++;
     }
 
@@ -114,16 +81,6 @@ public:
         _nTicks += t._nTicks;
         _sampleCount += t._sampleCount;
     }
-    
-    /// Return the name of the \c TfStopwatch.
-    const std::string& GetName() const {
-        return _name;
-    }
-
-    /// Return a copy of a particular named stopwatch.
-    ///
-    /// \c GetNamedStopwatch returns an unshared copy of the named stopwatch.
-    TF_API static TfStopwatch GetNamedStopwatch(const std::string& name);
     
     /// Return the accumulated time in nanoseconds.
     ///
@@ -161,34 +118,10 @@ public:
         return ArchTicksToSeconds(_nTicks);
     }
 
-    /// Return the names of the currently shared stopwatches.
-    ///
-    /// Return a vector of strings that are the names of the currently
-    /// available shared stopwatches.  Note that in a multithreaded
-    /// environment, the available stopwatches can change between the time you
-    /// retrieve the list of their names and when you retrieve the stopwatch
-    /// objects themselves.  Fortunately, TfStopwatch objects are typically
-    /// static and even if they are not, it does no harm to request a named
-    /// stopwatch that does not exist.
-    TF_API
-    static std::vector<std::string> GetStopwatchNames();
-
-    /// Returns true if this stopwatch is shared.
-    bool IsShared() const {
-        return _shared;
-    }
-
-    /// Assignment operator
-    ///
-    /// We have a custom assignment operator because copies are never shared.
-    TF_API TfStopwatch& operator=(const TfStopwatch& other);
-
 private:
-    uint64_t    _nTicks;
-    uint64_t    _startTick;
-    size_t      _sampleCount;
-    std::string _name;
-    bool        _shared;
+    uint64_t    _nTicks = 0;
+    uint64_t    _startTick = 0;
+    size_t      _sampleCount = 0;
 };
 
 /// Output a TfStopwatch, using the format seconds.

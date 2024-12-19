@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDSKEL_GENERATED_BINDINGAPI_H
 #define USDSKEL_GENERATED_BINDINGAPI_H
@@ -64,13 +47,18 @@ class SdfAssetPath;
 /// documentation for more about bindings and how they apply in a scene graph.
 /// 
 ///
+/// For any described attribute \em Fallback \em Value or \em Allowed \em Values below
+/// that are text/tokens, the actual token is published and defined in \ref UsdSkelTokens.
+/// So to set an attribute to the value "rightHanded", use UsdSkelTokens->rightHanded
+/// as the value.
+///
 class UsdSkelBindingAPI : public UsdAPISchemaBase
 {
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::SingleApplyAPI;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::SingleApplyAPI;
 
     /// Construct a UsdSkelBindingAPI on UsdPrim \p prim .
     /// Equivalent to UsdSkelBindingAPI::Get(prim.GetStage(), prim.GetPath())
@@ -114,28 +102,51 @@ public:
     Get(const UsdStagePtr &stage, const SdfPath &path);
 
 
+    /// Returns true if this <b>single-apply</b> API schema can be applied to 
+    /// the given \p prim. If this schema can not be a applied to the prim, 
+    /// this returns false and, if provided, populates \p whyNot with the 
+    /// reason it can not be applied.
+    /// 
+    /// Note that if CanApply returns false, that does not necessarily imply
+    /// that calling Apply will fail. Callers are expected to call CanApply
+    /// before calling Apply if they want to ensure that it is valid to 
+    /// apply a schema.
+    /// 
+    /// \sa UsdPrim::GetAppliedSchemas()
+    /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
+    ///
+    USDSKEL_API
+    static bool 
+    CanApply(const UsdPrim &prim, std::string *whyNot=nullptr);
+
     /// Applies this <b>single-apply</b> API schema to the given \p prim.
     /// This information is stored by adding "SkelBindingAPI" to the 
     /// token-valued, listOp metadata \em apiSchemas on the prim.
     /// 
     /// \return A valid UsdSkelBindingAPI object is returned upon success. 
     /// An invalid (or empty) UsdSkelBindingAPI object is returned upon 
-    /// failure. See \ref UsdAPISchemaBase::_ApplyAPISchema() for conditions 
+    /// failure. See \ref UsdPrim::ApplyAPI() for conditions 
     /// resulting in failure. 
     /// 
     /// \sa UsdPrim::GetAppliedSchemas()
     /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
     ///
     USDSKEL_API
     static UsdSkelBindingAPI 
     Apply(const UsdPrim &prim);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDSKEL_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -148,6 +159,30 @@ private:
     // override SchemaBase virtuals.
     USDSKEL_API
     const TfType &_GetTfType() const override;
+
+public:
+    // --------------------------------------------------------------------- //
+    // SKINNINGMETHOD 
+    // --------------------------------------------------------------------- //
+    /// The skinningMethod specifies the skinning method for the prim.
+    ///
+    /// | ||
+    /// | -- | -- |
+    /// | Declaration | `uniform token primvars:skel:skinningMethod = "classicLinear"` |
+    /// | C++ Type | TfToken |
+    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// | \ref UsdSkelTokens "Allowed Values" | classicLinear, dualQuaternion |
+    USDSKEL_API
+    UsdAttribute GetSkinningMethodAttr() const;
+
+    /// See GetSkinningMethodAttr(), and also 
+    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+    /// If specified, author \p defaultValue as the attribute's default,
+    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+    /// the default for \p writeSparsely is \c false.
+    USDSKEL_API
+    UsdAttribute CreateSkinningMethodAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
 
 public:
     // --------------------------------------------------------------------- //

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_DISPATCH_BUFFER_H
 #define PXR_IMAGING_HD_ST_DISPATCH_BUFFER_H
@@ -29,26 +12,27 @@
 #include "pxr/imaging/hd/bufferArray.h"
 #include "pxr/imaging/hd/bufferSpec.h"
 #include "pxr/imaging/hdSt/api.h"
-#include "pxr/imaging/hdSt/bufferArrayRangeGL.h"
-#include "pxr/imaging/hdSt/bufferResourceGL.h"
+#include "pxr/imaging/hdSt/bufferArrayRange.h"
+#include "pxr/imaging/hdSt/bufferResource.h"
 
 #include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+class HdStResourceRegistry;
 
 using HdStDispatchBufferSharedPtr = std::shared_ptr<class HdStDispatchBuffer>;
 
 /// \class HdStDispatchBuffer
 ///
-/// A VBO of a simple array of GLuint.
+/// A VBO of a simple array of unsigned integers.
 ///
 /// This buffer is used to prepare data on the GPU for indirect dispatch i.e.
-/// to be consumed by glMultiDrawIndirect or glDispatchComputeIndirect. At the
+/// to be consumed by MultiDrawIndirect or DispatchComputeIndirect. At the
 /// same time, interleaved subsets of the array are bound in several different
 /// ways to provide additional data interface to shaders.
 ///
-/// For each binding, we define 'BufferResourceView' on top of the GLuint array.
+/// For each binding, we define 'BufferResourceView' on top of the uint array.
 /// HdBufferArray aggregates those views and HdResourceBinder binds them
 /// with specified binding method and interleaved offset.
 ///
@@ -87,20 +71,23 @@ using HdStDispatchBufferSharedPtr = std::shared_ptr<class HdStDispatchBuffer>;
 /// XXX: it would be better to generalize this class not only for dispatch
 /// buffer, if we see other similar use-cases.
 ///
-class HdStDispatchBuffer : public HdBufferArray {
+class HdStDispatchBuffer : public HdBufferArray
+{
 public:
     /// Constructor. commandNumUints is given in how many integers.
     HDST_API
-    HdStDispatchBuffer(TfToken const &role, int count,
-                     unsigned int commandNumUints);
+    HdStDispatchBuffer(HdStResourceRegistry* resourceRegistry,
+                       TfToken const &role,
+                       int count,
+                       unsigned int commandNumUints);
 
     /// Destructor.
     HDST_API
-    ~HdStDispatchBuffer();
+    ~HdStDispatchBuffer() override;
 
     /// Update entire buffer data
     HDST_API
-    void CopyData(std::vector<GLuint> const &data);
+    void CopyData(std::vector<uint32_t> const &data);
 
     /// Add an interleaved view to this buffer.
     HDST_API
@@ -110,60 +97,61 @@ public:
     /// Returns the dispatch count
     int GetCount() const { return _count; }
 
-    /// Returns the number of GLuints in a single draw command.
+    /// Returns the number of uints in a single draw command.
     unsigned int GetCommandNumUints() const { return _commandNumUints; }
 
     /// Returns a bar which locates all interleaved resources of the entire
     /// buffer.
-    HdStBufferArrayRangeGLSharedPtr GetBufferArrayRange() const {
+    HdStBufferArrayRangeSharedPtr GetBufferArrayRange() const {
         return _bar;
     }
 
-    /// Returns entire buffer as a single HdBufferResource.
-    HdStBufferResourceGLSharedPtr GetEntireResource() const {
+    /// Returns entire buffer as a single HdStBufferResource.
+    HdStBufferResourceSharedPtr GetEntireResource() const {
         return _entireResource;
     }
 
     // HdBufferArray overrides. they are not supported in this class.
     HDST_API
-    virtual bool GarbageCollect();
+    bool GarbageCollect() override;
     HDST_API
-    virtual void Reallocate(
+    void Reallocate(
         std::vector<HdBufferArrayRangeSharedPtr> const &,
-        HdBufferArraySharedPtr const &);
+        HdBufferArraySharedPtr const &) override;
 
     HDST_API
-    virtual void DebugDump(std::ostream &out) const;
+    void DebugDump(std::ostream &out) const override;
 
     /// Returns the GPU resource. If the buffer array contains more than one
     /// resource, this method raises a coding error.
     HDST_API
-    HdStBufferResourceGLSharedPtr GetResource() const;
+    HdStBufferResourceSharedPtr GetResource() const;
 
     /// Returns the named GPU resource. This method returns the first found
-    /// resource. In HDST_SAFE_MODE it checks all underlying GL buffers
+    /// resource. In HDST_SAFE_MODE it checks all underlying GPU buffers
     /// in _resourceMap and raises a coding error if there are more than
-    /// one GL buffers exist.
+    /// one GPU buffers exist.
     HDST_API
-    HdStBufferResourceGLSharedPtr GetResource(TfToken const& name);
+    HdStBufferResourceSharedPtr GetResource(TfToken const& name);
 
     /// Returns the list of all named GPU resources for this bufferArray.
-    HdStBufferResourceGLNamedList const& GetResources() const {return _resourceList;}
+    HdStBufferResourceNamedList const& GetResources() const {return _resourceList;}
 
 protected:
     /// Adds a new, named GPU resource and returns it.
     HDST_API
-    HdStBufferResourceGLSharedPtr _AddResource(TfToken const& name,
+    HdStBufferResourceSharedPtr _AddResource(TfToken const& name,
                                                HdTupleType tupleType,
                                                int offset,
                                                int stride);
 
 private:
+    HdStResourceRegistry *_resourceRegistry;
     int _count;
     unsigned int _commandNumUints;
-    HdStBufferResourceGLNamedList _resourceList;
-    HdStBufferResourceGLSharedPtr _entireResource;
-    HdStBufferArrayRangeGLSharedPtr _bar;  // Alternative to range list in base class
+    HdStBufferResourceNamedList _resourceList;
+    HdStBufferResourceSharedPtr _entireResource;
+    HdStBufferArrayRangeSharedPtr _bar;  // Alternative to range list in base class
 };
 
 

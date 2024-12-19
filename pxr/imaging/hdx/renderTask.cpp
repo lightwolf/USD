@@ -1,30 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hdx/renderTask.h"
 #include "pxr/imaging/hdx/renderSetupTask.h"
 #include "pxr/imaging/hdx/tokens.h"
-#include "pxr/imaging/hdx/debugCodes.h"
 
 #include "pxr/imaging/hd/perfLog.h"
 #include "pxr/imaging/hd/renderDelegate.h"
@@ -43,16 +25,14 @@ PXR_NAMESPACE_OPEN_SCOPE
 // -------------------------------------------------------------------------- //
 
 HdxRenderTask::HdxRenderTask(HdSceneDelegate* delegate, SdfPath const& id)
-    : HdxProgressiveTask(id)
+    : HdxTask(id)
     , _pass()
     , _renderTags()
     , _setupTask()
 {
 }
 
-HdxRenderTask::~HdxRenderTask()
-{
-}
+HdxRenderTask::~HdxRenderTask() = default;
 
 bool
 HdxRenderTask::IsConverged() const
@@ -65,9 +45,9 @@ HdxRenderTask::IsConverged() const
 }
 
 void
-HdxRenderTask::Sync(HdSceneDelegate* delegate,
-                    HdTaskContext*   ctx,
-                    HdDirtyBits*     dirtyBits)
+HdxRenderTask::_Sync(HdSceneDelegate* delegate,
+                     HdTaskContext* ctx,
+                     HdDirtyBits* dirtyBits)
 {
     HD_TRACE_FUNCTION();
 
@@ -112,8 +92,8 @@ HdxRenderTask::Sync(HdSceneDelegate* delegate,
                 // use that id to look up params in the scene delegate.
                 // this setup task isn't indexed, so there's no concern
                 // about name conflicts.
-                _setupTask.reset(
-                    new HdxRenderSetupTask(delegate, GetId()));
+                _setupTask = std::make_shared<HdxRenderSetupTask>(
+                    delegate, GetId());
             }
 
             _setupTask->SyncParams(delegate, params);
@@ -143,10 +123,6 @@ HdxRenderTask::Prepare(HdTaskContext* ctx,
     if (_setupTask) {
         _setupTask->Prepare(ctx, renderIndex);
     }
-
-    if (_pass) {
-        _pass->Prepare(GetRenderTags());
-    }
 }
 
 void
@@ -161,14 +137,18 @@ HdxRenderTask::Execute(HdTaskContext* ctx)
 
     if (HdStRenderPassState* extendedState =
             dynamic_cast<HdStRenderPassState*>(renderPassState.get())) {
+
+        // Bail out early for Storm tasks that have no rendering work to submit
+        // and don't need to clear AOVs.
+        if (!_HasDrawItems() && !_NeedToClearAovs(renderPassState)) {
+            return;
+        }
         _SetHdStRenderPassState(ctx, extendedState);
     }
 
-    // Bind the render state and render geometry with the rendertags (if any)
+    // Render geometry with the rendertags (if any)
     if (_pass) {
-        renderPassState->Bind();
         _pass->Execute(renderPassState, GetRenderTags());
-        renderPassState->Unbind();
     }
 }
 
@@ -196,14 +176,16 @@ HdxRenderTask::_GetRenderPassState(HdTaskContext *ctx) const
     }
 }
 
-size_t
-HdxRenderTask::_GetDrawItemCount() const
+bool
+HdxRenderTask::_HasDrawItems() const
 {
     if (HdSt_RenderPass* hdStRenderPass =
             dynamic_cast<HdSt_RenderPass*>(_pass.get())) {
-        return hdStRenderPass->GetDrawItemCount();
+        return hdStRenderPass->HasDrawItems(GetRenderTags());
     } else {
-        return 0;
+        // Non-Storm backends don't typically use the draw item subsystem.
+        // Return true to signify that there is rendering work to do.
+        return true;
     }
 }
 
@@ -227,36 +209,42 @@ HdxRenderTask::_SetHdStRenderPassState(HdTaskContext *ctx,
     // it can access rprimIDs populated in RenderTask::_Sync.
     VtValue vo = (*ctx)[HdxTokens->selectionOffsets];
     VtValue vu = (*ctx)[HdxTokens->selectionUniforms];
-    VtValue vc = (*ctx)[HdxTokens->selectionPointColors];
 
     HdStRenderPassShaderSharedPtr renderPassShader
         = renderPassState->GetRenderPassShader();
 
-    if (!vo.IsEmpty() && !vu.IsEmpty() && !vc.IsEmpty()) {
+    if (!vo.IsEmpty() && !vu.IsEmpty()) {
         HdBufferArrayRangeSharedPtr obar
             = vo.Get<HdBufferArrayRangeSharedPtr>();
         HdBufferArrayRangeSharedPtr ubar
             = vu.Get<HdBufferArrayRangeSharedPtr>();
-        HdBufferArrayRangeSharedPtr cbar
-            = vc.Get<HdBufferArrayRangeSharedPtr>();
 
         renderPassShader->AddBufferBinding(
-            HdBindingRequest(HdBinding::SSBO,
-                             HdxTokens->selectionOffsets, obar,
-                             /*interleave*/false));
+            HdStBindingRequest(HdStBinding::SSBO,
+                               HdxTokens->selectionOffsets, obar,
+                               /*interleave*/false));
         renderPassShader->AddBufferBinding(
-            HdBindingRequest(HdBinding::UBO,
-                             HdxTokens->selectionUniforms, ubar,
-                             /*interleave*/true));
-        renderPassShader->AddBufferBinding(
-            HdBindingRequest(HdBinding::SSBO,
-                             HdxTokens->selectionPointColors, cbar,
-                             /*interleave*/false));
+            HdStBindingRequest(HdStBinding::UBO,
+                               HdxTokens->selectionUniforms, ubar,
+                               /*interleave*/true));
     } else {
         renderPassShader->RemoveBufferBinding(HdxTokens->selectionOffsets);
         renderPassShader->RemoveBufferBinding(HdxTokens->selectionUniforms);
-        renderPassShader->RemoveBufferBinding(HdxTokens->selectionPointColors);
     }
+}
+
+bool
+HdxRenderTask::_NeedToClearAovs(
+    HdRenderPassStateSharedPtr const &renderPassState) const
+{
+    HdRenderPassAovBindingVector const &aovBindings =
+            renderPassState->GetAovBindings();
+    for (auto const & binding : aovBindings) {
+        if (!binding.clearValue.IsEmpty()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 

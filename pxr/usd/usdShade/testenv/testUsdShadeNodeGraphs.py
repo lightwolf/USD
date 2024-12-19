@@ -2,25 +2,8 @@
 #                                                                                   
 # Copyright 2017 Pixar                                                              
 #                                                                                   
-# Licensed under the Apache License, Version 2.0 (the "Apache License")             
-# with the following modification; you may not use this file except in              
-# compliance with the Apache License and the following modification to it:          
-# Section 6. Trademarks. is deleted and replaced with:                              
-#                                                                                   
-# 6. Trademarks. This License does not grant permission to use the trade            
-#    names, trademarks, service marks, or product names of the Licensor             
-#    and its affiliates, except as required to comply with Section 4(c) of          
-#    the License and to reproduce the content of the NOTICE file.                   
-#                                                                                   
-# You may obtain a copy of the Apache License at                                    
-#                                                                                   
-#     http://www.apache.org/licenses/LICENSE-2.0                                    
-#                                                                                   
-# Unless required by applicable law or agreed to in writing, software               
-# distributed under the Apache License with the above modification is               
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY          
-# KIND, either express or implied. See the Apache License for the specific          
-# language governing permissions and limitations under the Apache License. 
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from pxr import Sdf, Usd, UsdShade
 import unittest
@@ -136,22 +119,23 @@ class TestUsdShadeNodeGraphs(unittest.TestCase):
         nestedNodeGraphOutput = nestedNodeGraphOutputs[0]
 
         nodeGraphOutput = nodeGraph.GetOutput("OutputThree")
-        outputSource = nodeGraphOutput.GetConnectedSource()
-        self.assertEqual(outputSource[0].GetPath(), nestedNodeGraph.GetPath())
-        self.assertEqual(outputSource[1], "NestedOutput")
-        self.assertEqual(outputSource[2], UsdShade.AttributeType.Output)
+        outputSource = nodeGraphOutput.GetConnectedSources()[0][0]
+        self.assertEqual(outputSource.source.GetPath(), nestedNodeGraph.GetPath())
+        self.assertEqual(outputSource.sourceName, "NestedOutput")
+        self.assertEqual(outputSource.sourceType, UsdShade.AttributeType.Output)
 
-        nestedOutputSource = nestedNodeGraphOutputs[0].GetConnectedSource()
-        self.assertEqual(nestedOutputSource[0].GetPath(), nestedNodeGraphShader.GetPath())
-        self.assertEqual(nestedOutputSource[1], "NestedShaderOutput")
-        self.assertEqual(nestedOutputSource[2], UsdShade.AttributeType.Output)
+        nestedOutputSource = nestedNodeGraphOutputs[0].GetConnectedSources()[0][0]
+        self.assertEqual(nestedOutputSource.source.GetPath(), nestedNodeGraphShader.GetPath())
+        self.assertEqual(nestedOutputSource.sourceName, "NestedShaderOutput")
+        self.assertEqual(nestedOutputSource.sourceType, UsdShade.AttributeType.Output)
 
-        computedNodeGraphOutputSource = nodeGraph.ComputeOutputSource(
-            "OutputThree")
-        self.assertEqual(computedNodeGraphOutputSource[0].GetPath(), 
-                         nestedOutputSource[0].GetPath())
-        self.assertEqual(computedNodeGraphOutputSource[1:2], 
-                         nestedOutputSource[1:2])
+        valueAttrs = nodeGraph.GetOutput("OutputThree").GetValueProducingAttributes();
+        self.assertEqual(len(valueAttrs), 1)
+        self.assertEqual(valueAttrs[0].GetPrim().GetPath(),
+                         nestedOutputSource.source.GetPath())
+        self.assertEqual(UsdShade.Utils.GetBaseNameAndType(valueAttrs[0].GetName()),
+                         (nestedOutputSource.sourceName,
+                          nestedOutputSource.sourceType))
 
     def _TestInputs(self, usdStage):
         nodeGraph = UsdShade.NodeGraph.Get(usdStage, NODEGRAPH_PATH)
@@ -172,10 +156,10 @@ class TestUsdShadeNodeGraphs(unittest.TestCase):
         # Test input to input connections.
         nestedInputs = nestedNodeGraph.GetInputs()
         self.assertEqual(len(nestedInputs), 1)
-        nestedInputSource = nestedInputs[0].GetConnectedSource()
-        self.assertEqual(nestedInputSource[0].GetPath(), nodeGraph.GetPath())
-        self.assertEqual(nestedInputSource[1], 'InputTwo')
-        self.assertEqual(nestedInputSource[2], UsdShade.AttributeType.Input)
+        nestedInputSource = nestedInputs[0].GetConnectedSources()[0][0]
+        self.assertEqual(nestedInputSource.source.GetPath(), nodeGraph.GetPath())
+        self.assertEqual(nestedInputSource.sourceName, 'InputTwo')
+        self.assertEqual(nestedInputSource.sourceType, UsdShade.AttributeType.Input)
     
         # Test ComputeInterfaceInputConsumersMap.
         inputConsumersMap = nodeGraph.ComputeInterfaceInputConsumersMap()

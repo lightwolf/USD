@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdShade/input.h"
 #include "pxr/usd/usdShade/output.h"
@@ -29,17 +12,17 @@
 #include "pxr/base/tf/pyContainerConversions.h"
 #include "pxr/base/tf/pyResultConversions.h"
 
-#include <boost/python/class.hpp>
-#include <boost/python/operators.hpp>
-#include <boost/python/implicit.hpp>
-#include <boost/python/tuple.hpp>
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/operators.hpp"
+#include "pxr/external/boost/python/implicit.hpp"
+#include "pxr/external/boost/python/tuple.hpp"
 
 #include <vector>
 
 using std::vector;
-using namespace boost::python;
-
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -57,6 +40,17 @@ _Get(const UsdShadeInput &self, UsdTimeCode time) {
 }
 
 static object
+_GetConnectedSources(const UsdShadeInput &self)
+{
+    SdfPathVector invalidSourcePaths;
+    UsdShadeInput::SourceInfoVector sources =
+        self.GetConnectedSources(&invalidSourcePaths);
+    return pxr_boost::python::make_tuple(
+        std::vector<UsdShadeConnectionSourceInfo>(sources.begin(), sources.end()),
+        invalidSourcePaths);
+}
+
+static object
 _GetConnectedSource(const UsdShadeInput &self)
 {
     UsdShadeConnectableAPI source;
@@ -64,7 +58,7 @@ _GetConnectedSource(const UsdShadeInput &self)
     UsdShadeAttributeType  sourceType;
     
     if (self.GetConnectedSource(&source, &sourceName, &sourceType)){
-        return boost::python::make_tuple(source, sourceName, sourceType);
+        return pxr_boost::python::make_tuple(source, sourceName, sourceType);
     } else {
         return object();
     }
@@ -83,7 +77,7 @@ _GetValueProducingAttribute(const UsdShadeInput &self)
 {
     UsdShadeAttributeType attrType;
     UsdAttribute attr = self.GetValueProducingAttribute(&attrType);
-    return boost::python::make_tuple(attr, attrType);
+    return pxr_boost::python::make_tuple(attr, attrType);
 }
 
 } // anonymous namespace 
@@ -107,11 +101,17 @@ void wrapUsdShadeInput()
     bool (Input::*ConnectToSource_4)(
         UsdShadeOutput const &) const = &Input::ConnectToSource;
 
+    bool (Input::*ConnectToSource_5)(
+        UsdShadeConnectionSourceInfo const &,
+        Input::ConnectionModification const mod) const = &Input::ConnectToSource;
+
     bool (Input::*CanConnect_1)(
         UsdAttribute const &) const = &Input::CanConnect;
 
     class_<Input>("Input")
         .def(init<UsdAttribute>(arg("attr")))
+        .def(self==self)
+        .def(self!=self)
         .def(!self)
 
         .def("GetFullName", &Input::GetFullName,
@@ -152,6 +152,9 @@ void wrapUsdShadeInput()
         .def("GetConnectability", &Input::GetConnectability)
         .def("ClearConnectability", &Input::ClearConnectability)
 
+        .def("GetValueProducingAttributes",
+            &Input::GetValueProducingAttributes,
+            (arg("shaderOutputsOnly")=false))
         .def("GetValueProducingAttribute", _GetValueProducingAttribute)
 
         .def("GetAttr", &Input::GetAttr,
@@ -160,7 +163,10 @@ void wrapUsdShadeInput()
         .def("CanConnect", CanConnect_1,
             (arg("source")))
 
-        .def("ConnectToSource", ConnectToSource_1, 
+        .def("ConnectToSource", ConnectToSource_5,
+            (arg("source"),
+             arg("mod")=UsdShadeConnectionModification::Replace))
+        .def("ConnectToSource", ConnectToSource_1,
             (arg("source"), arg("sourceName"), 
              arg("sourceType")=UsdShadeAttributeType::Output,
              arg("typeName")=SdfValueTypeName()))
@@ -171,13 +177,18 @@ void wrapUsdShadeInput()
         .def("ConnectToSource", ConnectToSource_4,
             (arg("output")))
 
+        .def("SetConnectedSources", &Input::SetConnectedSources)
+
+        .def("GetConnectedSources", _GetConnectedSources)
         .def("GetConnectedSource", _GetConnectedSource)
         .def("GetRawConnectedSourcePaths", _GetRawConnectedSourcePaths,
             return_value_policy<TfPySequenceToList>())
         .def("HasConnectedSource", &Input::HasConnectedSource)
         .def("IsSourceConnectionFromBaseMaterial",
              &Input::IsSourceConnectionFromBaseMaterial)
-        .def("DisconnectSource", &Input::DisconnectSource)
+        .def("DisconnectSource", &Input::DisconnectSource,
+             (arg("sourceAttr")=UsdAttribute()))
+        .def("ClearSources", &Input::ClearSources)
         .def("ClearSource", &Input::ClearSource)
 
         .def("IsInput", &Input::IsInput)

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_SDF_PATH_H
 #define PXR_USD_SDF_PATH_H
@@ -28,12 +11,12 @@
 #include "pxr/usd/sdf/api.h"
 #include "pxr/usd/sdf/pool.h"
 #include "pxr/usd/sdf/tokens.h"
+#include "pxr/base/arch/defines.h"
+#include "pxr/base/tf/delegatedCountPtr.h"
+#include "pxr/base/tf/span.h"
 #include "pxr/base/tf/stl.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/base/vt/traits.h"
-
-#include <boost/intrusive_ptr.hpp>
-#include <boost/operators.hpp>
 
 #include <algorithm>
 #include <iterator>
@@ -49,14 +32,14 @@ class Sdf_PathNode;
 class SdfPathAncestorsRange;
 
 // Ref-counting pointer to a path node.
-// Intrusive ref-counts are used to keep the size of SdfPath
+// Delegated ref-counts are used to keep the size of SdfPath
 // the same as a raw pointer.  (shared_ptr, by comparison,
 // is the size of two pointers.)
 
-typedef boost::intrusive_ptr<const Sdf_PathNode> Sdf_PathNodeConstRefPtr;
+using Sdf_PathNodeConstRefPtr = TfDelegatedCountPtr<const Sdf_PathNode>;
 
-void intrusive_ptr_add_ref(Sdf_PathNode const *);
-void intrusive_ptr_release(Sdf_PathNode const *);
+void TfDelegatedCountIncrement(Sdf_PathNode const *) noexcept;
+void TfDelegatedCountDecrement(Sdf_PathNode const *) noexcept;
 
 // Tags used for the pools of path nodes.
 struct Sdf_PathPrimTag;
@@ -82,6 +65,8 @@ private:
     typedef Sdf_PathNodeHandleImpl this_type;
 
 public:
+    static constexpr bool IsCounted = Counted;
+
     constexpr Sdf_PathNodeHandleImpl() noexcept {};
 
     explicit
@@ -100,7 +85,7 @@ public:
         }
     }
 
-    Sdf_PathNodeHandleImpl(Sdf_PathNodeHandleImpl const &rhs)
+    Sdf_PathNodeHandleImpl(Sdf_PathNodeHandleImpl const &rhs) noexcept
         : _poolHandle(rhs._poolHandle) {
         if (_poolHandle) {
             _AddRef();
@@ -143,7 +128,7 @@ public:
         _poolHandle = Handle { nullptr };
     }
 
-    Sdf_PathNode const *
+    inline Sdf_PathNode const *
     get() const noexcept {
         return reinterpret_cast<Sdf_PathNode *>(_poolHandle.GetPtr());
     }
@@ -177,19 +162,19 @@ public:
     }
 private:
 
-    void _AddRef(Sdf_PathNode const *p) const {
+    inline void _AddRef(Sdf_PathNode const *p) const {
         if (Counted) {
-            intrusive_ptr_add_ref(p);
+            TfDelegatedCountIncrement(p);
         }
     }
 
-    void _AddRef() const {
+    inline void _AddRef() const {
         _AddRef(get());
     }
 
-    void _DecRef() const {
+    inline void _DecRef() const {
         if (Counted) {
-            intrusive_ptr_release(get());
+            TfDelegatedCountDecrement(get());
         }
     }
 
@@ -285,7 +270,7 @@ VT_TYPE_IS_CHEAP_TO_COPY(class SdfPath);
 /// the number of values created (since it requires synchronized access to
 /// this table) or copied (since it requires atomic ref-counting operations).
 ///
-class SdfPath : boost::totally_ordered<SdfPath>
+class SdfPath
 {
 public:
     /// The empty path value, equivalent to SdfPath().
@@ -303,7 +288,7 @@ public:
     
     /// Constructs the default, empty path.
     ///
-    constexpr SdfPath() = default;
+    SdfPath() noexcept = default;
 
     /// Creates a path from the given string.
     ///
@@ -416,13 +401,52 @@ public:
         return !_primPart; 
     }
 
-    /// Returns the string representation of this path as a TfToken.
+    /// Return the string representation of this path as a TfToken.
+    ///
+    /// This function is recommended only for human-readable or diagnostic
+    /// output.  Use the SdfPath API to manipulate paths.  It is less
+    /// error-prone and has better performance.
+    SDF_API TfToken GetAsToken() const;
+
+    /// Return the string representation of this path as a TfToken lvalue.
+    ///
+    /// This function returns a persistent lvalue.  If an rvalue will suffice,
+    /// call GetAsToken() instead.  That avoids populating internal data
+    /// structures to hold the persistent token.
+    ///
+    /// This function is recommended only for human-readable or diagnostic
+    /// output.  Use the SdfPath API to manipulate paths.  It is less
+    /// error-prone and has better performance.
     SDF_API TfToken const &GetToken() const;
 
-    /// Returns the string representation of this path as a std::string.
+    /// Return the string representation of this path as a std::string.
+    ///
+    /// This function is recommended only for human-readable or diagnostic
+    /// output.  Use the SdfPath API to manipulate paths.  It is less
+    /// error-prone and has better performance.
+    SDF_API std::string GetAsString() const;
+
+    /// Return the string representation of this path as a std::string.
+    ///
+    /// This function returns a persistent lvalue.  If an rvalue will suffice,
+    /// call GetAsString() instead.  That avoids populating internal data
+    /// structures to hold the persistent string.
+    ///
+    /// This function is recommended only for human-readable or diagnostic
+    /// output.  Use the SdfPath API to manipulate paths.  It is less
+    /// error-prone and has better performance.
     SDF_API const std::string &GetString() const;
 
     /// Returns the string representation of this path as a c string.
+    ///
+    /// This function returns a pointer to a persistent c string.  If a
+    /// temporary c string will suffice, call GetAsString().c_str() instead.
+    /// That avoids populating internal data structures to hold the persistent
+    /// string.
+    ///
+    /// This function is recommended only for human-readable or diagnostic
+    /// output.  Use the SdfPath API to manipulate paths.  It is less
+    /// error-prone and has better performance.
     SDF_API const char *GetText() const;
 
     /// Returns the prefix paths of this path.
@@ -434,6 +458,16 @@ public:
     /// produces an equivalent set of paths, ordered from longest to shortest.
     SDF_API SdfPathVector GetPrefixes() const;
 
+    /// Return up to \p numPrefixes prefix paths of this path.
+    ///
+    /// Prefixes are returned in order of shortest to longest.  The path itself
+    /// is returned as the last prefix.  Note that if the prefix order does not
+    /// need to be from shortest to longest, it is more efficient to use
+    /// GetAncestorsRange, which produces an equivalent set of paths, ordered
+    /// from longest to shortest.  If \p numPrefixes is 0 or greater than the
+    /// number of this path's prefixes, fill all prefixes.
+    SDF_API SdfPathVector GetPrefixes(size_t numPrefixes) const;
+
     /// Fills prefixes with prefixes of this path.
     /// 
     /// This avoids copy constructing the return value.
@@ -441,9 +475,33 @@ public:
     /// Prefixes are returned in order of shortest to longest.  The path
     /// itself is returned as the last prefix.
     /// Note that if the prefix order does not need to be from shortest to
-    /// longest, it is more efficient to use GetAncestorsRange, which
+    /// longest, it is more efficient to use GetAncestorsRange(), which
     /// produces an equivalent set of paths, ordered from longest to shortest.
     SDF_API void GetPrefixes(SdfPathVector *prefixes) const;
+
+    /// Fill \p prefixes with up to \p numPrefixes prefixes of this path.
+    /// 
+    /// Prefixes are filled in order of shortest to longest.  The path itself is
+    /// included as the last prefix.  Note that if the prefix order does not
+    /// need to be from shortest to longest, it can be more efficient to use
+    /// GetAncestorsRange(), which produces an equivalent set of paths, ordered
+    /// from longest to shortest.  If \p numPrefixes is 0 or greater than the
+    /// number of this path's prefixes, fill all prefixes.
+    SDF_API void GetPrefixes(SdfPathVector *prefixes, size_t numPrefixes) const;
+
+    /// Fill \p prefixes with up to \p prefixes.size() prefixes of this path.
+    /// Return the subspan of prefixes filled.
+    ///
+    /// Prefixes are filled in order of shortest to longest.  The path itself is
+    /// always included as the last prefix.  If \p prefixes is not large enough
+    /// to contain all prefixes, the shortest prefixes are omitted.  If \p
+    /// prefixes is larger than the number of prefixes filled, return the
+    /// subspan filled by calling TfSpan::first() with the number of filled
+    /// prefixes.  Note that if the prefix order does not need to be from
+    /// shortest to longest, it can be more efficient to use
+    /// GetAncestorsRange(), which produces an equivalent set of paths, ordered
+    /// from longest to shortest.
+    SDF_API TfSpan<SdfPath> GetPrefixes(TfSpan<SdfPath> prefixes) const;
 
     /// Return a range for iterating over the ancestors of this path.
     ///
@@ -556,7 +614,9 @@ public:
     /// ('/foo').  For a prim property path (like '/foo/bar.property'), return
     /// the prim's path ('/foo/bar').  For a target path (like
     /// '/foo/bar.property[/target]') return the property path
-    /// ('/foo/bar.property').  For a relational attribute or mapper path (like
+    /// ('/foo/bar.property').  For a mapper path (like
+    /// '/foo/bar.property.mapper[/target]') return the property path
+    /// ('/foo/bar.property).  For a relational attribute path (like
     /// '/foo/bar.property[/target].relAttr') return the relationship target's
     /// path ('/foo/bar.property[/target]').  For a prim variant selection path
     /// (like '/foo/bar{var=sel}') return the prim path ('/foo/bar').  For a
@@ -569,7 +629,7 @@ public:
     /// grandparent path ('../..').  Use caution writing loops that walk to
     /// parent paths since relative paths have infinitely many ancestors.  To
     /// more safely traverse ancestor paths, consider iterating over an
-    /// SdfPathAncestorsRange instead, as returend by GetAncestorsRange().
+    /// SdfPathAncestorsRange instead, as returned by GetAncestorsRange().
     SDF_API SdfPath GetParentPath() const;
 
     /// Creates a path by stripping all relational attributes, targets,
@@ -834,9 +894,13 @@ public:
     /// @{
 
     /// Equality operator.
-    /// (Boost provides inequality from this.)
     inline bool operator==(const SdfPath &rhs) const {
         return _AsInt() == rhs._AsInt();
+    }
+
+    /// Inequality operator.
+    inline bool operator!=(const SdfPath &rhs) const {
+        return !(*this == rhs);
     }
 
     /// Comparison operator.
@@ -854,37 +918,39 @@ public:
         return _LessThanInternal(*this, rhs);
     }
 
+    /// Greater than operator.
+    /// \sa SdfPath::operator<(const SdfPath&)
+    inline bool operator>(const SdfPath& rhs) const {
+        return rhs < *this;
+    }
+
+    /// Less than or equal operator.
+    /// \sa SdfPath::operator<(const SdfPath&)
+    inline bool operator<=(const SdfPath& rhs) const {
+        return !(rhs < *this);
+    }
+
+    /// Greater than or equal operator.
+    /// \sa SdfPath::operator<(const SdfPath&)
+    inline bool operator>=(const SdfPath& rhs) const {
+        return !(*this < rhs);
+    }
+
+    template <class HashState>
+    friend void TfHashAppend(HashState &h, SdfPath const &path) {
+        // The hash function is pretty sensitive performance-wise.  Be
+        // careful making changes here, and run tests.
+        uint32_t primPart, propPart;
+        memcpy(&primPart, &path._primPart, sizeof(primPart));
+        memcpy(&propPart, &path._propPart, sizeof(propPart));
+        h.Append(primPart);
+        h.Append(propPart);
+    }
+
     // For hash maps and sets
     struct Hash {
         inline size_t operator()(const SdfPath& path) const {
-            // The hash function is pretty sensitive performance-wise.  Be
-            // careful making changes here, and run tests.
-            uint32_t primPart, propPart;
-            memcpy(&primPart, &path._primPart, sizeof(primPart));
-            memcpy(&propPart, &path._propPart, sizeof(propPart));
-
-            // Important considerations here:
-            // - It must be fast to execute.
-            // - It must do well in hash tables that find indexes by taking
-            //   the remainder divided by a prime number of buckets.
-            // - It must do well in hash tables that find indexes by taking
-            //   just the low-order bits.
-
-            // This hash function maps the (primPart, propPart) pair to a single
-            // value by using triangular numbers.  So the first few path hash
-            // values would look like this, for primPart as X increasing
-            // left-to-right and for propPart as Y increasing top-to-bottom.
-            //
-            //  0  2  5  9 14 20
-            //  1  4  8 13 19 26
-            //  3  7 12 18 25 33
-            //  6 11 17 24 32 41
-            // 10 16 23 31 40 50
-            // 15 22 30 39 49 60
-
-            uint64_t x = primPart >> 8;
-            uint64_t y = x + (propPart >> 8);
-            return x + (y * (y + 1)) / 2;
+            return TfHash()(path);
         }
     };
 
@@ -935,6 +1001,11 @@ private:
     explicit SdfPath(Sdf_PathPrimNodeHandle &&primNode)
         : _primPart(std::move(primNode)) {}
 
+    SdfPath(Sdf_PathPrimNodeHandle &&primPart,
+            Sdf_PathPropNodeHandle &&propPart)
+        : _primPart(std::move(primPart))
+        , _propPart(std::move(propPart)) {}
+
     // Construct from prim & prop parts.
     SdfPath(Sdf_PathPrimNodeHandle const &primPart,
             Sdf_PathPropNodeHandle const &propPart)
@@ -950,10 +1021,6 @@ private:
     friend class Sdf_PathNode;
     friend class Sdfext_PathAccess;
     friend class SdfPathAncestorsRange;
-
-    // converts elements to a string for parsing (unfortunate)
-    static std::string
-    _ElementsToString(bool absolute, const std::vector<std::string> &elements);
 
     SdfPath _ReplacePrimPrefix(SdfPath const &oldPrefix,
                                SdfPath const &newPrefix) const;
@@ -980,6 +1047,9 @@ private:
         lhs._primPart.swap(rhs._primPart);
         lhs._propPart.swap(rhs._propPart);
     }
+
+    SDF_API friend char const *
+    Sdf_PathGetDebuggerPathText(SdfPath const &);
 
     Sdf_PathPrimNodeHandle _primPart;
     Sdf_PathPropNodeHandle _propPart;
@@ -1333,6 +1403,15 @@ SdfPathFindLongestStrictPrefix(
         std::map<SdfPath, T> &>(map, path, /*strictPrefix=*/true,
                                 TfGet<0>());
 }
+
+// A helper function for debugger pretty-printers, etc.  This function is *not*
+// thread-safe.  It writes to a static buffer and returns a pointer to it.
+// Subsequent calls to this function overwrite the memory written in prior
+// calls.  If the given path's string representation exceeds the static buffer
+// size, return a pointer to a message indicating so.
+SDF_API
+char const *
+Sdf_PathGetDebuggerPathText(SdfPath const &);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

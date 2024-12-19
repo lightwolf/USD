@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #ifndef PXR_USD_SDR_REGISTRY_H
@@ -28,6 +11,7 @@
 /// \file sdr/registry.h
 
 #include "pxr/pxr.h"
+#include "pxr/base/tf/singleton.h"
 #include "pxr/usd/sdr/api.h"
 #include "pxr/usd/ndr/registry.h"
 #include "pxr/usd/sdr/declare.h"
@@ -92,11 +76,6 @@ public:
         const std::string &sourceCode,
         const TfToken &sourceType,
         const NdrTokenMap &metadata=NdrTokenMap());
-
-    /// Exactly like `NdrRegistry::GetNodeByURI()`, but returns a
-    /// `SdrShaderNode` pointer instead of a `NdrNode` pointer.
-    SDR_API
-    SdrShaderNodeConstPtr GetShaderNodeByURI(const std::string& uri);
 
     /// Exactly like `NdrRegistry::GetNodesByIdentifier()`, but returns a vector
     /// of `SdrShaderNode` pointers instead of a vector of `NdrNode` pointers.

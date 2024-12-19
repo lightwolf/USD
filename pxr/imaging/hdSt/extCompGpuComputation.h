@@ -1,35 +1,19 @@
 //
 // Copyright 2017 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_EXT_COMP_GPU_COMPUTATION_H
 #define PXR_IMAGING_HD_ST_EXT_COMP_GPU_COMPUTATION_H
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hdSt/api.h"
-#include "pxr/imaging/hdSt/extCompGpuComputationBufferSource.h"
+#include "pxr/imaging/hdSt/computation.h"
+#include "pxr/imaging/hdSt/extCompGpuComputationResource.h"
+
 #include "pxr/imaging/hd/bufferSource.h"
-#include "pxr/imaging/hd/computation.h"
-#include "pxr/imaging/hd/types.h"
+
 #include "pxr/usd/sdf/path.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/base/vt/value.h"
@@ -39,11 +23,12 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+
 class HdSceneDelegate;
 class HdExtComputation;
-typedef boost::shared_ptr<class HdStGLSLProgram> HdStGLSLProgramSharedPtr;
-typedef std::vector<struct HdExtComputationPrimvarDescriptor>
-                          HdExtComputationPrimvarDescriptorVector;
+using HdStGLSLProgramSharedPtr= std::shared_ptr<class HdStGLSLProgram>;
+using HdExtComputationPrimvarDescriptorVector =
+    std::vector<struct HdExtComputationPrimvarDescriptor>;
 
 using HdStExtCompGpuComputationSharedPtr = 
     std::shared_ptr<class HdStExtCompGpuComputation>;
@@ -54,14 +39,13 @@ using HdStExtCompGpuComputationSharedPtr =
 ///
 /// The computation implements the basic:
 ///    input HdBufferArrayRange -> processing -> output HdBufferArrayRange
-/// model of HdComputations where processing happens in Execute during the
+/// model of HdStComputations where processing happens in Execute during the
 /// Execute phase of HdResourceRegistry::Commit.
 ///
 /// The computation is performed in three stages by three companion classes:
 /// 
-/// 1. HdStExtCompGpuComputationBufferSource is responsible for loading
-/// input HdBuffersources into the input HdBufferArrayRange during the Resolve
-/// phase of the HdResourceRegistry::Commit processing.
+/// 1. Input HdBuffersources are committed into the input HdBufferArrayRange
+/// during the Resolve phase of the HdResourceRegistry::Commit processing.
 ///
 /// 2. HdStExtCompGpuComputationResource holds the committed GPU resident
 /// resources along with the compiled compute shading kernel to execute.
@@ -75,14 +59,14 @@ using HdStExtCompGpuComputationSharedPtr =
 /// allocated by the owning HdRprim that registers the computation with the
 /// HdResourceRegistry by calling HdResourceRegistry::AddComputation.
 /// 
-/// \see HdStExtCompGpuComputationBufferSource
 /// \see HdStExtCompGpuComputationResource
 /// \see HdRprim
-/// \see HdComputation
+/// \see HdStComputation
 /// \see HdResourceRegistry
 /// \see HdExtComputation
 /// \see HdBufferArrayRange
-class HdStExtCompGpuComputation final : public HdComputation {
+class HdStExtCompGpuComputation final : public HdStComputation
+{
 public:
     /// Constructs a new GPU ExtComputation computation.
     /// resource provides the set of input data and kernel to execute this
@@ -99,10 +83,9 @@ public:
             int elementCount);
 
     /// Creates a GPU computation implementing the given abstract computation.
-    /// When created this allocates HdStExtCompGpuComputationResource to be
-    /// shared with the HdStExtCompGpuComputationBufferSource. Nothing
-    /// is assigned GPU resources unless the source is subsequently added to 
-    /// the hdResourceRegistry and the registry is committed.
+    /// When created this allocates HdStExtCompGpuComputationResource.
+    /// Nothing is assigned GPU resources unless the source is subsequently
+    /// added to the hdResourceRegistry and the registry is committed.
     /// 
     /// This delayed allocation allow Rprims to share computed primvar data and
     /// avoid duplicate allocations GPU resources for computation inputs and
@@ -121,14 +104,14 @@ public:
         HdExtComputationPrimvarDescriptorVector const &compPrimvars);
 
     HDST_API
-    virtual ~HdStExtCompGpuComputation() = default;
+    ~HdStExtCompGpuComputation() override;
 
     /// Adds the output buffer specs generated by this computation to the
     /// passed in vector of buffer specs.
     /// \param[out] specs the vector of HdBufferSpec to add this computation
     /// output buffer layout requirements to.
     HDST_API
-    virtual void GetBufferSpecs(HdBufferSpecVector *specs) const override;
+    void GetBufferSpecs(HdBufferSpecVector *specs) const override;
 
     /// Executes the computation on the GPU.
     /// Called by HdResourceRegistry::Commit with the HdBufferArrayRange given
@@ -139,8 +122,8 @@ public:
     /// \param[in] resourceRegistry the registry that is current committing
     /// resources to the GPU.
     HDST_API
-    virtual void Execute(HdBufferArrayRangeSharedPtr const &range,
-                         HdResourceRegistry *resourceRegistry) override;
+    void Execute(HdBufferArrayRangeSharedPtr const &range,
+                 HdResourceRegistry *resourceRegistry) override;
 
     /// Gets the number of GPU kernel invocations to execute.
     /// It can be useful for this to be different than the number of output
@@ -154,14 +137,11 @@ public:
     /// doing the computation. The allocation of GPU resources needs to know
     /// the size to allocate before the kernel can run.
     HDST_API
-    virtual int GetNumOutputElements() const override;
+    int GetNumOutputElements() const override;
     
     /// Gets the shared GPU resource holder for the computation.
-    /// HdStExtCompGPUComputationBufferSource will copy its data into this if
-    /// it had been added to the HdResourceRegistry.
     HDST_API
-    virtual HdStExtCompGpuComputationResourceSharedPtr const &
-    GetResource() const;
+    HdStExtCompGpuComputationResourceSharedPtr const &GetResource() const;
 
 private:
     SdfPath                                      _id;
@@ -170,10 +150,11 @@ private:
     int                                          _dispatchCount;
     int                                          _elementCount;
 
-    HdStExtCompGpuComputation()                                        = delete;
-    HdStExtCompGpuComputation(const HdStExtCompGpuComputation &)       = delete;
-    HdStExtCompGpuComputation &operator = (const HdStExtCompGpuComputation &)
-                                                                       = delete;
+    HdStExtCompGpuComputation() = delete;
+    HdStExtCompGpuComputation(
+        const HdStExtCompGpuComputation &) = delete;
+    HdStExtCompGpuComputation &operator = (
+        const HdStExtCompGpuComputation &) = delete;
 };
 
 
@@ -210,7 +191,8 @@ void HdSt_GetExtComputationPrimvarsComputations(
     HdBufferSourceSharedPtrVector *sources,
     HdBufferSourceSharedPtrVector *reserveOnlySources,
     HdBufferSourceSharedPtrVector *separateComputationSources,
-    HdComputationSharedPtrVector *computations);
+    HdStComputationComputeQueuePairVector *computations);
+
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_PLUGIN_HD_EMBREE_RENDERER_H
 #define PXR_IMAGING_PLUGIN_HD_EMBREE_RENDERER_H
@@ -28,12 +11,12 @@
 
 #include "pxr/imaging/hd/renderThread.h"
 #include "pxr/imaging/hd/renderPassState.h"
-#include "pxr/imaging/hd/tokens.h"
 
 #include "pxr/base/gf/matrix4d.h"
+#include "pxr/base/gf/rect2i.h"
 
-#include <embree2/rtcore.h>
-#include <embree2/rtcore_ray.h>
+#include <embree3/rtcore.h>
+#include <embree3/rtcore_ray.h>
 
 #include <random>
 #include <atomic>
@@ -51,7 +34,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///    origin.
 ///  - Ambient occlusion.
 ///
-class HdEmbreeRenderer final {
+class HdEmbreeRenderer final
+{
 public:
     /// Renderer constructor.
     HdEmbreeRenderer();
@@ -63,10 +47,9 @@ public:
     ///   \param scene The embree scene to use.
     void SetScene(RTCScene scene);
 
-    /// Specify a new viewport size for the sample/color buffer.
-    ///   \param width The new viewport width.
-    ///   \param height The new viewport height.
-    void SetViewport(unsigned int width, unsigned int height);
+    /// Set the data window to fill (same meaning as in CameraUtilFraming
+    /// with coordinate system also being y-Down).
+    void SetDataWindow(const GfRect2i &dataWindow);
 
     /// Set the camera to use for rendering.
     ///   \param viewMatrix The camera's world-to-view matrix.
@@ -97,6 +80,12 @@ public:
     ///   \param enableSceneColors Whether drawing should sample color, or draw
     ///                            everything as white.
     void SetEnableSceneColors(bool enableSceneColors);
+
+    /// Sets a number to seed the random number generator with.
+    ///   \param randomNumberSeed If -1, then the random number generator
+    ///                           is seeded in a non-deterministic way;
+    ///                           otherwise, it is seeded with this value.
+    void SetRandomNumberSeed(int randomNumberSeed);
 
     /// Rendering entrypoint: add one sample per pixel to the whole sample
     /// buffer, and then loop until the image is converged.  After each pass,
@@ -132,7 +121,7 @@ private:
     // work. For each tile, iterate over pixels in the tile, generating camera
     // rays, and following them/calculating color with _TraceRay. This function
     // renders all tiles between tileStart and tileEnd.
-    void _RenderTiles(HdRenderThread *renderThread,
+    void _RenderTiles(HdRenderThread *renderThread, int sampleNum,
                       size_t tileStart, size_t tileEnd);
 
     // Cast a ray into the scene and if it hits an object, write to the bound
@@ -142,17 +131,17 @@ private:
                    std::default_random_engine &random);
 
     // Compute the color at the given ray hit.
-    GfVec4f _ComputeColor(RTCRay const& rayHit,
+    GfVec4f _ComputeColor(RTCRayHit const& rayHit,
                           std::default_random_engine &random,
                           GfVec4f const& clearColor);
     // Compute the depth at the given ray hit.
-    bool _ComputeDepth(RTCRay const& rayHit, float *depth, bool clip);
+    bool _ComputeDepth(RTCRayHit const& rayHit, float *depth, bool clip);
     // Compute the given ID at the given ray hit.
-    bool _ComputeId(RTCRay const& rayHit, TfToken const& idType, int32_t *id);
+    bool _ComputeId(RTCRayHit const& rayHit, TfToken const& idType, int32_t *id);
     // Compute the normal at the given ray hit.
-    bool _ComputeNormal(RTCRay const& rayHit, GfVec3f *normal, bool eye);
+    bool _ComputeNormal(RTCRayHit const& rayHit, GfVec3f *normal, bool eye);
     // Compute a primvar at the given ray hit.
-    bool _ComputePrimvar(RTCRay const& rayHit, TfToken const& primvar,
+    bool _ComputePrimvar(RTCRayHit const& rayHit, TfToken const& primvar,
         GfVec3f *value);
 
     // Compute the ambient occlusion term at a given point by firing rays
@@ -175,9 +164,12 @@ private:
     // Are the aov bindings valid?
     bool _aovBindingsValid;
 
-    // The width of the viewport we're rendering into.
+    // Data window - as in CameraUtilFraming.
+    GfRect2i _dataWindow;
+
+    // The width of the render buffers.
     unsigned int _width;
-    // The height of the viewport we're rendering into.
+    // The height of the render buffers.
     unsigned int _height;
 
     // View matrix: world space to camera space.
@@ -198,6 +190,8 @@ private:
     int _ambientOcclusionSamples;
     // Should we enable scene colors?
     bool _enableSceneColors;
+    // If other than -1, use this to seed the random number generator with.
+    int _randomNumberSeed;
 
     // How many samples have been completed.
     std::atomic<int> _completedSamples;

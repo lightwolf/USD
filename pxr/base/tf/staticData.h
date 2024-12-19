@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_TF_STATIC_DATA_H
 #define PXR_BASE_TF_STATIC_DATA_H
@@ -29,10 +12,10 @@
 
 #include "pxr/pxr.h"
 #include "pxr/base/arch/hints.h"
-#include "pxr/base/tf/preprocessorUtils.h"
 #include "pxr/base/tf/preprocessorUtilsLite.h"
 
 #include <atomic>
+#include <type_traits>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -174,6 +157,18 @@ private:
 /// If the type uses commas to separate template arguments you need to enclose
 /// the type in parentheses as shown in the last example.
 ///
+/// If the data does not need to be mutated after initialization, you may
+/// specify a const type. The underlying data is non-const but the
+/// TfStaticData accessors only provide const access.
+///
+/// \code
+/// TF_MAKE_STATIC_DATA(const vector<string>, constNames) {
+///     constNames->push_back("hello");
+///     constNames->push_back("static const");
+///     constNames->push_back("world");
+/// }
+/// \endcode
+///
 /// Note that this macro may only be used at namespace scope (not function
 /// scope).
 ///
@@ -185,11 +180,11 @@ private:
 /// \hideinitializer
 #define TF_MAKE_STATIC_DATA(Type, Name)                                        \
     static void TF_PP_CAT(Name,_Tf_StaticDataFactoryImpl)(                     \
-        TF_PP_EAT_PARENS(Type) *);                                             \
+        std::remove_const_t<TF_PP_EAT_PARENS(Type)> *);                        \
     namespace {                                                                \
     struct TF_PP_CAT(Name,_Tf_StaticDataFactory) {                             \
         static TF_PP_EAT_PARENS(Type) *New() {                                 \
-            auto *p = new TF_PP_EAT_PARENS(Type);                              \
+            auto *p = new std::remove_const_t<TF_PP_EAT_PARENS(Type)>;         \
             TF_PP_CAT(Name,_Tf_StaticDataFactoryImpl)(p);                      \
             return p;                                                          \
         }                                                                      \
@@ -198,7 +193,7 @@ private:
     static TfStaticData<                                                       \
         TF_PP_EAT_PARENS(Type), TF_PP_CAT(Name,_Tf_StaticDataFactory)> Name;   \
     static void TF_PP_CAT(Name,_Tf_StaticDataFactoryImpl)(                     \
-        TF_PP_EAT_PARENS(Type) *Name)
+        std::remove_const_t<TF_PP_EAT_PARENS(Type)> *Name)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

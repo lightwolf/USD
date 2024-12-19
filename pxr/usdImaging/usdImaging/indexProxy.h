@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_IMAGING_USD_IMAGING_INDEX_PROXY_H
 #define PXR_USD_IMAGING_USD_IMAGING_INDEX_PROXY_H
@@ -89,7 +72,6 @@ public:
     USDIMAGING_API
     void InsertRprim(TfToken const& primType,
                      SdfPath const& cachePath,
-                     SdfPath const& parentPath,
                      UsdPrim const& usdPrim,
                      UsdImagingPrimAdapterSharedPtr adapter =
                         UsdImagingPrimAdapterSharedPtr());
@@ -110,17 +92,18 @@ public:
 
     USDIMAGING_API
     void InsertInstancer(SdfPath const& cachePath,
-                         SdfPath const& parentPath,
                          UsdPrim const& usdPrim,
                          UsdImagingPrimAdapterSharedPtr adapter =
                             UsdImagingPrimAdapterSharedPtr());
 
-    // Mark a prim as needing follow-up work by the delegate
-    // (e.g. TrackVariability); this is automatically called on Insert*, but
-    // needs to manually be called in some special cases like native
-    // instancer population.
+    // Mark a prim as needing follow-up work by the delegate, either
+    // TrackVariability or UpdateForTime.  Both of these are automatically
+    // called on Insert*, but sometimes need to be manually triggered as well.
     USDIMAGING_API
-    void Refresh(SdfPath const& cachePath);
+    void RequestTrackVariability(SdfPath const& cachePath);
+
+    USDIMAGING_API
+    void RequestUpdateForTime(SdfPath const& cachePath);
 
     //
     // All removals are deferred to avoid surprises during change processing.
@@ -189,6 +172,17 @@ public:
     UsdImagingPrimAdapterSharedPtr GetMaterialAdapter(
         UsdPrim const& materialPrim);
 
+    // XXX: This is a workaround for some bugs in USD edit processing, and
+    // the weird use of HdPrimInfo by instanced prims. It removes the dependency
+    // between a hydra prim and whatever USD prim is in its primInfo, since this
+    // dependency is automatically inserted and for instanced prims will
+    // erroneously add a dependency between a hydra prototype and
+    // a USD instancer.
+    //
+    // Pending some refactoring, hopefully this API will disappear.
+    USDIMAGING_API
+    void RemovePrimInfoDependency(SdfPath const& cachePath);
+
 private:
     friend class UsdImagingDelegate;
     UsdImagingIndexProxy(UsdImagingDelegate* delegate,
@@ -201,15 +195,10 @@ private:
     // Called by UsdImagingDelegate::ApplyPendingUpdates.
     void _UniqueifyPathsToRepopulate();
 
-    bool _AddHdPrimInfo(SdfPath const& cachePath,
-                        UsdPrim const& usdPrim,
-                        UsdImagingPrimAdapterSharedPtr const& adapter);
-
-    // XXX: Workaround for some bugs in USD edit processing, and weird uses
-    // of HdPrimInfo by instanced prims.  Remove the dependency between
-    // a hydra prim and whatever USD prim is in its primInfo.
-    friend class UsdImagingGprimAdapter;
-    void _RemovePrimInfoDependency(SdfPath const& cachePath);
+    UsdImagingDelegate::_HdPrimInfo*
+        _AddHdPrimInfo(SdfPath const& cachePath,
+                       UsdPrim const& usdPrim,
+                       UsdImagingPrimAdapterSharedPtr const& adapter);
 
     USDIMAGING_API
     void _RemoveDependencies(SdfPath const& cachePath);

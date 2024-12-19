@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usdImaging/usdImaging/implicitSurfaceMeshUtils.h"
 
@@ -430,6 +413,59 @@ UsdImagingGenerateCapsuleMeshPoints(
         }
     }
     *p++ = spine * (heightf/2.0f+radiusf);
+
+    TF_VERIFY(p - pointsArray.data() == numPoints);
+
+    return pointsArray;
+}
+
+// Plane -----------------------------------------------------------------------
+
+const PxOsdMeshTopology&
+UsdImagingGetPlaneTopology()
+{
+    static const VtIntArray numVerts{ 4 };
+    static const VtIntArray verts{ 0, 1, 2, 3 };
+    static const PxOsdMeshTopology planeTopo(
+        PxOsdOpenSubdivTokens->bilinear,
+        PxOsdOpenSubdivTokens->rightHanded,
+        numVerts, verts);
+
+    return planeTopo;
+}
+
+VtVec3fArray
+UsdImagingGeneratePlaneMeshPoints(
+    const double width,
+    const double length,
+    const TfToken& axis)
+{
+    int numPoints = 4;
+    std::vector<GfVec3f> points(numPoints);
+
+    if (axis == UsdGeomTokens->x) {
+        points = { GfVec3f( 0.0f,  0.5f * length, 0.5f * width ),
+                   GfVec3f( 0.0f, -0.5f * length, 0.5f * width ),
+                   GfVec3f( 0.0f, -0.5f * length,-0.5f * width ),
+                   GfVec3f( 0.0f,  0.5f * length,-0.5f * width ) };
+    } else if (axis == UsdGeomTokens->y) {
+        points = { GfVec3f(-0.5f * width, 0.0f, 0.5f * length ),
+                   GfVec3f( 0.5f * width, 0.0f, 0.5f * length ),
+                   GfVec3f( 0.5f * width, 0.0f,-0.5f * length ),
+                   GfVec3f(-0.5f * width, 0.0f,-0.5f * length ) };
+    } else {
+        points = { GfVec3f( 0.5f * width, 0.5f * length, 0.0f ),
+                   GfVec3f(-0.5f * width, 0.5f * length, 0.0f ),
+                   GfVec3f(-0.5f * width,-0.5f * length, 0.0f ),
+                   GfVec3f( 0.5f * width,-0.5f * length, 0.0f ) };
+    }
+
+    VtVec3fArray pointsArray(numPoints);
+    GfVec3f * p = pointsArray.data();
+
+    for (int i=0; i<numPoints; ++i) {
+        *p++ = points[i];
+    }
 
     TF_VERIFY(p - pointsArray.data() == numPoints);
 

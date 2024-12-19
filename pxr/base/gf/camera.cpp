@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -177,6 +160,63 @@ GfCamera::SetOrthographicFromAspectRatioAndSize(
         // We are given the height, determine the width by multiplying
         _verticalAperture = orthographicSize / GfCamera::APERTURE_UNIT;
         _horizontalAperture = _verticalAperture * aspectRatio;
+    }
+}
+
+void
+GfCamera::SetFromViewAndProjectionMatrix(
+    const GfMatrix4d &viewMatrix, const GfMatrix4d &projMatrix,
+    const float focalLength)
+{
+    _transform = viewMatrix.GetInverse();
+
+    _focalLength = focalLength;
+
+    if (projMatrix[2][3] < -0.5) {
+        // Use !(a<b) rather than a>=b so that NaN is caught.
+        if (!(fabs(projMatrix[2][3] - (-1.0)) < 1e-6)) {
+            TF_WARN("GfCamera: Given projection matrix does not appear to be "
+                    "valid perspective matrix.");
+        }
+
+        _projection = Perspective;
+
+        const float apertureBase =
+            2.0f * focalLength * (FOCAL_LENGTH_UNIT / APERTURE_UNIT);
+
+        _horizontalAperture =
+            apertureBase / projMatrix[0][0];
+        _verticalAperture =
+            apertureBase / projMatrix[1][1];
+        _horizontalApertureOffset =
+            0.5 * _horizontalAperture * projMatrix[2][0];
+        _verticalApertureOffset =
+            0.5 * _verticalAperture * projMatrix[2][1];
+        _clippingRange = GfRange1f(
+            projMatrix[3][2] / (projMatrix[2][2] - 1.0),
+            projMatrix[3][2] / (projMatrix[2][2] + 1.0));
+    } else {
+        if (!(fabs(projMatrix[2][3]) < 1e-6)) {
+            TF_WARN("GfCamera: Given projection matrix does not appear to be "
+                    "valid orthographic matrix.");
+        }
+
+        _projection = Orthographic;
+        _horizontalAperture =
+            (2.0 / APERTURE_UNIT) / projMatrix[0][0];
+        _verticalAperture =
+            (2.0 / APERTURE_UNIT) / projMatrix[1][1];
+        _horizontalApertureOffset =
+            -0.5 * (_horizontalAperture) * projMatrix[3][0];
+        _verticalApertureOffset =
+            -0.5 * (_verticalAperture) * projMatrix[3][1];
+        const double nearMinusFarHalf =
+            1.0 / projMatrix[2][2];
+        const double nearPlusFarHalf =
+            nearMinusFarHalf * projMatrix[3][2];
+        _clippingRange = GfRange1f(
+            nearPlusFarHalf + nearMinusFarHalf,
+            nearPlusFarHalf - nearMinusFarHalf);
     }
 }
 

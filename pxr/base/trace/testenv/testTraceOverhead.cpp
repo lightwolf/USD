@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/base/trace/trace.h"
@@ -32,6 +15,8 @@
 #include <fenv.h>
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+uint64_t observableValue;
 
 static void
 WriteStats(FILE *file, const char *name, const TfStopwatch &timer)
@@ -81,9 +66,10 @@ int NOINLINE TestTick(int N)
     int i = 0;
     for (int x = 0; x < N; x++) {        
         // A TRACE_SCOPE has to do two of these, one for begin and one for end.
-        ArchGetTickTime();
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+        observableValue += ArchGetStartTickTime();
         i = Add(i, x);
-        ArchGetTickTime();
+        observableValue += ArchGetStopTickTime();
     }
     return i;
 }
@@ -93,9 +79,10 @@ int NOINLINE TestPushBack(int N, std::vector<uint64_t>& tickVec)
     int i = 0;
     for (int x = 0; x < N; x++) {        
         // A TRACE_SCOPE has to do two of these, one for begin and one for end.
-        tickVec.push_back(ArchGetTickTime());
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+        tickVec.push_back(ArchGetStartTickTime());
         i = Add(i, x);
-        tickVec.push_back(ArchGetTickTime());
+        tickVec.push_back(ArchGetStopTickTime());
     }
     return i;
 }
@@ -107,7 +94,7 @@ main(int argc, char *argv[])
 
     TfStopwatch watch;
     int i = 0;
-    int N = 1e8;
+    int N = argc > 1 ? atoi(argv[1]) : 1e8;
     double traceDisableTime, traceTime, noTraceTime, tickTime, pushTickTime;
     std::vector<uint64_t> tickVec;
 

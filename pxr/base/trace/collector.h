@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #ifndef PXR_BASE_TRACE_COLLECTOR_H
@@ -37,15 +20,15 @@
 #include "pxr/base/tf/declarePtrs.h"
 #include "pxr/base/tf/mallocTag.h"
 
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
 #include "pxr/base/tf/pyTracing.h"
-#endif // PXR_PYTHON_SUPPORT_ENABLED
 
 #include "pxr/base/tf/singleton.h"
 #include "pxr/base/tf/refBase.h"
 #include "pxr/base/tf/refPtr.h"
 #include "pxr/base/tf/weakBase.h"
 #include "pxr/base/tf/weakPtr.h"
+
+#include "pxr/base/arch/pragmas.h"
 
 #include <atomic>
 #include <string>
@@ -113,6 +96,9 @@ public:
     /// Set whether automatic tracing of all python scopes is enabled.
     TRACE_API void SetPythonTracingEnabled(bool enabled);
 #endif // PXR_PYTHON_SUPPORT_ENABLED
+
+    /// Return the overhead cost to measure a scope.
+    TRACE_API TimeStamp GetScopeOverhead() const;
     
     /// Clear all pending events from the collector. No TraceCollection will be 
     /// made for these events.
@@ -264,6 +250,16 @@ public:
         _EndScope(key, Category::GetId());
     }
 
+    /// Record a scope event described by \a key that started at \a start for
+    /// the DefaultCategory.
+    ///
+    /// This method is used by the TRACE_FUNCTION, TRACE_SCOPE and
+    /// TRACE_FUNCTION_SCOPE macros.
+    /// \sa BeginScope \sa EndScope
+    TRACE_API
+    static void
+    Scope(const TraceKey& key, TimeStamp start, TimeStamp stop) noexcept;
+
     /// Record a scope event described by \a key that started at \a start if 
     /// \p Category is enabled.
     ///
@@ -271,15 +267,14 @@ public:
     /// TRACE_FUNCTION_SCOPE macros.
     /// \sa BeginScope \sa EndScope
     template <typename Category = DefaultCategory>
-    void Scope(const TraceKey& key, TimeStamp start) {
+    void Scope(const TraceKey& key, TimeStamp start, TimeStamp stop) {
         if (ARCH_LIKELY(!Category::IsEnabled()))
             return;
-
         _PerThreadData *threadData = _GetThreadData();
         threadData->EmplaceEvent(
-            TraceEvent::Timespan, key,  start, Category::GetId());
+            TraceEvent::Timespan, key, start, stop, Category::GetId());
     }
-
+    
     /// Record multiple data events with category \a cat if \p Category is 
     /// enabled.
     /// \sa StoreData
@@ -403,7 +398,7 @@ private:
 
     // Return a pointer to existing per-thread data or create one if none
     // exists.
-    TRACE_API _PerThreadData* _GetThreadData();
+    TRACE_API _PerThreadData* _GetThreadData() noexcept;
 
     TRACE_API TimeStamp _BeginEvent(const Key& key, TraceCategoryId cat);
 
@@ -432,6 +427,8 @@ private:
     // This is the fast execution path called from the TRACE_FUNCTION
     // and TRACE_SCOPE macros    
     TRACE_API void _EndScope(const TraceKey& key, TraceCategoryId cat);
+
+    TRACE_API void _MeasureScopeOverhead();
 
 #ifdef PXR_PYTHON_SUPPORT_ENABLED
     // Callback function registered as a python tracing function.
@@ -591,13 +588,11 @@ private:
             //
             TraceThreadId _threadIndex;
 
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
             // When auto-tracing python frames, this stores the stack of scopes.
             struct PyScope {
                 Key key;
             };
             std::vector<PyScope> _pyScopes;
-#endif // PXR_PYTHON_SUPPORT_ENABLED
     };
 
     TRACE_API static std::atomic<int> _isEnabled;
@@ -607,10 +602,20 @@ private:
 
     std::string _label;
 
-#ifdef PXR_PYTHON_SUPPORT_ENABLED
+    TimeStamp _measuredScopeOverhead;
+
+    // These members are unused if Python support is disabled. However, we
+    // leave them in place and just mark them unused to provide ABI
+    // compatibility between USD builds with and without Python enabled.
+#ifndef PXR_PYTHON_SUPPORT_ENABLED    
+    ARCH_PRAGMA_PUSH
+    ARCH_PRAGMA_UNUSED_PRIVATE_FIELD
+#endif
     std::atomic<int> _isPythonTracingEnabled;
     TfPyTraceFnId _pyTraceFnId;
-#endif // PXR_PYTHON_SUPPORT_ENABLED
+#ifndef PXR_PYTHON_SUPPORT_ENABLED
+    ARCH_PRAGMA_POP
+#endif
 };
  
 TRACE_API_TEMPLATE_CLASS(TfSingleton<TraceCollector>);

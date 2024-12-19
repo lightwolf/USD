@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 from pxr import Sdf
@@ -28,7 +11,11 @@ from pxr.Usdviewq.selectionDataModel import ALL_INSTANCES
 from pxr.Usdviewq.qt import QtCore
 
 INSTANCER_PATH = "/Foo/Cube/Instancer"
+PROTO_PATH = "/Foo/Cube/Instancer/Protos/Proto1/cube"
 FOO_PATH = "/Foo"
+NI_PATH = "/Foo/Cube2"
+INSTANCER2_PATH = "/Foo/Cube2/Instancer"
+PROTO2_PATH = "/Foo/Cube2/Instancer/Protos/Proto1/cube"
 
 # Remove any unwanted visuals from the view and set complexity.
 def _modifySettings(appController):
@@ -66,7 +53,7 @@ def _checkInstanceSelection(appController, path, instance):
 def _testPickPrims(appController):
     _setPickModeAction(appController, appController._ui.actionPick_Prims)
     pt = (0, 0, 0)
-    appController.onPrimSelected(INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
+    appController.onPrimSelected(PROTO_PATH, 0, INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
 
     _checkPrimSelection(appController, INSTANCER_PATH)
     _checkNoInstancesSelected(appController, INSTANCER_PATH)
@@ -75,19 +62,36 @@ def _testPickPrims(appController):
 def _testPickModels(appController):
     _setPickModeAction(appController, appController._ui.actionPick_Models)
     pt = (0, 0, 0)
-    appController.onPrimSelected(INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
+    appController.onPrimSelected(PROTO_PATH, 0, INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
 
     _checkPrimSelection(appController, FOO_PATH)
-    _checkNoInstancesSelected(appController, INSTANCER_PATH)
+    _checkNoInstancesSelected(appController, FOO_PATH)
 
 # Test picking an instance.
 def _testPickInstances(appController):
     _setPickModeAction(appController, appController._ui.actionPick_Instances)
+
+    # Pick an instance of a point instancer
     pt = (0, 0, 0)
-    appController.onPrimSelected(INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
+    appController.onPrimSelected(PROTO_PATH, 0, INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
 
     _checkPrimSelection(appController, INSTANCER_PATH)
     _checkInstanceSelection(appController, INSTANCER_PATH, 0)
+
+    # Pick an instance of a native instance
+    appController.onPrimSelected(PROTO2_PATH, 0, INSTANCER2_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
+
+    _checkPrimSelection(appController, NI_PATH)
+    _checkNoInstancesSelected(appController, NI_PATH)
+
+# Test picking a prototype.
+def _testPickPrototypes(appController):
+    _setPickModeAction(appController, appController._ui.actionPick_Prototypes)
+    pt = (0, 0, 0)
+    appController.onPrimSelected(PROTO_PATH, 0, INSTANCER_PATH, 0, pt, QtCore.Qt.LeftButton, 0)
+
+    _checkPrimSelection(appController, PROTO_PATH)
+    _checkInstanceSelection(appController, PROTO_PATH, 0)
 
 # Test that selection highlighting works properly in usdview
 def testUsdviewInputFunction(appController):
@@ -95,3 +99,4 @@ def testUsdviewInputFunction(appController):
     _testPickPrims(appController)
     _testPickModels(appController)
     _testPickInstances(appController)
+    _testPickPrototypes(appController)

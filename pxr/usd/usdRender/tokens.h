@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDRENDER_TOKENS_H
 #define USDRENDER_TOKENS_H
@@ -82,10 +65,18 @@ struct UsdRenderTokensType {
     /// 
     /// UsdRenderSettingsBase
     const TfToken camera;
+    /// \brief "collection:renderVisibility:includeRoot"
+    /// 
+    /// UsdRenderPass
+    const TfToken collectionRenderVisibilityIncludeRoot;
     /// \brief "color3f"
     /// 
-    /// Default value for UsdRenderVar::GetDataTypeAttr()
+    /// Fallback value for UsdRenderVar::GetDataTypeAttr()
     const TfToken color3f;
+    /// \brief "command"
+    /// 
+    /// UsdRenderPass
+    const TfToken command;
     /// \brief "cropAperture"
     /// 
     /// Possible value for UsdRenderSettingsBase::GetAspectRatioConformPolicyAttr()
@@ -98,10 +89,30 @@ struct UsdRenderTokensType {
     /// 
     /// UsdRenderSettingsBase
     const TfToken dataWindowNDC;
+    /// \brief "deepRaster"
+    /// 
+    /// Possible value for UsdRenderProduct::GetProductTypeAttr()
+    const TfToken deepRaster;
+    /// \brief "denoise:enable"
+    /// 
+    /// UsdRenderPass
+    const TfToken denoiseEnable;
+    /// \brief "disableDepthOfField"
+    /// 
+    /// UsdRenderSettingsBase
+    const TfToken disableDepthOfField;
+    /// \brief "disableMotionBlur"
+    /// 
+    /// UsdRenderSettingsBase
+    const TfToken disableMotionBlur;
     /// \brief "expandAperture"
     /// 
-    /// Possible value for UsdRenderSettingsBase::GetAspectRatioConformPolicyAttr(), Default value for UsdRenderSettingsBase::GetAspectRatioConformPolicyAttr()
+    /// Fallback value for UsdRenderSettingsBase::GetAspectRatioConformPolicyAttr()
     const TfToken expandAperture;
+    /// \brief "fileName"
+    /// 
+    /// UsdRenderPass
+    const TfToken fileName;
     /// \brief "full"
     /// 
     /// Possible value for UsdRenderSettings::GetMaterialBindingPurposesAttr()
@@ -110,6 +121,10 @@ struct UsdRenderTokensType {
     /// 
     /// UsdRenderSettings
     const TfToken includedPurposes;
+    /// \brief "inputPasses"
+    /// 
+    /// UsdRenderPass
+    const TfToken inputPasses;
     /// \brief "instantaneousShutter"
     /// 
     /// UsdRenderSettingsBase
@@ -130,6 +145,10 @@ struct UsdRenderTokensType {
     /// 
     /// UsdRenderProduct
     const TfToken orderedVars;
+    /// \brief "passType"
+    /// 
+    /// UsdRenderPass
+    const TfToken passType;
     /// \brief "pixelAspectRatio"
     /// 
     /// UsdRenderSettingsBase
@@ -156,16 +175,28 @@ struct UsdRenderTokensType {
     const TfToken productType;
     /// \brief "raster"
     /// 
-    /// RenderProduct productType value that indicates a 2D raster image of pixels., Default value for UsdRenderProduct::GetProductTypeAttr()
+    /// Fallback value for UsdRenderProduct::GetProductTypeAttr()
     const TfToken raster;
     /// \brief "raw"
     /// 
-    /// Possible value for UsdRenderVar::GetSourceTypeAttr(), Default value for UsdRenderVar::GetSourceTypeAttr()
+    /// Fallback value for UsdRenderVar::GetSourceTypeAttr()
     const TfToken raw;
+    /// \brief "renderingColorSpace"
+    /// 
+    /// UsdRenderSettings
+    const TfToken renderingColorSpace;
     /// \brief "renderSettingsPrimPath"
     /// 
     /// Stage-level metadata that encodes the path to UsdRenderSettingsPrim to use for rendering.
     const TfToken renderSettingsPrimPath;
+    /// \brief "renderSource"
+    /// 
+    /// UsdRenderPass
+    const TfToken renderSource;
+    /// \brief "renderVisibility"
+    /// 
+    ///  This token represents the collection name to use with UsdCollectionAPI to represent renderVisibility of a RenderPass prim. 
+    const TfToken renderVisibility;
     /// \brief "resolution"
     /// 
     /// UsdRenderSettingsBase
@@ -178,6 +209,26 @@ struct UsdRenderTokensType {
     /// 
     /// UsdRenderVar
     const TfToken sourceType;
+    /// \brief "RenderPass"
+    /// 
+    /// Schema identifer and family for UsdRenderPass
+    const TfToken RenderPass;
+    /// \brief "RenderProduct"
+    /// 
+    /// Schema identifer and family for UsdRenderProduct
+    const TfToken RenderProduct;
+    /// \brief "RenderSettings"
+    /// 
+    /// Schema identifer and family for UsdRenderSettings
+    const TfToken RenderSettings;
+    /// \brief "RenderSettingsBase"
+    /// 
+    /// Schema identifer and family for UsdRenderSettingsBase
+    const TfToken RenderSettingsBase;
+    /// \brief "RenderVar"
+    /// 
+    /// Schema identifer and family for UsdRenderVar
+    const TfToken RenderVar;
     /// A vector of all of the tokens listed above.
     const std::vector<TfToken> allTokens;
 };

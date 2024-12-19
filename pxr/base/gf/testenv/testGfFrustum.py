@@ -2,26 +2,10 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+from __future__ import division
 
 import sys
 import unittest
@@ -233,6 +217,19 @@ class TestGfFrustum(unittest.TestCase):
         self.assertTrue(Gf.IsClose(narrowF.window.min, Gf.Vec2d(-0.3, -0.2), 0.0001))
         self.assertTrue(Gf.IsClose(narrowF.window.max, Gf.Vec2d(0.3, 0.2), 0.0001))
 
+        narrowF = f.ComputeNarrowedFrustum(Gf.Vec3d(.1, .2, -5), Gf.Vec2d(0.1, 0.1))
+        self.assertTrue(Gf.IsClose(narrowF.window.min, Gf.Vec2d(-0.2, 0.0), 0.0001))
+        self.assertTrue(Gf.IsClose(narrowF.window.max, Gf.Vec2d(0.4, 0.4), 0.0001))
+
+        f.projectionType = f.Perspective
+        narrowF = f.ComputeNarrowedFrustum(Gf.Vec3d(0, 0, -1), Gf.Vec2d(0.1, 0.1))
+        self.assertTrue(Gf.IsClose(narrowF.window.min, Gf.Vec2d(-0.3, -0.2), 0.0001))
+        self.assertTrue(Gf.IsClose(narrowF.window.max, Gf.Vec2d(0.3, 0.2), 0.0001))
+
+        narrowF = f.ComputeNarrowedFrustum(Gf.Vec3d(.1, .2, -5), Gf.Vec2d(0.1, 0.1))
+        self.assertTrue(Gf.IsClose(narrowF.window.min, Gf.Vec2d(-0.28, -0.16), 0.0001))
+        self.assertTrue(Gf.IsClose(narrowF.window.max, Gf.Vec2d(0.32, 0.24), 0.0001))
+
         # Given a point behind the eye should get the same frustum back
         narrowF = f.ComputeNarrowedFrustum(Gf.Vec3d(0, 0, 1), Gf.Vec2d(0.1, 0.1))
         self.assertTrue(Gf.IsClose(narrowF.window.min, Gf.Vec2d(-3.0,-2.0), 0.0001))
@@ -250,7 +247,8 @@ class TestGfFrustum(unittest.TestCase):
         f = Gf.Frustum()
         f.projectionType = f.Orthographic
         r = f.ComputePickRay(Gf.Vec2d(2, 2))
-        self.assertTrue(Gf.IsClose( r.startPoint, Gf.Vec3d(2, 2, -1), 0.00001 ))
+
+        self.assertTrue(Gf.IsClose( r.startPoint, Gf.Vec3d(2, 2, -2), 0.00001 ))
         self.assertTrue(Gf.IsClose( r.direction, Gf.Vec3d(0, 0, -1), 0.00001 ))
 
         r = Gf.Frustum().ComputePickRay(Gf.Vec3d(0, 0, -2))
@@ -393,7 +391,19 @@ class TestGfFrustum(unittest.TestCase):
             self.assertTrue(
                 Gf.IsClose(corners[i], (results[i] + results[i+4]) / 2.0,
                            0.0001))
-        
+
+    def test_Hash(self):
+        frustum = Gf.Frustum(
+                Gf.Vec3d(1.0, 2.0, 3.0),
+                Gf.Rotation(Gf.Vec3d(1.0, 0.0, 0.0), 90.0),
+                Gf.Range2d(Gf.Vec2d(-0.5, 0.5), Gf.Vec2d(-1.0, 1.0)),
+                Gf.Range1d(1.0, 1000.0),
+                Gf.Frustum.Perspective,
+                10.0
+        )
+
+        self.assertEqual(hash(frustum), hash(frustum))
+        self.assertEqual(hash(frustum), hash(Gf.Frustum(frustum)))
 
 if __name__ == '__main__':
     unittest.main()

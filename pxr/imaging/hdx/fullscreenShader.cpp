@@ -1,35 +1,23 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
-//
-#include "pxr/imaging/glf/glew.h"
-
 #include "pxr/imaging/hdx/fullscreenShader.h"
+#include "pxr/imaging/hdx/hgiConversions.h"
 #include "pxr/imaging/hdx/package.h"
-#include "pxr/imaging/hdSt/glslProgram.h"
-#include "pxr/imaging/hf/perfLog.h"
+
 #include "pxr/imaging/hd/perfLog.h"
-#include "pxr/imaging/glf/diagnostic.h"
+#include "pxr/imaging/hd/tokens.h"
+
+#include "pxr/imaging/hf/perfLog.h"
+
 #include "pxr/imaging/hio/glslfx.h"
+
+#include "pxr/imaging/hgi/hgi.h"
+#include "pxr/imaging/hgi/tokens.h"
+
 #include "pxr/base/tf/staticTokens.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -42,68 +30,208 @@ TF_DEFINE_PRIVATE_TOKENS(
     (fullscreenShader)
 );
 
-HdxFullscreenShader::HdxFullscreenShader()
-    : _program(), _vertexBuffer(0)
+HdxFullscreenShader::HdxFullscreenShader(
+    Hgi* hgi,
+    const std::string& debugName)
+  : HdxEffectsShader(hgi, debugName.empty() ? "HdxFullscreenShader" : debugName)
 {
+    // Create descriptor for vertex pos and uvs
+    _SetVertexBufferDescriptor();
+
+    // Depth test and write must be on since we may want to transfer depth.
+    // Depth test must be on because when off it also disables depth writes.
+    // Instead we set the compare function to always.
+    _depthStencilState.depthTestEnabled = true;
+    _depthStencilState.depthCompareFn = HgiCompareFunctionAlways;
+
+    // We don't use the stencil mask in this task.
+    _depthStencilState.stencilTestEnabled = false;
+
+    // Set attachment defaults for load and store
+    _colorAttachment.loadOp = HgiAttachmentLoadOpDontCare;
+    _colorAttachment.storeOp = HgiAttachmentStoreOpStore;
+    _depthAttachment.loadOp = HgiAttachmentLoadOpDontCare;
+    _depthAttachment.storeOp = HgiAttachmentStoreOpStore;
+
+    // Alpha to coverage would prevent any pixels that have an alpha of 0.0 from
+    // being written. We want to transfer all pixels. Even background
+    // pixels that were set with a clearColor alpha of 0.0.
+    HgiMultiSampleState multiSampleState;
+    multiSampleState.alphaToCoverageEnable = false;
+    _SetMultiSampleState(multiSampleState);
+
+    // Setup rasterization state
+    HgiRasterizationState rasterizationState;
+    rasterizationState.cullMode = HgiCullModeBack;
+    rasterizationState.polygonMode = HgiPolygonModeFill;
+    rasterizationState.winding = HgiWindingCounterClockwise;
+    _SetRasterizationState(rasterizationState);
 }
 
 HdxFullscreenShader::~HdxFullscreenShader()
 {
-    for (auto const& texture : _textures) {
-        glDeleteTextures(1, &texture.second);
-    }
-    if (_vertexBuffer != 0) {
-        glDeleteBuffers(1, &_vertexBuffer);
-    }
-    if (_program) {
-        _program.reset();
-    }
-    GLF_POST_PENDING_GL_ERRORS();
-}
-
-void
-HdxFullscreenShader::SetProgramToCompositor(bool depthAware) {
-    SetProgram(HdxPackageFullscreenShader(),
-        depthAware ? _tokens->compositeFragmentWithDepth
-                   : _tokens->compositeFragmentNoDepth);
-}
-
-void
-HdxFullscreenShader::SetProgram(TfToken const& glslfx, TfToken const& technique) {
-    if (_glslfx == glslfx && _technique == technique) {
+    Hgi* hgi = _GetHgi();
+    if (!hgi) {
         return;
     }
 
-    _program.reset(new HdStGLSLProgram(_tokens->fullscreenShader));
+    if (_vertexBuffer) {
+        hgi->DestroyBuffer(&_vertexBuffer);
+    }
 
-    HioGlslfx vsGlslfx(HdxPackageFullscreenShader());
-    HioGlslfx fsGlslfx(glslfx);
+    if (_indexBuffer) {
+        hgi->DestroyBuffer(&_indexBuffer);
+    }
 
-    if (!_program->CompileShader(GL_VERTEX_SHADER,
-            vsGlslfx.GetSource(_tokens->fullscreenVertex)) ||
-        !_program->CompileShader(GL_FRAGMENT_SHADER,
-            fsGlslfx.GetSource(technique)) ||
-        !_program->Link()) {
-        TF_CODING_ERROR("Failed to load shader: %s (%s)",
-                glslfx.GetText(), technique.GetText());
-        _program.reset();
-        return;
+    if (_shaderProgram) {
+        _DestroyShaderProgram(&_shaderProgram);
+    }
+
+    if (_defaultSampler) {
+        hgi->DestroySampler(&_defaultSampler);
     }
 }
 
 void
-HdxFullscreenShader::SetUniform(TfToken const& name, VtValue const& data)
+HdxFullscreenShader::SetProgram(
+    TfToken const& glslfxPath,
+    TfToken const& shaderName,
+    HgiShaderFunctionDesc &fragDesc)
 {
-    if (data.IsEmpty()) {
-        _uniforms.erase(name);
-    } else {
-        _uniforms[name] = data;
+    if (_glslfxPath == glslfxPath && _shaderName == shaderName) {
+        return;
     }
+
+    const HioGlslfx fragGlslfx(glslfxPath);
+    std::string reason;
+    if (!fragGlslfx.IsValid(&reason)) {
+        TF_CODING_ERROR("Couldn't load fragment shader %s, error: %s",
+            fragGlslfx.GetFilePath().c_str(),
+            reason.c_str());
+    } else {
+        _glslfxPath = glslfxPath;
+        _shaderName = shaderName;
+
+        const std::string fsCode = fragGlslfx.GetSource(_shaderName);
+        TF_VERIFY(!fsCode.empty());
+        fragDesc.shaderCode = fsCode.c_str();
+
+        SetProgram(fragDesc);
+
+        fragDesc.shaderCode = nullptr;
+    }
+}
+
+void
+HdxFullscreenShader::SetProgram(
+    const HgiShaderFunctionDesc& fragDesc)
+{
+    _DestroyShaderProgram(&_shaderProgram);
+
+    // Set up the vertex shader
+    const HioGlslfx vertGlslfx(HdxPackageFullscreenShader());
+    std::string reason;
+    if (!vertGlslfx.IsValid(&reason)) {
+        TF_CODING_ERROR("Couldn't load vertex shader %s, error: %s",
+            vertGlslfx.GetFilePath().c_str(),
+            reason.c_str());
+        return;
+    }
+
+    HgiShaderFunctionDesc vertDesc;
+    vertDesc.debugName = _tokens->fullscreenVertex;
+    vertDesc.shaderStage = HgiShaderStageVertex;
+    
+    HgiShaderFunctionAddStageInput(
+        &vertDesc, "position", "vec4", "position");
+    HgiShaderFunctionAddStageInput(
+        &vertDesc, "uvIn", "vec2");
+    HgiShaderFunctionAddStageOutput(
+        &vertDesc, "gl_Position", "vec4", "position");
+    HgiShaderFunctionAddStageOutput(
+        &vertDesc, "uvOut", "vec2");
+
+    const std::string vsCode = vertGlslfx.GetSource(_tokens->fullscreenVertex);
+    TF_VERIFY(!vsCode.empty());
+    vertDesc.shaderCode = vsCode.c_str();
+    HgiShaderFunctionHandle vertFn = _GetHgi()->CreateShaderFunction(vertDesc);
+
+    // Create up the fragment shader
+    HgiShaderFunctionHandle fragFn = _GetHgi()->CreateShaderFunction(fragDesc);
+
+    // Setup the shader program
+    HgiShaderProgramDesc programDesc;
+    programDesc.debugName = _tokens->fullscreenShader.GetString();
+    programDesc.shaderFunctions.push_back(std::move(vertFn));
+    programDesc.shaderFunctions.push_back(std::move(fragFn));
+    _shaderProgram = _GetHgi()->CreateShaderProgram(programDesc);
+
+    if (!_shaderProgram->IsValid() || !vertFn->IsValid() || !fragFn->IsValid()){
+        TF_CODING_ERROR("Failed to create HdxFullscreenShader shader program");
+        HdxEffectsShader::PrintCompileErrors(_shaderProgram);
+        _DestroyShaderProgram(&_shaderProgram);
+    }
+
+    // Set the shader program to either a valid program or an empty handle.
+    _SetShaderProgram(_shaderProgram);
+}
+
+void
+HdxFullscreenShader::BindBuffers(
+    HgiBufferHandleVector const& buffers)
+{
+    _buffers = buffers;
+}
+
+void
+HdxFullscreenShader::SetDepthState(HgiDepthStencilState const& state)
+{
+    _depthStencilState = state;
+}
+
+void
+HdxFullscreenShader::SetBlendState(
+    bool enableBlending,
+    HgiBlendFactor srcColorBlendFactor,
+    HgiBlendFactor dstColorBlendFactor,
+    HgiBlendOp colorBlendOp,
+    HgiBlendFactor srcAlphaBlendFactor,
+    HgiBlendFactor dstAlphaBlendFactor,
+    HgiBlendOp alphaBlendOp)
+{
+    _colorAttachment.blendEnabled = enableBlending;
+    _colorAttachment.srcColorBlendFactor = srcColorBlendFactor;
+    _colorAttachment.dstColorBlendFactor = dstColorBlendFactor;
+    _colorAttachment.colorBlendOp = colorBlendOp;
+    _colorAttachment.srcAlphaBlendFactor = srcAlphaBlendFactor;
+    _colorAttachment.dstAlphaBlendFactor = dstAlphaBlendFactor;
+    _colorAttachment.alphaBlendOp = alphaBlendOp;
+}
+
+void
+HdxFullscreenShader::SetAttachmentLoadStoreOp(
+    HgiAttachmentLoadOp attachmentLoadOp,
+    HgiAttachmentStoreOp attachmentStoreOp)
+{
+    _colorAttachment.loadOp = attachmentLoadOp;
+    _colorAttachment.storeOp = attachmentStoreOp;
+}
+
+void
+HdxFullscreenShader::SetShaderConstants(
+    uint32_t byteSize,
+    const void* data)
+{
+    _SetShaderConstants(byteSize, data, HgiShaderStageFragment);
 }
 
 void
 HdxFullscreenShader::_CreateBufferResources()
 {
+    if (_vertexBuffer) {
+        return;
+    }
+
     /* For the fullscreen pass, we draw a triangle:
      *
      * |\
@@ -128,203 +256,236 @@ HdxFullscreenShader::_CreateBufferResources()
      * read depth from a texture, but otherwise the depth is -1, meaning near
      * plane.
      */
-    //                                 positions          |   uvs
-    static const float vertices[] = { -1,  3, -1, 1,        0, 2,
-                                      -1, -1, -1, 1,        0, 0,
-                                       3, -1, -1, 1,        2, 0 };
+    constexpr size_t elementsPerVertex = 6;
+    constexpr size_t vertDataCount = elementsPerVertex * 3;
+    constexpr float vertData[vertDataCount] =
+            { -1,  3, 0, 1,     0, 2,
+              -1, -1, 0, 1,     0, 0,
+               3, -1, 0, 1,     2, 0};
 
-    glGenBuffers(1, &_vertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, _vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices),
-                 &vertices[0], GL_STATIC_DRAW);
+    HgiBufferDesc vboDesc;
+    vboDesc.debugName = "HdxFullscreenShader VertexBuffer";
+    vboDesc.usage = HgiBufferUsageVertex;
+    vboDesc.initialData = vertData;
+    vboDesc.byteSize = sizeof(vertData);
+    vboDesc.vertexStride = elementsPerVertex * sizeof(vertData[0]);
+    _vertexBuffer = _GetHgi()->CreateBuffer(vboDesc);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    constexpr int32_t indices[3] = {0,1,2};
+
+    HgiBufferDesc iboDesc;
+    iboDesc.debugName = "HdxFullscreenShader IndexBuffer";
+    iboDesc.usage = HgiBufferUsageIndex32;
+    iboDesc.initialData = indices;
+    iboDesc.byteSize = sizeof(indices);
+    _indexBuffer = _GetHgi()->CreateBuffer(iboDesc);
+
+    _SetPrimitiveType(HgiPrimitiveTypeTriangleList);
 }
 
 void
-HdxFullscreenShader::_CreateTextureResources(GLuint *texture)
+HdxFullscreenShader::BindTextures(
+    HgiTextureHandleVector const& textures,
+    HgiSamplerHandleVector const& samplers)
 {
-    glGenTextures(1, texture);
-    glBindTexture(GL_TEXTURE_2D, *texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-}
-
-void
-HdxFullscreenShader::SetTexture(TfToken const& name, int width, int height,
-                             HdFormat format, void *data)
-{
-    HD_TRACE_FUNCTION();
-    HF_MALLOC_TAG_FUNCTION();
-
-    if (width == 0 || height == 0 || data == nullptr) {
-        auto it = _textures.find(name);
-        if (it != _textures.end()) {
-            glDeleteTextures(1, &(it->second));
-            _textures.erase(it);
-        }
+    if (!samplers.empty() && textures.size() != samplers.size()) {
+        TF_CODING_ERROR("Samplers vector must be empty, or match the size of "
+                        "the provided textures vector.");
+        _textures.clear();
+        _samplers.clear();
         return;
     }
 
-    auto it = _textures.find(name);
-    if (it == _textures.end()) {
-        GLuint tex;
-        _CreateTextureResources(&tex);
-        it = _textures.insert({name, tex}).first;
-    }
-    glBindTexture(GL_TEXTURE_2D, it->second);
-
-    if (format == HdFormatFloat32Vec4) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA,
-                     GL_FLOAT, data);
-    } else if (format == HdFormatFloat16Vec4) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA,
-                     GL_HALF_FLOAT, data);
-    } else if (format == HdFormatUNorm8Vec4) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, data);
-    } else if (format == HdFormatFloat32) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED,
-                     GL_FLOAT, data);
+    _textures = textures;
+    if (samplers.empty()) {
+        _samplers.assign(_textures.size(), _GetDefaultSampler());
     } else {
-        TF_WARN("Unsupported texture format: %s (%s)",
-                name.GetText(), TfEnum::GetName(format).c_str());
+        _samplers.resize(samplers.size());
+        for (size_t i = 0; i < samplers.size(); ++i) {
+            _samplers[i] = samplers[i] ? samplers[i] : _GetDefaultSampler();
+        }
     }
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    GLF_POST_PENDING_GL_ERRORS();
 }
 
 void
-HdxFullscreenShader::_SetUniform(GLuint programId,
-                                 TfToken const& name, VtValue const& value)
+HdxFullscreenShader::_SetResourceBindings()
 {
-    GLint loc = glGetUniformLocation(programId, name.GetText());
-    HdTupleType type = HdGetValueTupleType(value);
-    const void* data = HdGetValueData(value);
-
-    switch (type.type) {
-        case HdTypeInt32:
-            glUniform1iv(loc, type.count, static_cast<const GLint*>(data)); break;
-        case HdTypeInt32Vec2:
-            glUniform2iv(loc, type.count, static_cast<const GLint*>(data)); break;
-        case HdTypeInt32Vec3:
-            glUniform3iv(loc, type.count, static_cast<const GLint*>(data)); break;
-        case HdTypeInt32Vec4:
-            glUniform4iv(loc, type.count, static_cast<const GLint*>(data)); break;
-        case HdTypeUInt32:
-            glUniform1uiv(loc, type.count, static_cast<const GLuint*>(data)); break;
-        case HdTypeUInt32Vec2:
-            glUniform2uiv(loc, type.count, static_cast<const GLuint*>(data)); break;
-        case HdTypeUInt32Vec3:
-            glUniform3uiv(loc, type.count, static_cast<const GLuint*>(data)); break;
-        case HdTypeUInt32Vec4:
-            glUniform4uiv(loc, type.count, static_cast<const GLuint*>(data)); break;
-        case HdTypeFloat:
-            glUniform1fv(loc, type.count, static_cast<const GLfloat*>(data)); break;
-        case HdTypeFloatVec2:
-            glUniform2fv(loc, type.count, static_cast<const GLfloat*>(data)); break;
-        case HdTypeFloatVec3:
-            glUniform3fv(loc, type.count, static_cast<const GLfloat*>(data)); break;
-        case HdTypeFloatVec4:
-            glUniform4fv(loc, type.count, static_cast<const GLfloat*>(data)); break;
-        case HdTypeFloatMat3:
-            glUniformMatrix3fv(loc, type.count, GL_FALSE, static_cast<const GLfloat*>(data)); break;
-        case HdTypeFloatMat4:
-            glUniformMatrix4fv(loc, type.count, GL_FALSE, static_cast<const GLfloat*>(data)); break;
-        default:
-            TF_WARN("Unsupported uniform type: %s (%s)",
-                name.GetText(), value.GetTypeName().c_str());
-            break;
+    HgiTextureBindDescVector textureBindings;
+    textureBindings.reserve(_textures.size());
+    for (uint32_t index = 0; index < _textures.size(); ++index) {
+        const HgiTextureHandle& texture = _textures[index];
+        if (!texture) {
+            continue;
+        }
+        HgiTextureBindDesc texBind;
+        texBind.bindingIndex = index;
+        texBind.stageUsage = HgiShaderStageFragment;
+        texBind.writable = false;
+        texBind.textures.push_back(texture);
+        texBind.samplers.push_back(_samplers[index]);
+        textureBindings.push_back(std::move(texBind));
     }
+    _SetTextureBindings(textureBindings);
+
+    HgiBufferBindDescVector bufferBindings;
+    bufferBindings.reserve(_buffers.size());
+    for (uint32_t index = 0; index < _buffers.size(); ++index) {
+        const HgiBufferHandle& buffer = _buffers[index];
+        if (!buffer) {
+            continue;
+        }
+        HgiBufferBindDesc bufBind;
+        bufBind.bindingIndex = index;
+        bufBind.resourceType = HgiBindResourceTypeStorageBuffer;
+        bufBind.stageUsage = HgiShaderStageFragment;
+        bufBind.writable = false;
+        bufBind.offsets.push_back(0);
+        bufBind.buffers.push_back(buffer);
+        bufferBindings.push_back(std::move(bufBind));
+    }
+    _SetBufferBindings(bufferBindings);
+}
+
+void
+HdxFullscreenShader::_SetVertexBufferDescriptor()
+{
+    // Describe the vertex buffer
+    HgiVertexAttributeDesc posAttr;
+    posAttr.format = HgiFormatFloat32Vec4;
+    posAttr.offset = 0;
+    posAttr.shaderBindLocation = 0;
+
+    HgiVertexAttributeDesc uvAttr;
+    uvAttr.format = HgiFormatFloat32Vec2;
+    uvAttr.offset = sizeof(float) * 4; // after posAttr
+    uvAttr.shaderBindLocation = 1;
+
+    HgiVertexBufferDescVector vboDescs(1);
+    vboDescs[0].bindingIndex = 0;
+    vboDescs[0].vertexStride = sizeof(float) * 6; // pos, uv
+    vboDescs[0].vertexAttributes = { posAttr, uvAttr };
+
+    _SetVertexBufferDescs(vboDescs);
+}
+
+HgiSamplerHandle
+HdxFullscreenShader::_GetDefaultSampler()
+{
+    if (!_defaultSampler) {
+        HgiSamplerDesc sampDesc;
+        sampDesc.magFilter = HgiSamplerFilterLinear;
+        sampDesc.minFilter = HgiSamplerFilterLinear;
+        sampDesc.addressModeU = HgiSamplerAddressModeClampToEdge;
+        sampDesc.addressModeV = HgiSamplerAddressModeClampToEdge;
+        _defaultSampler = _GetHgi()->CreateSampler(sampDesc);
+    }
+
+    return _defaultSampler;
+}
+
+void
+HdxFullscreenShader::Draw(
+    HgiTextureHandle const& colorDst,
+    HgiTextureHandle const& depthDst)
+{
+    if (!colorDst) {
+        TF_CODING_ERROR("Color texture must be provided.");
+        return;
+    }
+
+    const GfVec3i dimensions = colorDst->GetDescriptor().dimensions;
+    const GfVec4i viewport(0, 0, dimensions[0], dimensions[1]);
+    _Draw(colorDst, {}, depthDst, {}, viewport);
+}
+
+void
+HdxFullscreenShader::Draw(
+    HgiTextureHandle const& colorDst,
+    HgiTextureHandle const& colorResolveDst,
+    HgiTextureHandle const& depthDst,
+    HgiTextureHandle const& depthResolveDst,
+    GfVec4i const& viewport)
+{
+    _Draw(colorDst, colorResolveDst, depthDst, depthResolveDst, viewport);
+}
+
+void
+HdxFullscreenShader::_SetDefaultProgram(
+    bool writeDepth)
+{
+    const TfToken& fragShader =
+        writeDepth ? _tokens->compositeFragmentWithDepth :
+                     _tokens->compositeFragmentNoDepth;
+
+    HgiShaderFunctionDesc fragDesc;
+    fragDesc.debugName = fragShader.GetString();
+    fragDesc.shaderStage = HgiShaderStageFragment;
+    HgiShaderFunctionAddStageInput(
+        &fragDesc, "uvOut", "vec2");
+    HgiShaderFunctionAddStageOutput(
+        &fragDesc, "hd_FragColor", "vec4", "color");
+    HgiShaderFunctionAddTexture(
+        &fragDesc, "colorIn", /*bindIndex = */0);
+
+    if (writeDepth) {
+        HgiShaderFunctionAddStageOutput(
+            &fragDesc, "gl_FragDepth", "float", "depth(any)");
+        HgiShaderFunctionAddTexture(
+            &fragDesc, "depth", /*bindIndex = */1);
+    }
+
+    SetProgram(HdxPackageFullscreenShader(), fragShader, fragDesc);
 }
 
 void 
-HdxFullscreenShader::Draw(TextureMap const& textures)
+HdxFullscreenShader::_Draw(
+    HgiTextureHandle const& colorDst,
+    HgiTextureHandle const& colorResolveDst,
+    HgiTextureHandle const& depthDst,
+    HgiTextureHandle const& depthResolveDst,
+    GfVec4i const &viewport)
 {
-    // No-op if we haven't set a shader.
-    if (!_program) {
-        if (_glslfx.IsEmpty() || _technique.IsEmpty()) {
-            TF_CODING_ERROR("HdxFullscreenShader: caller needs to set a program "
-                            "before calling draw!");
-        }
-        return;
+    const bool writeDepth(depthDst);
+
+    // If the user has not set a custom shader program, pick default program.
+    if (!_shaderProgram) {
+        _SetDefaultProgram(writeDepth);
     }
 
     // Create draw buffers if they haven't been created yet.
-    if (_vertexBuffer == 0) {
+    if (!_vertexBuffer) {
         _CreateBufferResources();
     }
 
-    // A note here: HdxFullscreenShader is used for all of our plugins and has to be
-    // robust to poor GL support.  OSX compatibility profile provides a
-    // GL 2.1 API, slightly restricting our choice of API and heavily
-    // restricting our shader syntax.
+    // Set or update the resource bindings (textures may have changed)
+    _SetResourceBindings();
 
-    GLuint programId = _program->GetProgram().GetId();
-    glUseProgram(programId);
+    const HgiAttachmentDescVector colorAttachmentDescs(1, _colorAttachment);
+    _SetColorAttachments(colorAttachmentDescs);
+    _SetDepthAttachment(_depthAttachment);
 
-    // Setup textures
-    int textureIndex = 0;
-    for (auto const& texture : textures) {
-        glActiveTexture(GL_TEXTURE0 + textureIndex);
-        glBindTexture(GL_TEXTURE_2D, texture.second);
-        GLint loc = glGetUniformLocation(programId, texture.first.GetText());
-        glUniform1i(loc, textureIndex);
-        textureIndex++;
+    _depthStencilState.depthWriteEnabled = writeDepth;
+    _SetDepthStencilState(_depthStencilState);
+
+    HgiTextureHandleVector colorTextures;
+    if (colorDst) {
+        colorTextures.push_back(colorDst);
+    }
+    HgiTextureHandleVector colorResolveTextures;
+    if (colorResolveDst) {
+        colorResolveTextures.push_back(colorResolveDst);
     }
 
-    // Set up buffers
-    GLint locPosition = glGetAttribLocation(programId, "position");
-    glBindBuffer(GL_ARRAY_BUFFER, _vertexBuffer);
-    glVertexAttribPointer(locPosition, 4, GL_FLOAT, GL_FALSE,
-            sizeof(float)*6, 0);
-    glEnableVertexAttribArray(locPosition);
-
-    GLint locUv = glGetAttribLocation(programId, "uvIn");
-    glVertexAttribPointer(locUv, 2, GL_FLOAT, GL_FALSE,
-            sizeof(float)*6, reinterpret_cast<void*>(sizeof(float)*4));
-    glEnableVertexAttribArray(locUv);
-
-    // Set up uniforms
-    for (auto const& uniform : _uniforms) {
-        _SetUniform(programId, uniform.first, uniform.second);
-    }
-
-    // Set up state
-    GLboolean restoreAlphaToCoverage;
-    glGetBooleanv(GL_SAMPLE_ALPHA_TO_COVERAGE, &restoreAlphaToCoverage);
-    glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-    // Restore state
-    if (restoreAlphaToCoverage) {
-        glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-    }
-
-    // Restore buffers
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glDisableVertexAttribArray(locPosition);
-    glDisableVertexAttribArray(locUv);
-
-    // Restore textures
-    for (int i = textureIndex-1; i >= 0; --i) {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
-
-    glUseProgram(0);
-
-    GLF_POST_PENDING_GL_ERRORS();
+    HdxEffectsShader::_CreateAndSubmitGraphicsCmds(
+        colorTextures, colorResolveTextures,
+        depthDst, depthResolveDst,
+        viewport);
 }
 
 void
-HdxFullscreenShader::Draw()
+HdxFullscreenShader::_RecordDrawCmds()
 {
-    Draw(_textures);
+    _DrawIndexed(_vertexBuffer, _indexBuffer, 3, 0, 0, 1, 0);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

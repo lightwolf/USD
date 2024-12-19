@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hdx/package.h"
 
@@ -29,6 +12,7 @@
 #include "pxr/base/tf/fileUtils.h"
 #include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/stringUtils.h"
+#include "pxr/imaging/hio/imageRegistry.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -63,9 +47,25 @@ HdxPackageFullscreenShader()
 }
 
 TfToken
-HdxPackageRenderPassShader()
+HdxPackageRenderPassColorShader()
 {
-    static TfToken shader = _GetShaderPath("renderPassShader.glslfx");
+    static TfToken shader = _GetShaderPath("renderPassColorShader.glslfx");
+    return shader;
+}
+
+TfToken
+HdxPackageRenderPassColorAndSelectionShader()
+{
+    static TfToken shader =
+        _GetShaderPath("renderPassColorAndSelectionShader.glslfx");
+    return shader;
+}
+
+TfToken
+HdxPackageRenderPassColorWithOccludedSelectionShader()
+{
+    static TfToken shader =
+        _GetShaderPath("renderPassColorWithOccludedSelectionShader.glslfx");
     return shader;
 }
 
@@ -105,6 +105,13 @@ HdxPackageColorCorrectionShader()
 }
 
 TfToken
+HdxPackageVisualizeAovShader()
+{
+    static TfToken shader = _GetShaderPath("visualize.glslfx");
+    return shader;
+}
+
+TfToken
 HdxPackageRenderPassOitShader()
 {
     static TfToken shader = _GetShaderPath("renderPassOitShader.glslfx");
@@ -140,9 +147,29 @@ HdxPackageOutlineShader()
 }
 
 TfToken
+HdxPackageSkydomeShader()
+{
+    static TfToken shader = _GetShaderPath("skydome.glslfx");
+    return shader;
+}
+
+TfToken
+HdxPackageBoundingBoxShader()
+{
+    static TfToken shader = _GetShaderPath("boundingBox.glslfx");
+    return shader;
+}
+
+TfToken
 HdxPackageDefaultDomeLightTexture()
 {
-    static TfToken domeLightTexture = _GetTexturePath("StinsonBeach.exr");
+    // Use the tex version of the Domelight's environment map if supported
+    HioImageRegistry &hioImageReg = HioImageRegistry::GetInstance();
+    static bool useTex = hioImageReg.IsSupportedImageFile("StinsonBeach.tex");
+
+    static TfToken domeLightTexture = (useTex)
+        ? _GetTexturePath("StinsonBeach.tex")
+        : _GetTexturePath("StinsonBeach.hdr");
     return domeLightTexture;
 }
 

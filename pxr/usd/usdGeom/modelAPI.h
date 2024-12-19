@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDGEOM_GENERATED_MODELAPI_H
 #define USDGEOM_GENERATED_MODELAPI_H
@@ -80,23 +63,30 @@ class SdfAssetPath;
 /// - \em bounds - Draw the model-space bounding box of the replaced prim.
 /// - \em cards - Draw textured quads as a placeholder for the replaced prim.
 /// - \em default - An explicit opinion to draw the USD subtree as normal.
+/// - \em inherited - Defer to the parent opinion.
 /// 
-/// \em model:drawMode is inheritable so that a whole scene, a large group, or
-/// all prototypes of a model hierarchy PointInstancer can be assigned a draw
-/// mode with a single attribute edit.  \em model:applyDrawMode is meant to be
-/// written when an asset is authored, and provides flexibility for different
-/// asset types. For example, a character assembly (composed of character,
-/// clothes, etc) might have \em model:applyDrawMode set at the top of the
-/// subtree so the whole group can be drawn as a single card object. An effects
-/// subtree might have \em model:applyDrawMode set at a lower level so each
-/// particle group draws individually.
+/// \em model:drawMode falls back to _inherited_ so that a whole scene,
+/// a large group, or all prototypes of a model hierarchy PointInstancer can
+/// be assigned a draw mode with a single attribute edit.  If no draw mode is
+/// explicitly set in a hierarchy, the resolved value is _default_.
 /// 
-/// Models of kind component are treated as if \em model:applyDrawMode
-/// were true.  This means a prim is drawn with proxy geometry when: the
-/// prim has kind component, and/or \em model:applyDrawMode is set; and
-/// the prim or an ancestor has a non-default value for \em model:drawMode.
-/// A value for \em model:drawMode on a child prim takes precedence over a
-/// value on a parent prim.
+/// \em model:applyDrawMode is meant to be written when an asset is authored,
+/// and provides flexibility for different asset types. For example,
+/// a character assembly (composed of character, clothes, etc) might have
+/// \em model:applyDrawMode set at the top of the subtree so the whole group
+/// can be drawn as a single card object. An effects subtree might have
+/// \em model:applyDrawMode set at a lower level so each particle
+/// group draws individually.
+/// 
+/// Models of kind component are automatically treated as if 
+/// \em model:applyDrawMode were true if \em model:applyDrawMode is not 
+/// authored on the component prim. A component prim will be drawn drawn with a 
+/// simplified representation when the prim has kind component, 
+/// \em model:applyDrawMode is not authored (or authored to be true), and the 
+/// resolved (i.e. inherited down namespace) value for \em model:drawMode is 
+/// not _default_. If you don't want component prims to use the resolved 
+/// non-default drawMode, you must apply the UsdGeomModelAPI schema on the prim 
+/// and explicitly set \em model:applyDrawMode to false.
 /// 
 /// \section UsdGeomModelAPI_cardGeometry Cards Geometry
 /// 
@@ -148,8 +138,8 @@ class UsdGeomModelAPI : public UsdAPISchemaBase
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::SingleApplyAPI;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::SingleApplyAPI;
 
     /// Construct a UsdGeomModelAPI on UsdPrim \p prim .
     /// Equivalent to UsdGeomModelAPI::Get(prim.GetStage(), prim.GetPath())
@@ -193,28 +183,51 @@ public:
     Get(const UsdStagePtr &stage, const SdfPath &path);
 
 
+    /// Returns true if this <b>single-apply</b> API schema can be applied to 
+    /// the given \p prim. If this schema can not be a applied to the prim, 
+    /// this returns false and, if provided, populates \p whyNot with the 
+    /// reason it can not be applied.
+    /// 
+    /// Note that if CanApply returns false, that does not necessarily imply
+    /// that calling Apply will fail. Callers are expected to call CanApply
+    /// before calling Apply if they want to ensure that it is valid to 
+    /// apply a schema.
+    /// 
+    /// \sa UsdPrim::GetAppliedSchemas()
+    /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
+    ///
+    USDGEOM_API
+    static bool 
+    CanApply(const UsdPrim &prim, std::string *whyNot=nullptr);
+
     /// Applies this <b>single-apply</b> API schema to the given \p prim.
     /// This information is stored by adding "GeomModelAPI" to the 
     /// token-valued, listOp metadata \em apiSchemas on the prim.
     /// 
     /// \return A valid UsdGeomModelAPI object is returned upon success. 
     /// An invalid (or empty) UsdGeomModelAPI object is returned upon 
-    /// failure. See \ref UsdAPISchemaBase::_ApplyAPISchema() for conditions 
+    /// failure. See \ref UsdPrim::ApplyAPI() for conditions 
     /// resulting in failure. 
     /// 
     /// \sa UsdPrim::GetAppliedSchemas()
     /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
     ///
     USDGEOM_API
     static UsdGeomModelAPI 
     Apply(const UsdPrim &prim);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -234,16 +247,17 @@ public:
     // --------------------------------------------------------------------- //
     /// Alternate imaging mode; applied to this prim or child prims
     /// where \em model:applyDrawMode is true, or where the prim
-    /// has kind \em component. See \ref UsdGeomModelAPI_drawMode
+    /// has kind \em component and \em model:applyDrawMode is not
+    /// authored. See \ref UsdGeomModelAPI_drawMode
     /// for mode descriptions.
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `uniform token model:drawMode` |
+    /// | Declaration | `uniform token model:drawMode = "inherited"` |
     /// | C++ Type | TfToken |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
     /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdGeomTokens "Allowed Values" | origin, bounds, cards, default |
+    /// | \ref UsdGeomTokens "Allowed Values" | origin, bounds, cards, default, inherited |
     USDGEOM_API
     UsdAttribute GetModelDrawModeAttr() const;
 
@@ -259,13 +273,13 @@ public:
     // --------------------------------------------------------------------- //
     // MODELAPPLYDRAWMODE 
     // --------------------------------------------------------------------- //
-    /// If true, and this prim or parent prims have \em model:drawMode
-    /// set, apply an alternate imaging mode to this prim. See
+    /// If true, and the resolved value of \em model:drawMode is
+    /// non-default, apply an alternate imaging mode to this prim. See
     /// \ref UsdGeomModelAPI_drawMode.
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `uniform bool model:applyDrawMode` |
+    /// | Declaration | `uniform bool model:applyDrawMode = 0` |
     /// | C++ Type | bool |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
     /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
@@ -287,12 +301,11 @@ public:
     /// The base color of imaging prims inserted for alternate
     /// imaging modes. For \em origin and \em bounds modes, this
     /// controls line color; for \em cards mode, this controls the
-    /// fallback quad color. If unspecified, it should be interpreted
-    /// as (0.18, 0.18, 0.18).
+    /// fallback quad color.
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `uniform float3 model:drawModeColor` |
+    /// | Declaration | `uniform float3 model:drawModeColor = (0.18, 0.18, 0.18)` |
     /// | C++ Type | GfVec3f |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float3 |
     /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
@@ -313,12 +326,11 @@ public:
     // --------------------------------------------------------------------- //
     /// The geometry to generate for imaging prims inserted for \em
     /// cards imaging mode. See \ref UsdGeomModelAPI_cardGeometry for
-    /// geometry descriptions. If unspecified, it should be interpreted
-    /// as \em cross.
+    /// geometry descriptions.
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `uniform token model:cardGeometry` |
+    /// | Declaration | `uniform token model:cardGeometry = "cross"` |
     /// | C++ Type | TfToken |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
     /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
@@ -548,13 +560,36 @@ public:
     USDGEOM_API
     UsdAttribute GetExtentsHintAttr() const;
 
-    /// For the given model, compute the value for the extents hint with the
-    /// given \p bboxCache.  \p bboxCache should be setup with the
-    /// appropriate time.  After calling this function, the \p bboxCache may
-    /// have it's included purposes changed.
+    /// Compute a value suitable for passing to SetExtentsHint().
     ///
-    /// \note \p bboxCache should not be in use by any other thread while
-    /// this method is using it in a thread.
+    /// If this model is a UsdGeomBoundable, call
+    /// UsdGeomBoundable::ComputeExtentFromPlugins() with the \p bboxCache 's
+    /// time code.  If that function returns true, then populate the returned
+    /// array with the min and max repeated according to the number of tokens in
+    /// UsdGeomImageable::GetOrderedPurposeTokens().  Otherwise return an array
+    /// with a single empty range.
+    ///
+    /// If this model is not a UsdGeomBoundable, populate the return value by
+    /// calling UsdGeomBBoxCache::ComputeUntransformedBound() (and
+    /// GfBBox3d::ComputeAlignedBox() on that result) for each token in
+    /// UsdGeomImageable::GetOrderedPurposeTokens().
+    ///
+    /// In either case the, Nth successive pair of entries in the returned array
+    /// will be the min and max coordinates of the extent corresponding to the
+    /// Nth token in UsdGeomImageable::GetOrderedPurposeTokens(), except
+    /// trailing empty boxes are omitted, unless all boxes are empty in which
+    /// case the result is a single empty box.
+    ///
+    /// For example, if GetOrderedPurposeTokens() is [default, render, proxy,
+    /// guide] and this function returns [(0,0,0), (1,1,1), (+FLT_MAX),
+    /// (-FLT_MIN), (0,0,0), (1,1,1)] then this means that the computed extents
+    /// for 'default' and 'proxy' purpose are [(0,0,0), (1,1,1)] and the extents
+    /// for 'render' and 'guide' purposes are empty.
+    ///
+    /// This function modifies \p bboxCache's included purposes.
+    ///
+    /// \note \p bboxCache must not be used concurrently during the execution of
+    /// this function.
     USDGEOM_API
     VtVec3fArray ComputeExtentsHint(UsdGeomBBoxCache& bboxCache) const;
 
@@ -595,13 +630,13 @@ public:
 
     /// @}
 
-    /// Calculate the effective model:drawMode of this prim, as defined by
-    /// its closest ancestral authored opinion, if any.
+    /// Calculate the effective model:drawMode of this prim.
     ///
-    /// If no opinion for model:drawMode is authored on this prim or any of its
-    /// ancestors, its computed model:drawMode is UsdGeomTokens->default_ .
-    /// Otherwise, its computed model:drawMode is that of its closest ancestor
-    /// with an authored model:drawMode.
+    /// If the draw mode is authored on this prim, it's used. Otherwise,
+    /// the fallback value is "inherited", which defers to the parent opinion.
+    /// The first non-inherited opinion found walking from this prim towards
+    /// the root is used.  If the attribute isn't set on any ancestors, we
+    /// return "default" (meaning, disable "drawMode" geometry).
     ///
     /// If this function is being called in a traversal context to compute 
     /// the draw mode of an entire hierarchy of prims, it would be beneficial

@@ -3,13 +3,14 @@ set(PXR_PACKAGE usdHydra)
 
 pxr_library(usdHydra
 
+    INCLUDE_SCHEMA_FILES
+
     LIBRARIES
         tf
         usd
         usdShade
 
     PUBLIC_CLASSES
-        tokens
         discoveryPlugin
 
     PUBLIC_HEADERS
@@ -18,17 +19,14 @@ pxr_library(usdHydra
     PYTHON_CPPFILES
         moduleDeps.cpp
 
-    PYMODULE_CPPFILES
-        module.cpp
-        wrapTokens.cpp
-
     PYMODULE_FILES
         __init__.py
 
     RESOURCE_FILES
-        plugInfo.json
         shaders/shaderDefs.usda
         shaders/empty.glslfx
 
+    DOXYGEN_FILES
+        overview.dox
 )
 

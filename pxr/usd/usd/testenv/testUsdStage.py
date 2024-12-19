@@ -1,26 +1,10 @@
 #!/pxrpythonsubst
+# -*- coding: utf-8 -*-
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 import sys, unittest
 from pxr import Sdf,Usd,Tf
@@ -28,6 +12,31 @@ from pxr import Sdf,Usd,Tf
 allFormats = ['usd' + c for c in 'ac']
 
 class TestUsdStage(unittest.TestCase):
+    def test_URLEncodedIdentifiers(self):
+        with open("Libeccio%20LowFBX.usda", "w") as f:
+             f.write('#usda 1.0\ndef Xform "hello" {\n}\n')
+             f.close()
+        stage = Usd.Stage.Open("Libeccio%20LowFBX.usda")
+        assert stage
+
+    def test_Repr(self):
+        stage = Usd.Stage.CreateInMemory()
+
+        # Test that we have a non-empty repr for a Usd.Stage. 
+        self.assertTrue(stage)
+        self.assertTrue(repr(stage))
+
+        # Test that we have a non-empty repr for an expired Usd.Stage.
+        # We insert our test stage into a Usd.StageCache, which takes
+        # ownership of the stage, then we clear it. This leaves us with
+        # a handle to an expired Usd.Stage in Python.
+        sc = Usd.StageCache()
+        sc.Insert(stage)
+        sc.Clear()
+
+        self.assertFalse(stage)
+        self.assertTrue(repr(stage))
+
     def test_UsedLayers(self):
         for fmt in allFormats:
             sMain = Usd.Stage.CreateInMemory('testUsedLayers.'+fmt)
@@ -227,7 +236,7 @@ class TestUsdStage(unittest.TestCase):
     def test_testUsdStageColorConfiguration(self):
         for fmt in allFormats:
             f = lambda base: base + '.' + fmt
-            rootLayer = Sdf.Layer.CreateNew(f("colorConf"), f("colorConf"))
+            rootLayer = Sdf.Layer.CreateNew(f("colorConf"))
             stage = Usd.Stage.Open(rootLayer)
             
             colorConfigFallbacks = Usd.Stage.GetColorConfigFallbacks()
@@ -282,9 +291,9 @@ class TestUsdStage(unittest.TestCase):
         for fmt in allFormats:
             f = lambda base: base + '.' + fmt
 
-            sessionLayer = Sdf.Layer.CreateNew(f('sessionLayer'), f('sessionLayer'))
-            rootLayer = Sdf.Layer.CreateNew(f("rootLayer"), f("rootLayer"))
-            subLayer = Sdf.Layer.CreateNew(f("subLayer"), f("subLayer"))
+            sessionLayer = Sdf.Layer.CreateNew(f('sessionLayer'))
+            rootLayer = Sdf.Layer.CreateNew(f("rootLayer"))
+            subLayer = Sdf.Layer.CreateNew(f("subLayer"))
 
             rootLayer.subLayerPaths = [f("./subLayer")]
             subLayer.Save()
@@ -420,6 +429,70 @@ class TestUsdStage(unittest.TestCase):
             # Should get an invalid prim if passed an empty path
             assert(not s.GetPrimAtPath(Sdf.Path.emptyPath))
 
+    def test_StageCompositionErrors(self):
+        layer = Sdf.Layer.CreateAnonymous('.usda')
+        layer.ImportFromString('''
+        #usda 1.0
+        (
+            subLayers = [
+                @missingLayer.usda@
+            ]
+        )
+
+        def "World"
+        {
+            def "Inst1" (
+                instanceable = true
+                prepend references = </Main>
+            )
+            {
+            }
+            def "Inst2" (
+                instanceable = true
+                prepend references = </Main>
+            )
+            {
+            }
+        }
+
+        def "Main" (
+        )
+        {
+            def "First" (
+                add references = </Main/Second>
+            )
+            {
+            }
+
+            def "Second" (
+                add references = </Main/First>
+            )
+            {
+            }
+        }'''.strip())
+        s = Usd.Stage.Open(layer.identifier)
+        errors = s.GetCompositionErrors()
+        # Make sure composition errors are always in a specific order, to test
+        # the error types below
+        errors = sorted(errors, key=lambda error: error.rootSite.path)
+        self.assertEqual(len(errors), 5)
+        
+        # Find out whats the source path for the instances, for which errors
+        # will be reported.
+        srcPrimPath = s.GetPrototypes()[0]._GetSourcePrimIndex().rootNode.path
+        
+        from pxr import Pcp
+        expectedErrors = [ (Pcp.ErrorType_InvalidSublayerPath, "/"),
+                               (Pcp.ErrorType_ArcCycle, "/Main/First"),
+                               (Pcp.ErrorType_ArcCycle, "/Main/Second"),
+                               (Pcp.ErrorType_ArcCycle, 
+                                srcPrimPath.AppendChild("First").pathString),
+                               (Pcp.ErrorType_ArcCycle, 
+                                srcPrimPath.AppendChild("Second").pathString) ]
+        for i in range(5):
+            self.assertEqual(expectedErrors[i][0], errors[i].errorType)
+            self.assertEqual(expectedErrors[i][1], errors[i].rootSite.path)
+
     def test_GetAtPath(self):
         for fmt in allFormats:
             s = Usd.Stage.CreateInMemory('GetAtPath.'+fmt)
@@ -460,7 +533,11 @@ class TestUsdStage(unittest.TestCase):
                 rootLayer.subLayerPaths.append(subLayer.identifier)
                 rootLayer.subLayerPaths.append(anonLayer.identifier)
 
-                primPath = "/" + rootLayerName
+                # XXX: Strip non-ascii-identifier chars from `rootLayerName` --
+                # this should be removed once support for utf-8 identifiers is
+                # in.
+                primName = Tf.MakeValidIdentifier(rootLayerName)
+                primPath = Sdf.Path.absoluteRootPath.AppendChild(primName)
                 subLayerPrim = Sdf.CreatePrimInLayer(subLayer, primPath)
                 subLayerPrim.referenceList.Add(
                     Sdf.Reference(refLayer.identifier, primPath))
@@ -507,6 +584,25 @@ class TestUsdStage(unittest.TestCase):
                         [rootLayer, rootSubLayer, rootAnonLayer, rootRefLayer,
                          sessionAnonLayer, sessionRefLayer]])
             assert not any([l.dirty for l in [sessionLayer, sessionSubLayer]])
+
+            # Check saving with UTF-8 characters
+            (rootLayer, rootSubLayer, rootAnonLayer, rootRefLayer) = \
+                _CreateLayers('root_utf8_umlaute_ß_3')
+            (sessionLayer, sessionSubLayer,
+             sessionAnonLayer, sessionRefLayer) = \
+                _CreateLayers('session_utf8_bigA_Ä_3')
+
+            stage = Usd.Stage.Open(rootLayer, sessionLayer)
+            assert all([l.dirty for l in 
+                        [rootLayer, rootSubLayer, rootAnonLayer, rootRefLayer,
+                         sessionLayer, sessionSubLayer, sessionAnonLayer,
+                         sessionRefLayer]])
+            stage.SaveSessionLayers()
+            assert all([l.dirty for l in 
+                        [rootLayer, rootSubLayer, rootAnonLayer, rootRefLayer,
+                         sessionAnonLayer, sessionRefLayer]])
+            assert not any([l.dirty for l in [sessionLayer, sessionSubLayer]])
+
 
 if __name__ == "__main__":
     unittest.main()

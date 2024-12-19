@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_VT_WRAP_ARRAY_H
 #define PXR_BASE_VT_WRAP_ARRAY_H
@@ -30,12 +13,12 @@
 #include "pxr/base/vt/types.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/base/vt/pyOperators.h"
-#include "pxr/base/vt/functions.h"
 
 #include "pxr/base/arch/math.h"
 #include "pxr/base/arch/inttypes.h"
 #include "pxr/base/arch/pragmas.h"
 #include "pxr/base/gf/half.h"
+#include "pxr/base/gf/traits.h"
 #include "pxr/base/tf/pyContainerConversions.h"
 #include "pxr/base/tf/pyFunction.h"
 #include "pxr/base/tf/pyLock.h"
@@ -43,30 +26,26 @@
 #include "pxr/base/tf/pyResultConversions.h"
 #include "pxr/base/tf/pyUtils.h"
 #include "pxr/base/tf/iterator.h"
+#include "pxr/base/tf/meta.h"
 #include "pxr/base/tf/span.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/tf.h"
 #include "pxr/base/tf/wrapTypeHelpers.h"
 
-#include <boost/preprocessor/facilities/empty.hpp>
-#include <boost/preprocessor/punctuation/comma_if.hpp>
-#include <boost/preprocessor/repetition/repeat.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-
-#include <boost/python/class.hpp>
-#include <boost/python/copy_const_reference.hpp>
-#include <boost/python/def.hpp>
-#include <boost/python/detail/api_placeholder.hpp>
-#include <boost/python/extract.hpp>
-#include <boost/python/implicit.hpp>
-#include <boost/python/iterator.hpp>
-#include <boost/python/make_constructor.hpp>
-#include <boost/python/object.hpp>
-#include <boost/python/operators.hpp>
-#include <boost/python/return_arg.hpp>
-#include <boost/python/slice.hpp>
-#include <boost/python/type_id.hpp>
-#include <boost/python/overloads.hpp>
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/copy_const_reference.hpp"
+#include "pxr/external/boost/python/def.hpp"
+#include "pxr/external/boost/python/detail/api_placeholder.hpp"
+#include "pxr/external/boost/python/extract.hpp"
+#include "pxr/external/boost/python/implicit.hpp"
+#include "pxr/external/boost/python/iterator.hpp"
+#include "pxr/external/boost/python/make_constructor.hpp"
+#include "pxr/external/boost/python/object.hpp"
+#include "pxr/external/boost/python/operators.hpp"
+#include "pxr/external/boost/python/return_arg.hpp"
+#include "pxr/external/boost/python/slice.hpp"
+#include "pxr/external/boost/python/type_id.hpp"
+#include "pxr/external/boost/python/overloads.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -79,7 +58,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace Vt_WrapArray {
 
-using namespace boost::python;
+using namespace pxr_boost::python;
 
 using std::unique_ptr;
 using std::vector;
@@ -99,7 +78,7 @@ getitem_ellipsis(VtArray<T> const &self, object idx)
 
 template <typename T>
 object
-getitem_index(VtArray<T> const &self, int idx)
+getitem_index(VtArray<T> const &self, int64_t idx)
 {
     static const bool throwError = true;
     idx = TfPyNormalizeIndex(idx, self.size(), throwError);
@@ -122,7 +101,7 @@ getitem_slice(VtArray<T> const &self, slice idx)
         result[i] = *range.start;
         return object(result);
     }
-    catch (std::invalid_argument) {
+    catch (std::invalid_argument const &) {
         return object();
     }
 }
@@ -180,7 +159,7 @@ setArraySlice(VtArray<T> &self, slice idx, object value, bool tile = false)
         T* data = self.data();
         range = idx.get_indices(data, data + self.size());
     }
-    catch (std::invalid_argument) {
+    catch (std::invalid_argument const &) {
         // Do nothing
         return;
     }
@@ -188,8 +167,12 @@ setArraySlice(VtArray<T> &self, slice idx, object value, bool tile = false)
     // Get the number of items to be set.
     const size_t setSize = 1 + (range.stop - range.start) / range.step;
 
-    // Copy from VtArray.
-    if (extract< VtArray<T> >(value).check()) {
+    // Copy from VtArray.  We only want to take this path if the passed value is
+    // *exactly* a VtArray.  That is, we don't want to take this path if it can
+    // merely *convert* to a VtArray, so we check that we can extract a mutable
+    // lvalue reference from the python object, which requires that there be a
+    // real VtArray there.
+    if (extract< VtArray<T> &>(value).check()) {
         const VtArray<T> val = extract< VtArray<T> >(value);
         const size_t length = val.size();
         if (length == 0)
@@ -252,10 +235,10 @@ setitem_ellipsis(VtArray<T> &self, object idx, object value)
 
 template <typename T>
 void
-setitem_index(VtArray<T> &self, int idx, object value)
+setitem_index(VtArray<T> &self, int64_t idx, object value)
 {
-    static const bool tile = true;
-    setArraySlice(self, slice(idx, idx + 1), value, tile);
+    idx = TfPyNormalizeIndex(idx, self.size(), /*throwError=*/true);
+    setArraySlice(self, slice(idx, idx+1), value, /*tile=*/true);
 }
 
 template <typename T>
@@ -269,60 +252,56 @@ setitem_slice(VtArray<T> &self, slice idx, object value)
 template <class T>
 VT_API string GetVtArrayName();
 
+template <class T, class... Ts>
+constexpr bool Vt_IsAnySameImpl(TfMetaList<Ts...>) {
+     return (std::is_same_v<T, Ts> || ...);
+}
 
-// To avoid overhead we stream out certain builtin types directly
-// without calling TfPyRepr().
-template <typename T>
-static void streamValue(std::ostringstream &stream, T const &value) {
-    stream << TfPyRepr(value);
+template <class T, class TypeList>
+constexpr bool Vt_IsAnySame() {
+    return Vt_IsAnySameImpl<T>(TypeList{});
 }
 
 // This is the same types as in VT_INTEGRAL_BUILTIN_VALUE_TYPES with char
 // and bool types removed.
-#define _OPTIMIZED_STREAM_INTEGRAL_TYPES \
-    (short)                              \
-    (unsigned short)                     \
-    (int)                                \
-    (unsigned int)                       \
-    (long)                               \
-    (unsigned long)                      \
-    (long long)                          \
-    (unsigned long long)
-
-#define MAKE_STREAM_FUNC(r, unused, type)                    \
-static inline void                                           \
-streamValue(std::ostringstream &stream, type const &value) { \
-    stream << value;                                         \
-}
-BOOST_PP_SEQ_FOR_EACH(MAKE_STREAM_FUNC, ~, _OPTIMIZED_STREAM_INTEGRAL_TYPES)
-#undef MAKE_STREAM_FUNC
-#undef _OPTIMIZED_STREAM_INTEGRAL_TYPES
+using Vt_OptimizedStreamIntegralTypes =
+    TfMetaList<short, unsigned short,
+               int, unsigned int,
+               long, unsigned long,
+               long long, unsigned long long>;
 
 // Explicitly convert half to float here instead of relying on implicit
 // conversion to float to work around the fact that libc++ only provides
 // implementations of std::isfinite for types where std::is_arithmetic 
 // is true.
 template <typename T>
-static bool _IsFinite(T const &value) {
+inline bool _IsFinite(T const &value) {
     return std::isfinite(value);
 }
-static bool _IsFinite(GfHalf const &value) {
+inline bool _IsFinite(GfHalf const &value) {
     return std::isfinite(static_cast<float>(value));
 }
 
-// For float types we need to be make sure to represent infs and nans correctly.
-#define MAKE_STREAM_FUNC(r, unused, elem)                             \
-static inline void                                                    \
-streamValue(std::ostringstream &stream, VT_TYPE(elem) const &value) { \
-    if (_IsFinite(value)) {                                           \
-        stream << value;                                              \
-    } else {                                                          \
-        stream << TfPyRepr(value);                                    \
-    }                                                                 \
+template <typename T>
+static void streamValue(std::ostringstream &stream, T const &value) {
+    // To avoid overhead we stream out certain builtin types directly
+    // without calling TfPyRepr().
+    if constexpr(Vt_IsAnySame<T, Vt_OptimizedStreamIntegralTypes>()) {
+        stream << value;
+    }
+    // For float types we need to be make sure to represent infs and nans correctly.
+    else if constexpr(GfIsFloatingPoint<T>::value) {
+        if (_IsFinite(value)) {
+            stream << value;
+        }
+        else {
+            stream << TfPyRepr(value);
+        }
+    }
+    else {
+        stream << TfPyRepr(value);
+    }
 }
-BOOST_PP_SEQ_FOR_EACH(
-    MAKE_STREAM_FUNC, ~, VT_FLOATING_POINT_BUILTIN_VALUE_TYPES)
-#undef MAKE_STREAM_FUNC
 
 static unsigned int
 Vt_ComputeEffectiveRankAndLastDimSize(
@@ -404,7 +383,7 @@ VtArray<T> *VtArray__init__(object const &values)
     return ret.release();
 }
 template <typename T>
-VtArray<T> *VtArray__init__2(unsigned int size, object const &values)
+VtArray<T> *VtArray__init__2(size_t size, object const &values)
 {
     // Make the array.
     unique_ptr<VtArray<T> > ret(new VtArray<T>(size));
@@ -422,25 +401,20 @@ VtArray<T> *VtArray__init__2(unsigned int size, object const &values)
 ARCH_PRAGMA_PUSH
 ARCH_PRAGMA_UNSAFE_USE_OF_BOOL
 ARCH_PRAGMA_UNARY_MINUS_ON_UNSIGNED
-VTOPERATOR_WRAP(+,__add__,__radd__)
-VTOPERATOR_WRAP_NONCOMM(-,__sub__,__rsub__)
-VTOPERATOR_WRAP(*,__mul__,__rmul__)
-VTOPERATOR_WRAP_NONCOMM(/,__div__,__rdiv__)
-VTOPERATOR_WRAP_NONCOMM(%,__mod__,__rmod__)
 
-VTOPERATOR_WRAP_BOOL(Equal,==)
-VTOPERATOR_WRAP_BOOL(NotEqual,!=)
-VTOPERATOR_WRAP_BOOL(Greater,>)
-VTOPERATOR_WRAP_BOOL(Less,<)
-VTOPERATOR_WRAP_BOOL(GreaterOrEqual,>=)
-VTOPERATOR_WRAP_BOOL(LessOrEqual,<=)
+VTOPERATOR_WRAP(__add__,__radd__)
+VTOPERATOR_WRAP_NONCOMM(__sub__,__rsub__)
+VTOPERATOR_WRAP(__mul__,__rmul__)
+VTOPERATOR_WRAP_NONCOMM(__div__,__rdiv__)
+VTOPERATOR_WRAP_NONCOMM(__mod__,__rmod__)
+
 ARCH_PRAGMA_POP
 }
 
 template <typename T>
 static std::string _VtStr(T const &self)
 {
-    return boost::lexical_cast<std::string>(self);
+    return TfStringify(self);
 }
 
 template <typename T>
@@ -455,7 +429,7 @@ void VtWrapArray()
     string typeStr = ArchGetDemangled(typeid(Type));
     string docStr = TfStringPrintf("An array of type %s.", typeStr.c_str());
     
-    class_<This>(name.c_str(), docStr.c_str(), no_init)
+    auto selfCls = class_<This>(name.c_str(), docStr.c_str(), no_init)
         .setattr("_isVtArray", true)
         .def(TfTypePythonClass())
         .def(init<>())
@@ -521,41 +495,20 @@ void VtWrapArray()
 
         ;
 
-#define WRITE(z, n, data) BOOST_PP_COMMA_IF(n) data
-#define VtCat_DEF(z, n, unused) \
-    def("Cat",(VtArray<Type> (*)( BOOST_PP_REPEAT(n, WRITE, VtArray<Type> const &) ))VtCat<Type>);
-    BOOST_PP_REPEAT_FROM_TO(1, VT_FUNCTIONS_MAX_ARGS, VtCat_DEF, ~)
-#undef VtCat_DEF
-
-    VTOPERATOR_WRAPDECLARE_BOOL(Equal)
-    VTOPERATOR_WRAPDECLARE_BOOL(NotEqual)
+    // Wrap conversions from python sequences.
+    TfPyContainerConversions::from_python_sequence<
+        This,
+        TfPyContainerConversions::
+        variable_capacity_all_items_convertible_policy>();
 
     // Wrap implicit conversions from VtArray to TfSpan.
     implicitly_convertible<This, TfSpan<Type> >();
     implicitly_convertible<This, TfSpan<const Type> >();
 }
 
-// wrapping for functions that work for base types that support comparisons
-template <typename T>
-void VtWrapComparisonFunctions()
-{
-    using namespace Vt_WrapArray;
-    
-    typedef T This;
-    typedef typename This::ElementType Type;
-
-    def("AnyTrue", VtAnyTrue<Type>);
-    def("AllTrue", VtAllTrue<Type>);
-
-    VTOPERATOR_WRAPDECLARE_BOOL(Greater)
-    VTOPERATOR_WRAPDECLARE_BOOL(Less)
-    VTOPERATOR_WRAPDECLARE_BOOL(GreaterOrEqual)
-    VTOPERATOR_WRAPDECLARE_BOOL(LessOrEqual)
-}
-
 template <class Array>
 VtValue
-Vt_ConvertFromPySequence(TfPyObjWrapper const &obj)
+Vt_ConvertFromPySequenceOrIter(TfPyObjWrapper const &obj)
 {
     typedef typename Array::ElementType ElemType;
     TfPyLock lock;
@@ -564,16 +517,31 @@ Vt_ConvertFromPySequence(TfPyObjWrapper const &obj)
         Array result(len);
         ElemType *elem = result.data();
         for (Py_ssize_t i = 0; i != len; ++i) {
-            boost::python::handle<> h(PySequence_ITEM(obj.ptr(), i));
+            pxr_boost::python::handle<> h(PySequence_ITEM(obj.ptr(), i));
             if (!h) {
                 if (PyErr_Occurred())
                     PyErr_Clear();
                 return VtValue();
             }
-            boost::python::extract<ElemType> e(h.get());
+            pxr_boost::python::extract<ElemType> e(h.get());
             if (!e.check())
                 return VtValue();
             *elem++ = e();
+        }
+        return VtValue(result);
+    } else if (PyIter_Check(obj.ptr())) {
+        Array result;
+        while (PyObject *item = PyIter_Next(obj.ptr())) {
+            pxr_boost::python::handle<> h(item);
+            if (!h) {
+                if (PyErr_Occurred())
+                    PyErr_Clear();
+                return VtValue();
+            }
+            pxr_boost::python::extract<ElemType> e(h.get());
+            if (!e.check())
+                return VtValue();
+            result.push_back(e());
         }
         return VtValue(result);
     }
@@ -602,7 +570,7 @@ Vt_CastToArray(VtValue const &v) {
     TfPyObjWrapper obj;
     // Attempt to convert from either python sequence or vector<VtValue>.
     if (v.IsHolding<TfPyObjWrapper>()) {
-        ret = Vt_ConvertFromPySequence<T>(v.UncheckedGet<TfPyObjWrapper>());
+        ret = Vt_ConvertFromPySequenceOrIter<T>(v.UncheckedGet<TfPyObjWrapper>());
     } else if (v.IsHolding<std::vector<VtValue> >()) {
         std::vector<VtValue> const &vec = v.UncheckedGet<std::vector<VtValue> >();
         ret = Vt_ConvertFromRange<T>(vec.begin(), vec.end());
@@ -619,10 +587,8 @@ void VtRegisterValueCastsFromPythonSequencesToArray()
     VtValue::RegisterCast<std::vector<VtValue>, Array>(Vt_CastToArray<Array>);
 }
 
-#define VT_WRAP_ARRAY(r, unused, elem)          \
+#define VT_WRAP_ARRAY(unused, elem)          \
     VtWrapArray< VtArray< VT_TYPE(elem) > >();
-#define VT_WRAP_COMPARISON(r, unused, elem)        \
-    VtWrapComparisonFunctions< VtArray< VT_TYPE(elem) > >();
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

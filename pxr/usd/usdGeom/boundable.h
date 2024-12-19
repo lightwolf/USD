@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDGEOM_GENERATED_BOUNDABLE_H
 #define USDGEOM_GENERATED_BOUNDABLE_H
@@ -84,8 +67,8 @@ class UsdGeomBoundable : public UsdGeomXformable
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::AbstractTyped;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::AbstractTyped;
 
     /// Construct a UsdGeomBoundable on UsdPrim \p prim .
     /// Equivalent to UsdGeomBoundable::Get(prim.GetStage(), prim.GetPath())
@@ -130,11 +113,11 @@ public:
 
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -155,9 +138,14 @@ public:
     /// Extent is a three dimensional range measuring the geometric
     /// extent of the authored gprim in its own local space (i.e. its own
     /// transform not applied), \em without accounting for any shader-induced
-    /// displacement.  Whenever any geometry-affecting attribute is authored
-    /// for any gprim in a layer, extent must also be authored at the same
-    /// timesample; failure to do so will result in incorrect bounds-computation.
+    /// displacement. If __any__ extent value has been authored for a given 
+    /// Boundable, then it should be authored at every timeSample at which 
+    /// geometry-affecting properties are authored, to ensure correct 
+    /// evaluation via ComputeExtent(). If __no__ extent value has been 
+    /// authored, then ComputeExtent() will call the Boundable's registered 
+    /// ComputeExtentFunction(), which may be expensive, which is why we 
+    /// strongly encourage proper authoring of extent.
+    /// \sa ComputeExtent()
     /// \sa \ref UsdGeom_Boundable_Extent.
     /// 
     /// An authored extent on a prim which has children is expected to include
@@ -191,6 +179,17 @@ public:
     //  - Close the include guard with #endif
     // ===================================================================== //
     // --(BEGIN CUSTOM CODE)--
+    
+    /// If an extent is authored on this boundable, it queries the \p extent 
+    /// from the extent attribute, otherwise if ComputeExtentFunction is 
+    /// registered for the boundable's type, it computes the \p extent at 
+    /// \p time. Returns true when extent is successfully populated, false 
+    /// otherwise.
+    ///
+    /// \sa ComputeExtentFromPlugins
+    /// \sa UsdGeomRegisterComputeExtentFunction
+    USDGEOM_API
+    bool ComputeExtent(const UsdTimeCode &time, VtVec3fArray *extent) const;
     
     /// Compute the extent for the Boundable prim \p boundable at time
     /// \p time.  If successful, populates \p extent with the result and

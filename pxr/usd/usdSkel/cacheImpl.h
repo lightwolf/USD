@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_SKEL_CACHE_IMPL_H
 #define PXR_USD_USD_SKEL_CACHE_IMPL_H
@@ -37,8 +20,6 @@
 #include "pxr/usd/usdSkel/skelDefinition.h"
 #include "pxr/usd/usdSkel/skeletonQuery.h"
 #include "pxr/usd/usdSkel/skinningQuery.h"
-
-#include <boost/optional.hpp>
 
 #include <tbb/concurrent_hash_map.h>
 #include <tbb/queuing_rw_mutex.h>
@@ -74,9 +55,10 @@ class UsdSkel_CacheImpl
 public:
     using RWMutex = tbb::queuing_rw_mutex;
 
-    struct SkinningQueryKey {
+    struct _SkinningQueryKey {
         UsdAttribute jointIndicesAttr;
         UsdAttribute jointWeightsAttr;
+        UsdAttribute skinningMethodAttr;
         UsdAttribute geomBindTransformAttr;
         UsdAttribute jointsAttr;
         UsdAttribute blendShapesAttr;
@@ -103,8 +85,10 @@ public:
 
         /// Method for populating the cache with cache properties, for
         /// the set of properties that depend on inherited state.
+        ///
         /// Returns true if any skinnable prims were populated.
-        bool Populate(const UsdSkelRoot& root);
+        bool Populate(const UsdSkelRoot& root,
+                      Usd_PrimFlagsPredicate predicate);
 
         // Getters for properties added to the cache through Populate().
 
@@ -115,16 +99,16 @@ public:
 
         UsdSkelSkinningQuery
         _FindOrCreateSkinningQuery(const UsdPrim& skinnedPrim,
-                                   const SkinningQueryKey& key);
+                                   const _SkinningQueryKey& key);
 
         using _PrimToSkinMap =
-            std::unordered_map<UsdPrim,SkinningQueryKey,UsdSkel_HashPrim>;
+            std::unordered_map<UsdPrim,_SkinningQueryKey,UsdSkel_HashPrim>;
 
         /// Recursively populate the cache beneath \p prim.
         /// Returns the number of skinnable prims populated beneath \p prim.
         void _RecursivePopulate(const SdfPath& rootPath,
                                 const UsdPrim& prim,
-                                SkinningQueryKey key,
+                                _SkinningQueryKey key,
                                 UsdSkelAnimQuery animQuery,
                                 _PrimToSkinMap* skinBindingMap,
                                 size_t depth=1);

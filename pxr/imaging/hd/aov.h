@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_AOV_H
 #define PXR_IMAGING_HD_AOV_H
@@ -39,7 +22,7 @@ typedef TfHashMap<TfToken, VtValue, TfToken::HashFunctor> HdAovSettingsMap;
 
 /// \class HdAovDescriptor
 ///
-/// A bundle of state describing an AOV ("Alternate Output Value") display
+/// A bundle of state describing an AOV ("Arbitrary Output Variable") display
 /// channel. Note that in hydra API, this data is split between
 /// HdRenderPassAovBinding and HdRenderBufferDescriptor. This class is
 /// provided for use in higher level application-facing API.
@@ -82,6 +65,12 @@ typedef std::vector<HdAovDescriptor> HdAovDescriptorList;
 ///
 /// Describes the allocation structure of a render buffer bprim.
 struct HdRenderBufferDescriptor {
+
+    HdRenderBufferDescriptor()
+        : dimensions(0), format(HdFormatInvalid), multiSampled(false) {}
+    HdRenderBufferDescriptor(GfVec3i const& _d, HdFormat _f, bool _ms)
+        : dimensions(_d), format(_f), multiSampled(_ms) {}
+
     /// The width, height, and depth of the allocated render buffer.
     GfVec3i dimensions;
 
@@ -115,6 +104,9 @@ struct HdRenderPassAovBinding {
 
     /// The identifier of the renderer output to be consumed. This should take
     /// a value from HdAovTokens.
+    /// Bindings for depth and depthStencil are identified by the "depth"
+    /// or "depthStencil" suffix, respectively.
+    /// See HdAovHasDepthSemantic() and HdAovHadDepthStencilSemantic().
     TfToken aovName;
 
     /// The render buffer to be bound to the above terminal output.
@@ -158,6 +150,13 @@ bool operator!=(const HdRenderPassAovBinding& lhs,
 HD_API
 size_t hash_value(const HdRenderPassAovBinding &b);
 
+/// Returns true if the AOV is used as a depth binding based on its name.
+HD_API
+bool HdAovHasDepthSemantic(TfToken const& aovName);
+
+/// Returns true if the AOV is used as a depthStencil binding based on its name.
+HD_API
+bool HdAovHasDepthStencilSemantic(TfToken const& aovName);
 
 /// \class HdParsedAovToken
 ///

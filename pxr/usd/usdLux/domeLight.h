@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDLUX_GENERATED_DOMELIGHT_H
 #define USDLUX_GENERATED_DOMELIGHT_H
@@ -28,7 +11,7 @@
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usdLux/api.h"
-#include "pxr/usd/usdLux/light.h"
+#include "pxr/usd/usdLux/nonboundableLightBase.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usdLux/tokens.h"
@@ -53,9 +36,12 @@ class SdfAssetPath;
 /// \class UsdLuxDomeLight
 ///
 /// Light emitted inward from a distant external environment,
-/// such as a sky or IBL light probe.  The orientation of a dome light with a
-/// latlong texture is expected to match the OpenEXR specification for latlong 
-/// environment maps.  From the OpenEXR documentation:
+/// such as a sky or IBL light probe.
+/// 
+/// In this version of the dome light, the dome's default orientation is such
+/// that its top pole is aligned with the world's +Y axis. This adheres to the
+/// OpenEXR specification for latlong environment maps.  From the OpenEXR
+/// documentation:
 /// 
 /// -------------------------------------------------------------------------
 /// Latitude-Longitude Map:
@@ -82,20 +68,20 @@ class SdfAssetPath;
 /// So to set an attribute to the value "rightHanded", use UsdLuxTokens->rightHanded
 /// as the value.
 ///
-class UsdLuxDomeLight : public UsdLuxLight
+class UsdLuxDomeLight : public UsdLuxNonboundableLightBase
 {
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::ConcreteTyped;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::ConcreteTyped;
 
     /// Construct a UsdLuxDomeLight on UsdPrim \p prim .
     /// Equivalent to UsdLuxDomeLight::Get(prim.GetStage(), prim.GetPath())
     /// for a \em valid \p prim, but will not immediately throw an error for
     /// an invalid \p prim
     explicit UsdLuxDomeLight(const UsdPrim& prim=UsdPrim())
-        : UsdLuxLight(prim)
+        : UsdLuxNonboundableLightBase(prim)
     {
     }
 
@@ -103,7 +89,7 @@ public:
     /// Should be preferred over UsdLuxDomeLight(schemaObj.GetPrim()),
     /// as it preserves SchemaBase state.
     explicit UsdLuxDomeLight(const UsdSchemaBase& schemaObj)
-        : UsdLuxLight(schemaObj)
+        : UsdLuxNonboundableLightBase(schemaObj)
     {
     }
 
@@ -158,11 +144,11 @@ public:
     Define(const UsdStagePtr &stage, const SdfPath &path);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -185,7 +171,7 @@ public:
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `asset texture:file` |
+    /// | Declaration | `asset inputs:texture:file` |
     /// | C++ Type | SdfAssetPath |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Asset |
     USDLUX_API
@@ -203,6 +189,7 @@ public:
     // --------------------------------------------------------------------- //
     // TEXTUREFORMAT 
     // --------------------------------------------------------------------- //
+    /// 
     /// Specifies the parameterization of the color map file.
     /// Valid values are:
     /// - automatic: Tries to determine the layout from the file itself.
@@ -220,7 +207,7 @@ public:
     ///
     /// | ||
     /// | -- | -- |
-    /// | Declaration | `token texture:format = "automatic"` |
+    /// | Declaration | `token inputs:texture:format = "automatic"` |
     /// | C++ Type | TfToken |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
     /// | \ref UsdLuxTokens "Allowed Values" | automatic, latlong, mirroredBall, angular, cubeMapVerticalCross |
@@ -234,6 +221,28 @@ public:
     /// the default for \p writeSparsely is \c false.
     USDLUX_API
     UsdAttribute CreateTextureFormatAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
+
+public:
+    // --------------------------------------------------------------------- //
+    // GUIDERADIUS 
+    // --------------------------------------------------------------------- //
+    /// The radius of guide geometry to use to visualize the dome light.  The default is 1 km for scenes whose metersPerUnit is the USD default of 0.01 (i.e., 1 world unit is 1 cm).
+    ///
+    /// | ||
+    /// | -- | -- |
+    /// | Declaration | `float guideRadius = 100000` |
+    /// | C++ Type | float |
+    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    USDLUX_API
+    UsdAttribute GetGuideRadiusAttr() const;
+
+    /// See GetGuideRadiusAttr(), and also 
+    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+    /// If specified, author \p defaultValue as the attribute's default,
+    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+    /// the default for \p writeSparsely is \c false.
+    USDLUX_API
+    UsdAttribute CreateGuideRadiusAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
 
 public:
     // --------------------------------------------------------------------- //

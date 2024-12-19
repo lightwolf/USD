@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hd/renderPassState.h"
 #include "pxr/imaging/plugin/hdEmbree/renderDelegate.h"
@@ -38,8 +21,6 @@ HdEmbreeRenderPass::HdEmbreeRenderPass(HdRenderIndex *index,
     , _sceneVersion(sceneVersion)
     , _lastSceneVersion(0)
     , _lastSettingsVersion(0)
-    , _width(0)
-    , _height(0)
     , _viewMatrix(1.0f) // == identity
     , _projMatrix(1.0f) // == identity
     , _aovBindings()
@@ -74,6 +55,21 @@ HdEmbreeRenderPass::IsConverged() const
         }
     }
     return true;
+}
+
+static
+GfRect2i
+_GetDataWindow(HdRenderPassStateSharedPtr const& renderPassState)
+{
+    const CameraUtilFraming &framing = renderPassState->GetFraming();
+    if (framing.IsValid()) {
+        return framing.dataWindow;
+    } else {
+        // For applications that use the old viewport API instead of
+        // the new camera framing API.
+        const GfVec4f vp = renderPassState->GetViewport();
+        return GfRect2i(GfVec2i(0), int(vp[2]), int(vp[3]));        
+    }
 }
 
 void
@@ -117,14 +113,16 @@ HdEmbreeRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
             renderDelegate->GetRenderSetting<bool>(
                 HdEmbreeRenderSettingsTokens->enableSceneColors, true));
 
+        _renderer->SetRandomNumberSeed(
+            renderDelegate->GetRenderSetting<unsigned int>(
+                HdEmbreeRenderSettingsTokens->randomNumberSeed, (unsigned int)-1));
+
         needStartRender = true;
     }
 
-    GfVec4f vp = renderPassState->GetViewport();
-
     // Determine whether we need to update the renderer camera.
-    GfMatrix4d view = renderPassState->GetWorldToViewMatrix();
-    GfMatrix4d proj = renderPassState->GetProjectionMatrix();
+    const GfMatrix4d view = renderPassState->GetWorldToViewMatrix();
+    const GfMatrix4d proj = renderPassState->GetProjectionMatrix();
     if (_viewMatrix != view || _projMatrix != proj) {
         _viewMatrix = view;
         _projMatrix = proj;
@@ -134,17 +132,36 @@ HdEmbreeRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
         needStartRender = true;
     }
 
-    // Determine whether we need to update the renderer viewport.
-    if (_width != vp[2] || _height != vp[3]) {
-        _width = vp[2];
-        _height = vp[3];
+    const GfRect2i dataWindow = _GetDataWindow(renderPassState);
+
+    if (_dataWindow != dataWindow) {
+        _dataWindow = dataWindow;
 
         _renderThread->StopRender();
-        _renderer->SetViewport(_width, _height);
-        _colorBuffer.Allocate(GfVec3i(_width, _height, 1), HdFormatUNorm8Vec4,
-                              /*multiSampled=*/true);
-        _depthBuffer.Allocate(GfVec3i(_width, _height, 1), HdFormatFloat32,
-                              /*multiSampled=*/false);
+        _renderer->SetDataWindow(dataWindow);
+
+        if (!renderPassState->GetFraming().IsValid()) {
+            // Support clients that do not use the new framing API
+            // and do not use AOVs.
+            //
+            // Note that we do not support the case of using the
+            // new camera framing API without using AOVs.
+            //
+            const GfVec3i dimensions(_dataWindow.GetWidth(),
+                                     _dataWindow.GetHeight(),
+                                     1);
+
+            _colorBuffer.Allocate(
+                dimensions,
+                HdFormatUNorm8Vec4,
+                /*multiSampled=*/true);
+            
+            _depthBuffer.Allocate(
+                dimensions,
+                HdFormatFloat32,
+                /*multiSampled=*/false);
+        }
+
         needStartRender = true;
     }
 
@@ -162,7 +179,7 @@ HdEmbreeRenderPass::_Execute(HdRenderPassStateSharedPtr const& renderPassState,
         _aovBindings = aovBindings;
 
         _renderThread->StopRender();
-        if (aovBindings.size() == 0) {
+        if (aovBindings.empty()) {
             HdRenderPassAovBinding colorAov;
             colorAov.aovName = HdAovTokens->color;
             colorAov.renderBuffer = &_colorBuffer;

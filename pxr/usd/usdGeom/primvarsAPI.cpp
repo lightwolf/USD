@@ -1,30 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usd/schemaRegistry.h"
 #include "pxr/usd/usd/typed.h"
-#include "pxr/usd/usd/tokens.h"
 
 #include "pxr/usd/sdf/types.h"
 #include "pxr/usd/sdf/assetPath.h"
@@ -38,11 +20,6 @@ TF_REGISTRY_FUNCTION(TfType)
         TfType::Bases< UsdAPISchemaBase > >();
     
 }
-
-TF_DEFINE_PRIVATE_TOKENS(
-    _schemaTokens,
-    (PrimvarsAPI)
-);
 
 /* virtual */
 UsdGeomPrimvarsAPI::~UsdGeomPrimvarsAPI()
@@ -62,8 +39,9 @@ UsdGeomPrimvarsAPI::Get(const UsdStagePtr &stage, const SdfPath &path)
 
 
 /* virtual */
-UsdSchemaType UsdGeomPrimvarsAPI::_GetSchemaType() const {
-    return UsdGeomPrimvarsAPI::schemaType;
+UsdSchemaKind UsdGeomPrimvarsAPI::_GetSchemaKind() const
+{
+    return UsdGeomPrimvarsAPI::schemaKind;
 }
 
 /* static */
@@ -117,14 +95,14 @@ PXR_NAMESPACE_CLOSE_SCOPE
 PXR_NAMESPACE_OPEN_SCOPE
 
 UsdGeomPrimvar 
-UsdGeomPrimvarsAPI::CreatePrimvar(const TfToken& attrName,
+UsdGeomPrimvarsAPI::CreatePrimvar(const TfToken& name,
                                 const SdfValueTypeName &typeName,
                                 const TfToken& interpolation,
                                 int elementSize) const
 {
     const UsdPrim &prim = GetPrim();
 
-    UsdGeomPrimvar primvar(prim, attrName, typeName);
+    UsdGeomPrimvar primvar(prim, name, typeName);
 
     if (primvar){
         if (!interpolation.IsEmpty())
@@ -134,6 +112,64 @@ UsdGeomPrimvarsAPI::CreatePrimvar(const TfToken& attrName,
     }
     // otherwise, errors have already been issued
     return primvar;
+}
+
+bool
+UsdGeomPrimvarsAPI::RemovePrimvar(const TfToken& name)
+{
+    const TfToken& attrName = UsdGeomPrimvar::_MakeNamespaced(name);
+    if (attrName.IsEmpty()) {
+        return false;
+    }
+
+    UsdPrim prim = GetPrim();
+    if (!prim) {
+        TF_CODING_ERROR("RemovePrimvar called on invalid prim: %s", 
+                        UsdDescribe(prim).c_str());
+        return false;
+    }
+
+    const UsdGeomPrimvar &primvar = UsdGeomPrimvar(prim.GetAttribute(attrName));
+    if (!primvar) {
+        return false;
+    }
+
+    const UsdAttribute& indexAttr = primvar.GetIndicesAttr();
+    bool success = true;
+    // If the Primvar is an indexed primvar, also remove the indexAttr
+    if (indexAttr) {
+        success = prim.RemoveProperty(indexAttr.GetName());
+    }
+    return prim.RemoveProperty(attrName) && success;
+}
+
+void
+UsdGeomPrimvarsAPI::BlockPrimvar(const TfToken& name)
+{
+    const TfToken& attrName = UsdGeomPrimvar::_MakeNamespaced(name);
+    if (attrName.IsEmpty()) {
+        return;
+    }
+
+    const UsdPrim& prim = GetPrim();
+    if (!prim) {
+        TF_CODING_ERROR("RemovePrimvar called on invalid prim: %s", 
+                        UsdDescribe(prim).c_str());
+        return;
+    }
+
+    const UsdGeomPrimvar &primvar = UsdGeomPrimvar(prim.GetAttribute(name));
+    if (!primvar) {
+        return;
+    }
+
+    // Always block indices attr irrespective of primvar is indexed or not
+    // This prevents leak of indices attr in a composed stage when a stronger
+    // layer has blocked the primvar and at a later time weaker layer adds
+    // indices to the primvar
+    primvar.BlockIndices();
+
+    primvar.GetAttr().Block();
 }
 
 
@@ -152,7 +188,7 @@ _MakePrimvars(std::vector<UsdProperty> const &props,
               bool (filterPass)(UsdGeomPrimvar const &))
 {
     std::vector<UsdGeomPrimvar> primvars;
-    
+    primvars.reserve(props.size());
     for (UsdProperty const &prop : props) {
         // All prefixed properties except the ones that contain extra
         // namespaces (eg. the ":indices" attributes belonging to indexed
@@ -169,6 +205,7 @@ _MakePrimvars(std::vector<UsdProperty> const &props,
 std::vector<UsdGeomPrimvar>
 UsdGeomPrimvarsAPI::GetPrimvars() const
 {
+    TRACE_FUNCTION();
     const UsdPrim &prim = GetPrim();
     if (!prim){
         TF_CODING_ERROR("Called GetPrimvars on invalid prim: %s", 
@@ -183,6 +220,7 @@ UsdGeomPrimvarsAPI::GetPrimvars() const
 std::vector<UsdGeomPrimvar>
 UsdGeomPrimvarsAPI::GetAuthoredPrimvars() const
 {
+    TRACE_FUNCTION();
     const UsdPrim &prim = GetPrim();
     if (!prim){
         TF_CODING_ERROR("Called GetAuthoredPrimvars on invalid prim: %s", 
@@ -198,6 +236,7 @@ UsdGeomPrimvarsAPI::GetAuthoredPrimvars() const
 std::vector<UsdGeomPrimvar> 
 UsdGeomPrimvarsAPI::GetPrimvarsWithValues() const
 {
+    TRACE_FUNCTION();
     const UsdPrim &prim = GetPrim();
     if (!prim){
         TF_CODING_ERROR("Called GetPrimvarsWithValues on invalid prim: %s", 
@@ -213,6 +252,7 @@ UsdGeomPrimvarsAPI::GetPrimvarsWithValues() const
 std::vector<UsdGeomPrimvar> 
 UsdGeomPrimvarsAPI::GetPrimvarsWithAuthoredValues() const
 {
+    TRACE_FUNCTION();
     const UsdPrim &prim = GetPrim();
     if (!prim){
         TF_CODING_ERROR("Called GetPrimvarsWithAuthoredValues on invalid prim: %s", 
@@ -495,6 +535,14 @@ UsdGeomPrimvarsAPI::HasPossiblyInheritedPrimvar(const TfToken &name) const
         }
     }
     return false;
+}
+
+/* static */
+bool
+UsdGeomPrimvarsAPI::CanContainPropertyName(const TfToken& name)
+{
+    TfToken const& prefix = UsdGeomPrimvar::_GetNamespacePrefix();
+    return TfStringStartsWith(name, prefix);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

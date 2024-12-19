@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_PRIM_DATA_H
 #define PXR_USD_USD_PRIM_DATA_H
@@ -39,10 +22,6 @@
 #include "pxr/base/tf/token.h"
 
 #include "pxr/usd/sdf/path.h"
-
-#include <boost/range/iterator_range.hpp>
-#include <boost/iterator/iterator_adaptor.hpp>
-#include <boost/intrusive_ptr.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -102,6 +81,14 @@ public:
         return _primTypeInfo->GetTypeName(); 
     }
 
+    /// Returns the full type info for the prim.
+    const UsdPrimTypeInfo &GetPrimTypeInfo() const {
+        return *_primTypeInfo;
+    }
+
+    /// Returns true if this prim is the pseudoroot.
+    bool IsPseudoRoot() const { return _flags[Usd_PrimPseudoRootFlag]; }
+
     /// Return true if this prim is active, meaning neither it nor any of its
     /// ancestors have active=false.  Return false otherwise.
     bool IsActive() const { return _flags[Usd_PrimActiveFlag]; }
@@ -119,6 +106,11 @@ public:
     /// false otherwise.  If this prim is a group, it is also necessarily a
     /// model.
     bool IsGroup() const { return _flags[Usd_PrimGroupFlag]; }
+
+    bool IsComponent() const { return _flags[Usd_PrimComponentFlag]; }
+
+    USD_API
+    bool IsSubComponent() const; 
 
     /// Return true if this prim or any of its ancestors is a class.
     bool IsAbstract() const { return _flags[Usd_PrimAbstractFlag]; }
@@ -163,12 +155,12 @@ public:
     /// sites that contribute to the prim's property and metadata values in
     /// minute detail.
     ///
-    /// For master prims this prim index will be empty; this ensures
+    /// For prototype prims this prim index will be empty; this ensures
     /// that these prims do not provide any attribute or metadata
     /// values. 
     ///
-    /// For all other prims in masters, this is the prim index for the 
-    /// instance that was chosen to serve as the master for all other 
+    /// For all other prims in prototypes, this is the prim index for the 
+    /// instance that was chosen to serve as the prototype for all other 
     /// instances.  
     ///
     /// In either of the above two cases, this prim index will not have the 
@@ -178,9 +170,9 @@ public:
 
     /// Return a const reference to the source PcpPrimIndex for this prim.
     ///
-    /// For all prims in masters (which includes the master prim itself), 
+    /// For all prims in prototypes (which includes the prototype prim itself), 
     /// this is the prim index for the instance that was chosen to serve
-    /// as the master for all other instances.  This prim index will not
+    /// as the prototype for all other instances.  This prim index will not
     /// have the same path as the prim's path.
     USD_API
     const class PcpPrimIndex &GetSourcePrimIndex() const;
@@ -221,28 +213,30 @@ public:
     
     // Return the prim data at \p path.  If \p path indicates a prim
     // beneath an instance, return the prim data for the corresponding 
-    // prim in the instance's master.
+    // prim in the instance's prototype.
     USD_API Usd_PrimDataConstPtr 
-    GetPrimDataAtPathOrInMaster(const SdfPath &path) const;
+    GetPrimDataAtPathOrInPrototype(const SdfPath &path) const;
 
     // --------------------------------------------------------------------- //
     // Instancing
     // --------------------------------------------------------------------- //
 
-    /// Return true if this prim is an instance of a shared master prim,
+    /// Return true if this prim is an instance of a shared prototype prim,
     /// false otherwise.
     bool IsInstance() const { return _flags[Usd_PrimInstanceFlag]; }
 
-    /// Return true if this prim is a shared master prim, false otherwise.
-    bool IsMaster() const { return IsInMaster() && GetPath().IsRootPrimPath(); }
+    /// Return true if this prim is a shared prototype prim, false otherwise.
+    bool IsPrototype() const { 
+        return IsInPrototype() && GetPath().IsRootPrimPath(); 
+    }
 
-    /// Return true if this prim is a child of a shared master prim,
+    /// Return true if this prim is a child of a shared prototype prim,
     /// false otherwise.
-    bool IsInMaster() const { return _flags[Usd_PrimMasterFlag]; }
+    bool IsInPrototype() const { return _flags[Usd_PrimPrototypeFlag]; }
 
     /// If this prim is an instance, return the prim data for the corresponding
-    /// master.  Otherwise, return nullptr.
-    USD_API Usd_PrimDataConstPtr GetMaster() const;
+    /// prototype.  Otherwise, return nullptr.
+    USD_API Usd_PrimDataConstPtr GetPrototype() const;
 
     // --------------------------------------------------------------------- //
     // Private Members
@@ -255,8 +249,8 @@ private:
     ~Usd_PrimData();
 
     // Compute and store type info and cached flags.
-    void _ComposeAndCacheTypeAndFlags(
-        Usd_PrimDataConstPtr parent, bool isMasterPrim);
+    void _ComposeAndCacheFlags(
+        Usd_PrimDataConstPtr parent, bool isPrototypePrim);
 
     // Flags direct access for Usd_PrimFlagsPredicate.
     friend class Usd_PrimFlagsPredicate;
@@ -296,41 +290,33 @@ private:
         _flags[Usd_PrimClipsFlag] = hasClips;
     }
 
-    typedef boost::iterator_range<
-        class Usd_PrimDataSiblingIterator> SiblingRange;
-
     inline class Usd_PrimDataSiblingIterator _ChildrenBegin() const;
     inline class Usd_PrimDataSiblingIterator _ChildrenEnd() const;
-    inline SiblingRange _GetChildrenRange() const;
-
-    typedef boost::iterator_range<
-        class Usd_PrimDataSubtreeIterator> SubtreeRange;
 
     inline class Usd_PrimDataSubtreeIterator _SubtreeBegin() const;
     inline class Usd_PrimDataSubtreeIterator _SubtreeEnd() const;
-    inline SubtreeRange _GetSubtreeRange() const;
 
     // Data members.
     UsdStage *_stage;
     const PcpPrimIndex *_primIndex;
     SdfPath _path;
-    const Usd_PrimTypeInfo *_primTypeInfo;
+    const UsdPrimTypeInfo *_primTypeInfo;
     Usd_PrimData *_firstChild;
     TfPointerAndBits<Usd_PrimData> _nextSiblingOrParent;
     mutable std::atomic<int64_t> _refCount;
     Usd_PrimFlagBits _flags;
 
     // intrusive_ptr core primitives implementation.
-    friend void intrusive_ptr_add_ref(const Usd_PrimData *prim) {
+    friend void TfDelegatedCountIncrement(const Usd_PrimData *prim) noexcept {
         prim->_refCount.fetch_add(1, std::memory_order_relaxed);
     }
-    friend void intrusive_ptr_release(const Usd_PrimData *prim) {
+    friend void TfDelegatedCountDecrement(const Usd_PrimData *prim) noexcept {
         if (prim->_refCount.fetch_sub(1, std::memory_order_release) == 1)
             delete prim;
     }
 
     USD_API
-    friend void Usd_IssueFatalPrimAccessError(Usd_PrimData const *p);
+    friend void Usd_ThrowExpiredPrimAccessError(Usd_PrimData const *p);
     friend std::string
     Usd_DescribePrimData(const Usd_PrimData *p, SdfPath const &proxyPrimPath);
 
@@ -343,44 +329,54 @@ private:
 };
 
 // Sibling iterator class.
-class Usd_PrimDataSiblingIterator : public boost::iterator_adaptor<
-    Usd_PrimDataSiblingIterator,                  // crtp.
-    Usd_PrimData *,                               // base iterator.
-    Usd_PrimData *,                               // value.
-    boost::forward_traversal_tag,                 // traversal.
-    Usd_PrimData *                                // reference.
-    >
-{
+class Usd_PrimDataSiblingIterator {
+    using _UnderylingIterator = Usd_PrimData*;
 public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = Usd_PrimData*;
+    using reference = Usd_PrimData*;
+    using pointer = void;
+    using difference_type = std::ptrdiff_t;
+
     // Default ctor.
-    Usd_PrimDataSiblingIterator() {}
+    Usd_PrimDataSiblingIterator() = default;
+
+    reference operator*() const { return _underlyingIterator; }
+
+    // pre-increment
+    Usd_PrimDataSiblingIterator& operator++() {
+        increment();
+        return *this;
+    }
+
+    // post-increment
+    Usd_PrimDataSiblingIterator operator++(int) {
+        Usd_PrimDataSiblingIterator result = *this;
+        increment();
+        return result;
+    }
+
+    bool operator==(const Usd_PrimDataSiblingIterator& other) const {
+        return _underlyingIterator == other._underlyingIterator;
+    }
+
+    bool operator!=(const Usd_PrimDataSiblingIterator& other) const {
+        return _underlyingIterator != other._underlyingIterator;
+    }
 
 private:
     friend class Usd_PrimData;
 
     // Constructor used by Prim.
-    Usd_PrimDataSiblingIterator(const base_type &i)
-        : iterator_adaptor_(i) {}
+    Usd_PrimDataSiblingIterator(const _UnderylingIterator &i)
+        : _underlyingIterator(i) {}
 
-    // Core primitives implementation.
-    friend class boost::iterator_core_access;
-    reference dereference() const { return base(); }
     void increment() {
-        base_reference() = base_reference()->GetNextSibling();
+        _underlyingIterator = _underlyingIterator->GetNextSibling();
     }
+
+    _UnderylingIterator _underlyingIterator = nullptr;
 };
-
-// Sibling range.
-typedef boost::iterator_range<
-    class Usd_PrimDataSiblingIterator> Usd_PrimDataSiblingRange;
-
-// Inform TfIterator it should feel free to make copies of the range type.
-template <>
-struct Tf_ShouldIterateOverCopy<
-    Usd_PrimDataSiblingRange> : boost::true_type {};
-template <>
-struct Tf_ShouldIterateOverCopy<
-    const Usd_PrimDataSiblingRange> : boost::true_type {};
 
 Usd_PrimDataSiblingIterator
 Usd_PrimData::_ChildrenBegin() const
@@ -394,54 +390,58 @@ Usd_PrimData::_ChildrenEnd() const
     return Usd_PrimDataSiblingIterator(0);
 }
 
-Usd_PrimData::SiblingRange
-Usd_PrimData::_GetChildrenRange() const
-{
-    return Usd_PrimData::SiblingRange(_ChildrenBegin(), _ChildrenEnd());
-}
-
-
 // Tree iterator class.
-class Usd_PrimDataSubtreeIterator : public boost::iterator_adaptor<
-    Usd_PrimDataSubtreeIterator,                  // crtp.
-    Usd_PrimData *,                               // base iterator.
-    Usd_PrimData *,                               // value.
-    boost::forward_traversal_tag,                 // traversal.
-    Usd_PrimData *                                // reference.
-    >
-{
+class Usd_PrimDataSubtreeIterator {
+    using _UnderlyingIterator = Usd_PrimData*;
 public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = Usd_PrimData*;
+    using reference = Usd_PrimData*;
+    using pointer = void;
+    using difference_type = std::ptrdiff_t;
+
     // Default ctor.
-    Usd_PrimDataSubtreeIterator() {}
+    Usd_PrimDataSubtreeIterator() = default;
+
+    reference operator*() const { return _underlyingIterator; }
+
+    // pre-increment
+    Usd_PrimDataSubtreeIterator& operator++() {
+        increment();
+        return *this;
+    }
+
+    // post-increment
+    Usd_PrimDataSubtreeIterator operator++(int) {
+        Usd_PrimDataSubtreeIterator result = *this;
+        increment();
+        return result;
+    }
+
+    bool operator==(const Usd_PrimDataSubtreeIterator& other) const {
+        return _underlyingIterator == other._underlyingIterator;
+    }
+
+    bool operator!=(const Usd_PrimDataSubtreeIterator& other) const {
+        return _underlyingIterator != other._underlyingIterator;
+    }
 
 private:
     friend class Usd_PrimData;
     friend class UsdPrimSubtreeIterator;
 
     // Constructor used by Prim.
-    Usd_PrimDataSubtreeIterator(const base_type &i)
-        : iterator_adaptor_(i) {}
+    Usd_PrimDataSubtreeIterator(const _UnderlyingIterator &i)
+        : _underlyingIterator(i) {}
 
-    // Core primitives implementation.
-    friend class boost::iterator_core_access;
-    reference dereference() const { return base(); }
     void increment() {
-        base_type &b = base_reference();
-        b = b->GetFirstChild() ? b->GetFirstChild() : b->GetNextPrim();
+        _underlyingIterator = _underlyingIterator->GetFirstChild() ?
+            _underlyingIterator->GetFirstChild() :
+            _underlyingIterator->GetNextPrim();
     }
+
+    _UnderlyingIterator _underlyingIterator = nullptr;
 };
-
-// Tree range.
-typedef boost::iterator_range<
-    class Usd_PrimDataSubtreeIterator> Usd_PrimDataSubtreeRange;
-
-// Inform TfIterator it should feel free to make copies of the range type.
-template <>
-struct Tf_ShouldIterateOverCopy<
-    Usd_PrimDataSubtreeRange> : boost::true_type {};
-template <>
-struct Tf_ShouldIterateOverCopy<
-    const Usd_PrimDataSubtreeRange> : boost::true_type {};
 
 Usd_PrimDataSubtreeIterator
 Usd_PrimData::_SubtreeBegin() const
@@ -454,12 +454,6 @@ Usd_PrimDataSubtreeIterator
 Usd_PrimData::_SubtreeEnd() const
 {
     return Usd_PrimDataSubtreeIterator(GetNextPrim());
-}
-
-Usd_PrimData::SubtreeRange
-Usd_PrimData::_GetSubtreeRange() const
-{
-    return Usd_PrimData::SubtreeRange(_SubtreeBegin(), _SubtreeEnd());
 }
 
 // Helpers for instance proxies.
@@ -497,7 +491,7 @@ Usd_CreatePredicateForTraversal(const PrimDataPtr &p,
 }
 
 // Move \p p to its parent.  If \p proxyPrimPath is not empty, set it to 
-// its parent path.  If after this \p p is a master prim, move \p p to
+// its parent path.  If after this \p p is a prototype prim, move \p p to
 // the prim indicated by \p proxyPrimPath.  If \p p's path is then equal
 // to \p proxyPrimPath, set \p proxyPrimPath to the empty path.
 template <class PrimDataPtr>
@@ -509,8 +503,8 @@ Usd_MoveToParent(PrimDataPtr &p, SdfPath &proxyPrimPath)
     if (!proxyPrimPath.IsEmpty()) {
         proxyPrimPath = proxyPrimPath.GetParentPath();
 
-        if (p && p->IsMaster()) {
-            p = p->GetPrimDataAtPathOrInMaster(proxyPrimPath);
+        if (p && p->IsPrototype()) {
+            p = p->GetPrimDataAtPathOrInPrototype(proxyPrimPath);
             if (TF_VERIFY(p, "No prim at <%s>", proxyPrimPath.GetText()) &&
                 p->GetPath() == proxyPrimPath) {
                 proxyPrimPath = SdfPath();
@@ -558,8 +552,8 @@ Usd_MoveToNextSiblingOrParent(PrimDataPtr &p, SdfPath &proxyPrimPath,
         }
         else {
             proxyPrimPath = proxyPrimPath.GetParentPath();
-            if (p && p->IsMaster()) {
-                p = p->GetPrimDataAtPathOrInMaster(proxyPrimPath);
+            if (p && p->IsPrototype()) {
+                p = p->GetPrimDataAtPathOrInPrototype(proxyPrimPath);
                 if (TF_VERIFY(p, "No prim at <%s>", proxyPrimPath.GetText()) &&
                     p->GetPath() == proxyPrimPath) {
                     proxyPrimPath = SdfPath();
@@ -584,7 +578,7 @@ Usd_MoveToNextSiblingOrParent(PrimDataPtr &p, SdfPath &proxyPrimPath,
 
 // Search for the first direct child of \p p that matches \p pred (up to
 // \p end).  If the given \p p is an instance, search for direct children 
-// on the  corresponding master prim.  If such a direct child exists, 
+// on the  corresponding prototype prim.  If such a direct child exists, 
 // move \p p to it, and return true.  Otherwise leave the iterator 
 // unchanged and return false.  
 template <class PrimDataPtr>
@@ -597,7 +591,7 @@ Usd_MoveToChild(PrimDataPtr &p, SdfPath &proxyPrimPath,
 
     PrimDataPtr src = p;
     if (src->IsInstance()) {
-        src = src->GetMaster();
+        src = src->GetPrototype();
         isInstanceProxy = true;
     }
 

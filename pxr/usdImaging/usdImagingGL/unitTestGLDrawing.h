@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_IMAGING_USD_IMAGING_GL_UNIT_TEST_GLDRAWING_H
 #define PXR_USD_IMAGING_USD_IMAGING_GL_UNIT_TEST_GLDRAWING_H
@@ -31,6 +14,7 @@
 #include "pxr/base/tf/declarePtrs.h"
 
 #include "pxr/usdImaging/usdImagingGL/engine.h"
+#include "pxr/usdImaging/usdImaging/delegate.h"
 
 #include <string>
 #include <vector>
@@ -44,7 +28,8 @@ class UsdImagingGL_UnitTestWindow;
 ///
 /// A helper class for unit tests which need to perform GL drawing.
 ///
-class UsdImagingGL_UnitTestGLDrawing {
+class UsdImagingGL_UnitTestGLDrawing
+{
 public:
     UsdImagingGL_UnitTestGLDrawing();
     virtual ~UsdImagingGL_UnitTestGLDrawing();
@@ -55,12 +40,21 @@ public:
     bool IsEnabledTestLighting() const { return _testLighting; }
     bool IsEnabledSceneLights() const { return _sceneLights; }
     bool IsEnabledCameraLight() const { return _cameraLight; }
-    bool IsEnabledCullBackfaces() const { return _cullBackfaces; }
     bool IsEnabledIdRender() const { return _testIdRender; }
+    bool IsEnabledSceneMaterials() const { return _enableSceneMaterials; }
+    bool IsEnabledUnloadedAsBounds() const { return _unloadedAsBounds; }
     
     bool IsShowGuides() const { return _showGuides; }
     bool IsShowRender() const { return _showRender; }
     bool IsShowProxy() const { return _showProxy; }
+
+    // We use a client created presentation output (framebuffer) when
+    // testing present output, otherwise we output AOV images directly.
+    bool PresentComposite() const { return _presentComposite; }
+    bool PresentDisabled() const { return _presentDisabled; }
+    bool IsEnabledTestPresentOutput() const {
+        return PresentComposite() || PresentDisabled();
+    }
 
     UsdImagingGLDrawMode GetDrawMode() const { return _drawMode; }
 
@@ -75,6 +69,12 @@ public:
     VtDictionary const &GetRenderSettings() const { return _renderSettings; }
     TfToken const & GetRendererAov() const { return _rendererAov; }
     std::string const &GetPerfStatsFile() const { return _perfStatsFile; }
+    float GetPixelAspectRatio() const { return _pixelAspectRatio; }
+    GfRange2f const & GetDisplayWindow() const { return _displayWindow; }
+    GfRect2i const & GetDataWindow() const { return _dataWindow; }
+    CameraUtilConformWindowPolicy const &
+    GetWindowPolicy() const { return _windowPolicy; }
+    UsdImagingGLCullStyle GetCullStyle() const { return _cullStyle; }
 
     void RunTest(int argc, char *argv[]);
 
@@ -87,7 +87,16 @@ public:
     virtual void MouseMove(int x, int y, int modKeys);
     virtual void KeyRelease(int key);
 
-    bool WriteToFile(std::string const & attachment, std::string const & filename) const;
+    // Write an output image from the specified AOV or from the client
+    // created presentation output when present output testing is enabled.
+    bool WriteToFile(UsdImagingGLEngine *engine,
+                     TfToken const &aovName,
+                     std::string const &filename);
+
+    // Helper method to write an output image from the specified AOV.
+    static bool WriteAovToFile(UsdImagingGLEngine *engine,
+                               TfToken const &aovName,
+                               std::string const &filename);
 
 protected:
     float _GetComplexity() const { return _complexity; }
@@ -115,6 +124,8 @@ private:
     bool _cameraLight;
     std::string _cameraPath;
     bool _testIdRender;
+    bool _enableSceneMaterials;
+    bool _unloadedAsBounds;
 
     std::string _stageFilePath;
     std::string _outputFilePath;
@@ -128,9 +139,14 @@ private:
 
     UsdImagingGLDrawMode _drawMode;
     bool _shouldFrameAll;
-    bool _cullBackfaces;
+    UsdImagingGLCullStyle _cullStyle;
     GfVec4f _clearColor;
     GfVec3f _translate;
+    float _pixelAspectRatio;
+    GfRange2f _displayWindow;
+    GfRect2i _dataWindow;
+    CameraUtilConformWindowPolicy _windowPolicy;
+
     VtDictionary _renderSettings;
     TfToken _rendererAov;
     std::string _perfStatsFile;
@@ -139,6 +155,8 @@ private:
     bool _showGuides;
     bool _showRender;
     bool _showProxy;
+    bool _presentComposite;
+    bool _presentDisabled;
 };
 
 

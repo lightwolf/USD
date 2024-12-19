@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usd/schemaBase.h"
@@ -32,13 +15,13 @@
 #include "pxr/base/tf/pyUtils.h"
 #include "pxr/base/tf/wrapTypeHelpers.h"
 
-#include <boost/python.hpp>
+#include "pxr/external/boost/python.hpp"
 
 #include <string>
 
-using namespace boost::python;
-
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -48,6 +31,15 @@ namespace {
 // fwd decl.
 WRAP_CUSTOM;
 
+
+static std::string
+_Repr(const UsdGeomPrimvarsAPI &self)
+{
+    std::string primRepr = TfPyRepr(self.GetPrim());
+    return TfStringPrintf(
+        "UsdGeom.PrimvarsAPI(%s)",
+        primRepr.c_str());
+}
 
 } // anonymous namespace
 
@@ -79,6 +71,7 @@ void wrapUsdGeomPrimvarsAPI()
         .def(!self)
 
 
+        .def("__repr__", ::_Repr)
     ;
 
     _CustomWrapCode(cls);
@@ -105,11 +98,44 @@ void wrapUsdGeomPrimvarsAPI()
 
 namespace {
 
+static UsdGeomPrimvar
+_CreateNonIndexedPrimvar(const UsdGeomPrimvarsAPI &self, const TfToken &name, 
+        const SdfValueTypeName &typeName, const object &pyVal, 
+        const TfToken &interpolation, int elementSize, UsdTimeCode time)
+{
+    VtValue val = UsdPythonToSdfType(pyVal, typeName);
+    return self.CreateNonIndexedPrimvar(name, typeName, val, interpolation, 
+            elementSize, time);
+}
+
+static UsdGeomPrimvar
+_CreateIndexedPrimvar(const UsdGeomPrimvarsAPI &self, const TfToken &name, 
+        const SdfValueTypeName &typeName, const object &pyVal, 
+        const VtIntArray &indices, const TfToken &interpolation, 
+        int elementSize, UsdTimeCode time)
+{
+    VtValue val = UsdPythonToSdfType(pyVal, typeName);
+    return self.CreateIndexedPrimvar(name, typeName, val, indices, 
+            interpolation, elementSize, time);
+}
+
 WRAP_CUSTOM {
     _class
         .def("CreatePrimvar", &UsdGeomPrimvarsAPI::CreatePrimvar,
-             (arg("attrName"), arg("typeName"), arg("interpolation")=TfToken(),
+             (arg("name"), arg("typeName"), arg("interpolation")=TfToken(),
               arg("elementSize")=-1))
+        .def("CreateNonIndexedPrimvar", _CreateNonIndexedPrimvar,
+             (arg("name"), arg("typeName"), arg("value"),
+              arg("interpolation")=TfToken(), arg("elementSize")=-1, 
+              arg("time")=UsdTimeCode::Default()))
+        .def("CreateIndexedPrimvar", _CreateIndexedPrimvar,
+             (arg("name"), arg("typeName"), arg("value"), arg("indices"),
+              arg("interpolation")=TfToken(), arg("elementSize")=-1, 
+              arg("time")=UsdTimeCode::Default()))
+        .def("RemovePrimvar", &UsdGeomPrimvarsAPI::RemovePrimvar,
+             arg("name"))
+        .def("BlockPrimvar", &UsdGeomPrimvarsAPI::BlockPrimvar,
+             arg("name"))
         .def("GetPrimvar", &UsdGeomPrimvarsAPI::GetPrimvar, arg("name"))
         .def("GetPrimvars", &UsdGeomPrimvarsAPI::GetPrimvars,
              return_value_policy<TfPySequenceToList>())
@@ -144,6 +170,9 @@ WRAP_CUSTOM {
         .def("HasPossiblyInheritedPrimvar", 
              &UsdGeomPrimvarsAPI::HasPossiblyInheritedPrimvar,
              arg("name"))
+        .def("CanContainPropertyName", 
+             &UsdGeomPrimvarsAPI::CanContainPropertyName, arg("name"))
+        .staticmethod("CanContainPropertyName")
         ;
 }
 

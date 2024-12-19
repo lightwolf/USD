@@ -1,9 +1,9 @@
 set(PXR_PREFIX pxr/usdImaging)
 set(PXR_PACKAGE usdAppUtils)
 
-if (NOT ${PXR_ENABLE_GL_SUPPORT})
+if (NOT ${PXR_BUILD_GPU_SUPPORT})
     message(STATUS
-        "Skipping ${PXR_PACKAGE} because PXR_ENABLE_GL_SUPPORT is OFF")
+        "Skipping ${PXR_PACKAGE} because PXR_BUILD_GPU_SUPPORT is OFF")
     return()
 endif()
 
@@ -11,16 +11,12 @@ pxr_library(usdAppUtils
     LIBRARIES
         garch
         gf
-        glf
+        hio
         sdf
         tf
         usd
         usdGeom
         usdImagingGL
-        ${Boost_PYTHON_LIBRARY}
-
-    INCLUDE_DIRS
-        ${Boost_INCLUDE_DIRS}
 
     PUBLIC_HEADERS
         api.h
@@ -44,6 +40,9 @@ pxr_library(usdAppUtils
         complexityArgs.py
         framesArgs.py
         rendererArgs.py
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 pxr_test_scripts(
@@ -63,6 +62,11 @@ pxr_register_test(testUsdAppUtilsCamera
     EXPECTED_RETURN_CODE 0
 )
 
+
+pxr_install_test_dir(
+    SRC testenv/CmdlineArgsTest
+    DEST testUsdAppUtilsCmdlineArgs
+)
 pxr_register_test(testUsdAppUtilsCmdlineArgs
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAppUtilsCmdlineArgs"
@@ -79,7 +83,7 @@ pxr_install_test_dir(
     SRC testenv/FrameRecorderTest
     DEST testUsdAppUtilsFrameRecorder
 )
-if (NOT PXR_HEADLESS_TEST_MODE)
+if (NOT PXR_HEADLESS_TEST_MODE AND NOT WIN32 AND NOT APPLE)
     pxr_register_test(testUsdAppUtilsFrameRecorder
         PYTHON
         COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdAppUtilsFrameRecorder"

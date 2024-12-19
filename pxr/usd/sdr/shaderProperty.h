@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #ifndef PXR_USD_SDR_SHADER_PROPERTY_H
@@ -34,6 +17,7 @@
 #include "pxr/base/tf/weakBase.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/usd/ndr/property.h"
+#include "pxr/usd/ndr/sdfTypeIndicator.h"
 #include "pxr/usd/sdr/shaderNode.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -45,6 +29,7 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((String,   "string"))       \
     ((Float,    "float"))        \
     ((Color,    "color"))        \
+    ((Color4,   "color4"))       \
     ((Point,    "point"))        \
     ((Normal,   "normal"))       \
     ((Vector,   "vector"))       \
@@ -68,12 +53,14 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((Options, "options"))                           \
     ((IsDynamicArray, "isDynamicArray"))             \
     ((Connectable, "connectable"))                   \
+    ((Tag, "tag"))                                   \
     ((ValidConnectionTypes, "validConnectionTypes")) \
     ((VstructMemberOf, "vstructMemberOf"))           \
     ((VstructMemberName, "vstructMemberName"))       \
     ((VstructConditionalExpr, "vstructConditionalExpr"))\
     ((IsAssetIdentifier, "__SDR__isAssetIdentifier"))\
     ((ImplementationName, "__SDR__implementationName"))\
+    ((SdrUsdDefinitionType, "sdrUsdDefinitionType"))\
     ((DefaultInput, "__SDR__defaultinput"))          \
     ((Target, "__SDR__target"))                      \
     ((Colorspace, "__SDR__colorspace"))
@@ -83,11 +70,15 @@ PXR_NAMESPACE_OPEN_SCOPE
 #define SDR_PROPERTY_ROLE_TOKENS \
     ((None, "none"))
 
+#define SDR_PROPERTY_TOKENS \
+    ((PageDelimiter, ":"))
+
 TF_DECLARE_PUBLIC_TOKENS(SdrPropertyTypes, SDR_API, SDR_PROPERTY_TYPE_TOKENS);
 TF_DECLARE_PUBLIC_TOKENS(SdrPropertyMetadata, SDR_API, 
                          SDR_PROPERTY_METADATA_TOKENS);
 TF_DECLARE_PUBLIC_TOKENS(SdrPropertyRole, SDR_API,
                          SDR_PROPERTY_ROLE_TOKENS);
+TF_DECLARE_PUBLIC_TOKENS(SdrPropertyTokens, SDR_API, SDR_PROPERTY_TOKENS);
 
 /// \class SdrShaderProperty
 ///
@@ -124,9 +115,11 @@ public:
 
     /// The help message assigned to this property, if any.
     SDR_API
-    const std::string& GetHelp() const;
+    std::string GetHelp() const;
 
-    /// The page (group), eg "Advanced", this property appears on, if any.
+    /// The page (group), eg "Advanced", this property appears on, if any. Note
+    /// that the page for a shader property can be nested, delimited by ":", 
+    /// representing the hierarchy of sub-pages a property is defined in.
     SDR_API
     const TfToken& GetPage() const { return _page; }
 
@@ -155,7 +148,7 @@ public:
     /// this method to get the correct name;  using \c getName() is not
     /// correct.
     SDR_API
-    const std::string& GetImplementationName() const;
+    std::string GetImplementationName() const;
 
     /// @}
 
@@ -221,16 +214,30 @@ public:
     /// \name Utilities
     /// @{
 
-    /// Converts the property's type from `GetType()` into a `SdfValueTypeName`.
+    /// Converts the property's type from `GetType()` into a
+    /// `NdrSdfTypeIndicator`.
     ///
     /// Two scenarios can result: an exact mapping from property type to Sdf
-    /// type, and an inexact mapping. In the first scenario, the first element
-    /// in the pair will be the cleanly-mapped Sdf type, and the second element,
-    /// a TfToken, will be empty. In the second scenario, the Sdf type will be
-    /// set to `Token` to indicate an unclean mapping, and the second element
-    /// will be set to the original type returned by `GetType()`.
+    /// type, and an inexact mapping. In the first scenario,
+    /// NdrSdfTypeIndicator will contain a cleanly-mapped Sdf type. In the
+    /// second scenario, the NdrSdfTypeIndicator will contain an Sdf type
+    /// set to `Token` to indicate an unclean mapping, and
+    /// NdrSdfTypeIndicator::GetNdrType will be set to the original type
+    /// returned by `GetType()`.
     SDR_API
-    const SdfTypeIndicator GetTypeAsSdfType() const override;
+    NdrSdfTypeIndicator GetTypeAsSdfType() const override;
+
+    /// Accessor for default value corresponding to the SdfValueTypeName
+    /// returned by GetTypeAsSdfType. Note that this is different than 
+    /// GetDefaultValue which returns the default value associated with the 
+    /// SdrPropertyType and may differ from the SdfValueTypeName, example when
+    /// sdrUsdDefinitionType metadata is specified for a sdr property.
+    ///
+    /// \sa GetTypeAsSdfType
+    SDR_API
+    const VtValue& GetDefaultValueAsSdfType() const override {
+        return _sdfTypeDefaultValue;
+    }
 
     /// Determines if the value held by this property is an asset identifier
     /// (eg, a file path); the logic for this is left up to the parser.
@@ -256,6 +263,20 @@ protected:
     // time.
     friend void SdrShaderNode::_PostProcessProperties();
 
+    // Set the USD encoding version to something other than the default.
+    // This can be set in SdrShaderNode::_PostProcessProperties for all the
+    // properties on a shader node.
+    void _SetUsdEncodingVersion(int usdEncodingVersion);
+
+    // Convert this property to a VStruct, which has a special type and a
+    // different default value
+    void _ConvertToVStruct();
+
+    // This function is called by SdrShaderNode::_PostProcessProperties once all
+    // information is locked in and won't be changed anymore. This allows each
+    // property to take some extra steps once all information is available.
+    void _FinalizeProperty();
+
     // Some metadata values cannot be returned by reference from the main
     // metadata dictionary because they need additional parsing.
     const NdrTokenMap _hints;
@@ -269,6 +290,12 @@ protected:
     TfToken _vstructMemberOf;
     TfToken _vstructMemberName;
     TfToken _vstructConditionalExpr;
+
+    VtValue _sdfTypeDefaultValue;
+
+    // Metadatum to control the behavior of GetTypeAsSdfType and indirectly
+    // CanConnectTo
+    int _usdEncodingVersion;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

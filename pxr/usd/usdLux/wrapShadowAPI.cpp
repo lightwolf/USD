@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdLux/shadowAPI.h"
 #include "pxr/usd/usd/schemaBase.h"
@@ -27,18 +10,19 @@
 #include "pxr/usd/sdf/primSpec.h"
 
 #include "pxr/usd/usd/pyConversions.h"
+#include "pxr/base/tf/pyAnnotatedBoolResult.h"
 #include "pxr/base/tf/pyContainerConversions.h"
 #include "pxr/base/tf/pyResultConversions.h"
 #include "pxr/base/tf/pyUtils.h"
 #include "pxr/base/tf/wrapTypeHelpers.h"
 
-#include <boost/python.hpp>
+#include "pxr/external/boost/python.hpp"
 
 #include <string>
 
-using namespace boost::python;
-
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -84,11 +68,38 @@ _CreateShadowFalloffGammaAttr(UsdLuxShadowAPI &self,
         UsdPythonToSdfType(defaultVal, SdfValueTypeNames->Float), writeSparsely);
 }
 
+static std::string
+_Repr(const UsdLuxShadowAPI &self)
+{
+    std::string primRepr = TfPyRepr(self.GetPrim());
+    return TfStringPrintf(
+        "UsdLux.ShadowAPI(%s)",
+        primRepr.c_str());
+}
+
+struct UsdLuxShadowAPI_CanApplyResult : 
+    public TfPyAnnotatedBoolResult<std::string>
+{
+    UsdLuxShadowAPI_CanApplyResult(bool val, std::string const &msg) :
+        TfPyAnnotatedBoolResult<std::string>(val, msg) {}
+};
+
+static UsdLuxShadowAPI_CanApplyResult
+_WrapCanApply(const UsdPrim& prim)
+{
+    std::string whyNot;
+    bool result = UsdLuxShadowAPI::CanApply(prim, &whyNot);
+    return UsdLuxShadowAPI_CanApplyResult(result, whyNot);
+}
+
 } // anonymous namespace
 
 void wrapUsdLuxShadowAPI()
 {
     typedef UsdLuxShadowAPI This;
+
+    UsdLuxShadowAPI_CanApplyResult::Wrap<UsdLuxShadowAPI_CanApplyResult>(
+        "_CanApplyResult", "whyNot");
 
     class_<This, bases<UsdAPISchemaBase> >
         cls("ShadowAPI");
@@ -100,6 +111,9 @@ void wrapUsdLuxShadowAPI()
 
         .def("Get", &This::Get, (arg("stage"), arg("path")))
         .staticmethod("Get")
+
+        .def("CanApply", &_WrapCanApply, (arg("prim")))
+        .staticmethod("CanApply")
 
         .def("Apply", &This::Apply, (arg("prim")))
         .staticmethod("Apply")
@@ -152,6 +166,7 @@ void wrapUsdLuxShadowAPI()
              (arg("defaultValue")=object(),
               arg("writeSparsely")=false))
 
+        .def("__repr__", ::_Repr)
     ;
 
     _CustomWrapCode(cls);
@@ -176,9 +191,29 @@ void wrapUsdLuxShadowAPI()
 // ===================================================================== //
 // --(BEGIN CUSTOM CODE)--
 
+#include "pxr/usd/usdShade/connectableAPI.h"
+
 namespace {
 
 WRAP_CUSTOM {
+    _class
+        .def(init<UsdShadeConnectableAPI>(arg("connectable")))
+        .def("ConnectableAPI", &UsdLuxShadowAPI::ConnectableAPI)
+
+        .def("CreateOutput", &UsdLuxShadowAPI::CreateOutput,
+             (arg("name"), arg("type")))
+        .def("GetOutput", &UsdLuxShadowAPI::GetOutput, arg("name"))
+        .def("GetOutputs", &UsdLuxShadowAPI::GetOutputs,
+             (arg("onlyAuthored")=true),
+             return_value_policy<TfPySequenceToList>())
+
+        .def("CreateInput", &UsdLuxShadowAPI::CreateInput,
+             (arg("name"), arg("type")))
+        .def("GetInput", &UsdLuxShadowAPI::GetInput, arg("name"))
+        .def("GetInputs", &UsdLuxShadowAPI::GetInputs,
+             (arg("onlyAuthored")=true),
+             return_value_policy<TfPySequenceToList>())
+        ;
 }
 
 }

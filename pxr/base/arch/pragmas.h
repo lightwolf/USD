@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_ARCH_PRAGMAS_H
 #define PXR_BASE_ARCH_PRAGMAS_H
@@ -41,6 +24,14 @@
     #define ARCH_PRAGMA_POP \
         _Pragma("GCC diagnostic pop")
 
+    #define ARCH_PRAGMA(x) _Pragma(#x)
+
+    #define ARCH_PRAGMA_PUSH_MACRO(macro_name) \
+        ARCH_PRAGMA(push_macro(#macro_name))
+
+    #define ARCH_PRAGMA_POP_MACRO(macro_name) \
+        ARCH_PRAGMA(pop_macro(#macro_name))
+
     // Convert errors about variables that may be used before initialization
     // into warnings.
     //
@@ -54,6 +45,9 @@
     #define ARCH_PRAGMA_WRITE_STRINGS \
         _Pragma("GCC diagnostic ignored \"-Wwrite-strings\"")
 
+    #define ARCH_PRAGMA_UNUSED_FUNCTION \
+        _Pragma("GCC diagnostic ignored \"-Wunused-function\"")
+
 #elif defined(ARCH_COMPILER_CLANG)
 
     #define ARCH_PRAGMA_PUSH \
@@ -61,6 +55,14 @@
 
     #define ARCH_PRAGMA_POP \
         _Pragma("clang diagnostic pop")
+
+    #define ARCH_PRAGMA(x) _Pragma(#x)
+
+    #define ARCH_PRAGMA_PUSH_MACRO(macro_name) \
+        ARCH_PRAGMA(push_macro(#macro_name))
+
+    #define ARCH_PRAGMA_POP_MACRO(macro_name) \
+        ARCH_PRAGMA(pop_macro(#macro_name))
 
     #define ARCH_PRAGMA_MACRO_REDEFINITION \
         _Pragma("clang diagnostic ignored \"-Wbuiltin-macro-redefined\"")
@@ -71,8 +73,17 @@
     #define ARCH_PRAGMA_WRITE_STRINGS \
         _Pragma("clang diagnostic ignored \"-Wwrite-strings\"")
 
+    #define ARCH_PRAGMA_UNUSED_FUNCTION \
+        _Pragma("clang diagnostic ignored \"-Wunused-function\"")
+
+    #define ARCH_PRAGMA_UNUSED_PRIVATE_FIELD \
+        _Pragma("clang diagnostic ignored \"-Wunused-private-field\"")
+
     #define ARCH_PRAGMA_INSTANTIATION_AFTER_SPECIALIZATION \
         _Pragma("clang diagnostic ignored \"-Winstantiation-after-specialization\"")
+
+    #define ARCH_PRAGMA_INSTANCE_METHOD_NOT_FOUND \
+        _Pragma("clang diagnostic ignored \"-Wobjc-method-access\"")
 
 #elif defined(ARCH_COMPILER_MSVC)
 
@@ -82,11 +93,22 @@
     #define ARCH_PRAGMA_POP \
         __pragma(warning(pop)) 
 
+    #define ARCH_PRAGMA(x) __pragma(x)
+
+    #define ARCH_PRAGMA_PUSH_MACRO(macro_name) \
+        __pragma(push_macro(#macro_name))
+
+    #define ARCH_PRAGMA_POP_MACRO(macro_name) \
+        __pragma(pop_macro(#macro_name))
+
     #define ARCH_PRAGMA_MACRO_TOO_FEW_ARGUMENTS \
         __pragma(warning(disable:4003)) 
 
     #define ARCH_PRAGMA_MACRO_REDEFINITION \
         __pragma(warning(disable:4005)) 
+
+    #define ARCH_PRAGMA_UNUSED_FUNCTION \
+        __pragma(warning(disable:4505)) 
 
     #define ARCH_PRAGMA_QUALIFIER_HAS_NO_MEANING \
         __pragma(warning(disable:4180)) 
@@ -131,6 +153,18 @@
     #define ARCH_PRAGMA_POP
 #endif
 
+#if !defined ARCH_PRAGMA
+    #define ARCH_PRAGMA
+#endif
+
+#if !defined ARCH_PRAGMA_PUSH_MACRO
+    #define ARCH_PRAGMA_PUSH_MACRO
+#endif
+
+#if !defined ARCH_PRAGMA_POP_MACRO
+    #define ARCH_PRAGMA_POP_MACRO
+#endif
+
 #if !defined ARCH_PRAGMA_MAYBE_UNINITIALIZED
     #define ARCH_PRAGMA_MAYBE_UNINITIALIZED
 #endif
@@ -141,6 +175,14 @@
 
 #if !defined ARCH_PRAGMA_WRITE_STRINGS
     #define ARCH_PRAGMA_WRITE_STRINGS
+#endif
+
+#if !defined ARCH_PRAGMA_UNUSED_FUNCTION
+    #define ARCH_PRAGMA_UNUSED_FUNCTION
+#endif
+
+#if !defined ARCH_PRAGMA_UNUSED_PRIVATE_FIELD
+    #define ARCH_PRAGMA_UNUSED_PRIVATE_FIELD
 #endif
 
 #if !defined ARCH_PRAGMA_MACRO_TOO_FEW_ARGUMENTS
@@ -197,6 +239,10 @@
 
 #if !defined ARCH_PRAGMA_UNDEFINED_VAR_TEMPLATE
     #define ARCH_PRAGMA_UNDEFINED_VAR_TEMPLATE
+#endif
+
+#if !defined ARCH_PRAGMA_INSTANCE_METHOD_NOT_FOUND
+    #define ARCH_PRAGMA_INSTANCE_METHOD_NOT_FOUND
 #endif
 
 #endif // PXR_BASE_ARCH_PRAGMAS_H

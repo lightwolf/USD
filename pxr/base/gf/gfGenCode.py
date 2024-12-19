@@ -2,30 +2,13 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 ########################################################################
-# Code generation script for GfVec, GfRange, GfQuat (and in future, GfMatrix)
-# classes.
+# Code generation script for GfVec, GfRange, GfQuat, GfDualQuat
+# (and in future, GfMatrix) classes.
 #
 # Run this script manually to update the source code that's checked in.  Run
 # with --validate to compare what would be generated with the existing code.  If
@@ -49,7 +32,8 @@ def _WriteFile(filePath, content, verbose=True):
     content = (content + '\n'
                if content and not content.endswith('\n') else content)
     if os.path.exists(filePath):
-        existingContent = open(filePath, 'r').read()
+        with open(filePath, 'r') as fp:
+            existingContent = fp.read()
         if existingContent == content:
             if verbose:
                 print('\tunchanged %s' % filePath)
@@ -202,6 +186,31 @@ def GetQuatSpecs():
                 specs=quatSpecs)
 
 ########################################################################
+# GfDualQuat
+def GetDualQuatSpecs():
+    def QuatName(scl):
+        return 'GfQuat%s' % ScalarSuffix(scl)
+    def DualQuatName(scl):
+        return 'GfDualQuat%s' % ScalarSuffix(scl)
+
+    scalarTypes = ['double', 'float', 'GfHalf']
+    dualQuatSpecs = sorted(
+        [dict(SCL=scl,
+              SUFFIX=ScalarSuffix(scl),
+              QUAT=QuatName(scl),
+              QUATNAME=QuatName,
+              DUALQUAT=DualQuatName(scl),
+              DUALQUATNAME=DualQuatName,
+              SCALAR_SUFFIX=ScalarSuffix,
+              SCALARS=scalarTypes,
+              LIST=MakeListFn(4))
+         for scl in scalarTypes],
+        key=lambda d: RankScalar(d['SCL']))
+
+    return dict(templates=['dualQuat%s.h', 'dualQuat%s.cpp', 'wrapDualQuat%s.cpp'],
+                specs=dualQuatSpecs)
+
+########################################################################
 # GfMatrix
 def GetMatrixSpecs(dim):
     def MatrixName(dim, scl):
@@ -267,7 +276,7 @@ def ValidateFiles(srcDir, dstDir):
 
 if __name__ == '__main__':
     ap = ArgumentParser(
-        description='Generate source code for GfVec, GfRange, GfQuat.')
+        description='Generate source code for GfVec, GfRange, GfQuat, GfDualQuat.')
     ap.add_argument('--validate', action='store_true')
     ap.add_argument('--dstDir', default=os.curdir)
     ap.add_argument('--srcDir', default=os.curdir)
@@ -283,7 +292,8 @@ if __name__ == '__main__':
         args.dstDir = tempfile.mkdtemp()
 
     try:
-        for s in [GetVecSpecs(), GetRangeSpecs(), GetQuatSpecs(),
+        for s in [GetVecSpecs(), GetRangeSpecs(),
+                  GetQuatSpecs(), GetDualQuatSpecs(),
                   GetMatrix2Specs(), GetMatrix3Specs(), GetMatrix4Specs()]:
             env = Environment(loader=FileSystemLoader(args.srcDir),
                               trim_blocks=True)

@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 /// \file usdImagingGL/renderParams.h
@@ -32,6 +15,7 @@
 
 #include "pxr/usd/usd/timeCode.h"
 
+#include "pxr/base/gf/bbox3d.h"
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec4d.h"
 #include "pxr/base/gf/vec4f.h"
@@ -73,7 +57,8 @@ class UsdImagingGLRenderParams
 {
 public:
 
-    typedef std::vector<GfVec4d> ClipPlanesVector;
+    using ClipPlanesVector = std::vector<GfVec4d>;
+    using BBoxVector = std::vector<GfBBox3d>;
 
     UsdTimeCode frame;
     float complexity;
@@ -95,11 +80,21 @@ public:
     float alphaThreshold; // threshold < 0 implies automatic
     ClipPlanesVector clipPlanes;
     bool enableSceneMaterials;
+    bool enableSceneLights;
     // Respect USD's model:drawMode attribute...
     bool enableUsdDrawModes;
     GfVec4f clearColor;
     TfToken colorCorrectionMode;
-    GfVec2i renderResolution;
+    // Optional OCIO color setings, only valid when colorCorrectionMode==HdxColorCorrectionTokens->openColorIO
+    int lut3dSizeOCIO;
+    TfToken ocioDisplay;
+    TfToken ocioView;
+    TfToken ocioColorSpace;
+    TfToken ocioLook;
+    // BBox settings
+    BBoxVector bboxes;
+    GfVec4f bboxLineColor;
+    float bboxLineDashSize;
 
     inline UsdImagingGLRenderParams();
 
@@ -112,7 +107,7 @@ public:
 
 
 UsdImagingGLRenderParams::UsdImagingGLRenderParams() :
-    frame(UsdTimeCode::Default()),
+    frame(UsdTimeCode::EarliestTime()),
     complexity(1.0),
     drawMode(UsdImagingGLDrawMode::DRAW_SHADED_SMOOTH),
     showGuides(false),
@@ -132,9 +127,12 @@ UsdImagingGLRenderParams::UsdImagingGLRenderParams() :
     alphaThreshold(-1),
     clipPlanes(),
     enableSceneMaterials(true),
+    enableSceneLights(true),
     enableUsdDrawModes(true),
     clearColor(0,0,0,1),
-    renderResolution(100,100)
+    lut3dSizeOCIO(65),
+    bboxLineColor(1),
+    bboxLineDashSize(3)
 {
 }
 
@@ -162,10 +160,18 @@ UsdImagingGLRenderParams::operator==(const UsdImagingGLRenderParams &other)
         && alphaThreshold              == other.alphaThreshold
         && clipPlanes                  == other.clipPlanes
         && enableSceneMaterials        == other.enableSceneMaterials
+        && enableSceneLights           == other.enableSceneLights
         && enableUsdDrawModes          == other.enableUsdDrawModes
         && clearColor                  == other.clearColor
         && colorCorrectionMode         == other.colorCorrectionMode
-        && renderResolution            == other.renderResolution;
+        && ocioDisplay                 == other.ocioDisplay
+        && ocioView                    == other.ocioView
+        && ocioColorSpace              == other.ocioColorSpace
+        && ocioLook                    == other.ocioLook
+        && lut3dSizeOCIO               == other.lut3dSizeOCIO
+        && bboxes                      == other.bboxes
+        && bboxLineColor               == other.bboxLineColor
+        && bboxLineDashSize            == other.bboxLineDashSize;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

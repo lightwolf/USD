@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -37,6 +20,7 @@
 #include "pxr/base/tf/hashset.h"
 #include "pxr/base/tf/mallocTag.h"
 #include "pxr/base/tf/pathUtils.h"
+#include "pxr/base/tf/pxrTslRobinMap/robin_map.h"
 #include "pxr/base/tf/pyLock.h"
 #include "pxr/base/tf/scopeDescription.h"
 #include "pxr/base/tf/staticData.h"
@@ -49,6 +33,7 @@
 #include "pxr/base/tf/pyInterpreter.h"
 #endif // PXR_PYTHON_SUPPORT_ENABLED
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -60,15 +45,15 @@ using std::vector;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-typedef TfHashMap< std::string, PlugPluginRefPtr, TfHash > _PluginMap;
+typedef pxr_tsl::robin_map<std::string, std::unique_ptr<PlugPlugin>, TfHash>
+    _PluginMap;
 typedef TfHashMap< std::string, PlugPluginPtr, TfHash > _WeakPluginMap;
 typedef TfHashMap< TfType, PlugPluginPtr, TfHash > _ClassMap;
 
 static TfStaticData<_PluginMap> _allPlugins;
-// XXX -- Use _WeakPluginMap
-static TfStaticData<_PluginMap> _allPluginsByDynamicLibraryName;
-static TfStaticData<_PluginMap> _allPluginsByModuleName;
-static TfStaticData<_PluginMap> _allPluginsByResourceName;
+static TfStaticData<_WeakPluginMap> _allPluginsByDynamicLibraryName;
+static TfStaticData<_WeakPluginMap> _allPluginsByModuleName;
+static TfStaticData<_WeakPluginMap> _allPluginsByResourceName;
 static std::mutex _allPluginsMutex;
 
 static TfStaticData<_ClassMap> _classMap;
@@ -98,12 +83,11 @@ PlugPlugin::_NewPlugin(const Plug_RegistrationMetadata &metadata,
     std::lock_guard<std::mutex> lock(_allPluginsMutex);
 
     // Already registered?
-    auto iresult = _allPlugins->insert(
-        std::make_pair(metadata.pluginPath, TfNullPtr));
+    auto iresult = _allPlugins->try_emplace(metadata.pluginPath);
     if (!iresult.second) {
         auto it = iresult.first;
         TF_VERIFY(it->second);
-        return std::make_pair(it->second, false);
+        return {TfCreateWeakPtr(it->second.get()), false};
     }
     
     // Already registered with the same name but a different path?  Give
@@ -112,31 +96,43 @@ PlugPlugin::_NewPlugin(const Plug_RegistrationMetadata &metadata,
     if (it != allPluginsByName.end()) {
         TF_VERIFY(it->second);
         TF_DEBUG(PLUG_REGISTRATION).Msg(
-            "Already registered %s plugin '%s' - not registering '%s'.\n",
+            "Already registered %s plugin '%s' at %s - not registering '%s'."
+            "\n\n",
             _GetPluginTypeDisplayName(pluginType),
-            metadata.pluginName.c_str(), pluginCreationPath.c_str());
+            metadata.pluginName.c_str(), it->second->GetPath().c_str(), 
+            pluginCreationPath.c_str());
         // Remove the null entry we added in _allPlugins for the alt path.
         _allPlugins->erase(iresult.first);
-        return std::make_pair(it->second, false);
+        return {it->second, false};
     }
 
     // Go ahead and create a plugin.
-    TF_DEBUG(PLUG_REGISTRATION).Msg("Registering %s plugin '%s' at '%s'.\n",
+    TF_DEBUG(PLUG_REGISTRATION).Msg("Registering %s plugin '%s' at '%s'.\n\n",
                                     _GetPluginTypeDisplayName(pluginType),
                                     metadata.pluginName.c_str(),
                                     pluginCreationPath.c_str());
     
-    PlugPluginRefPtr plugin = TfCreateRefPtr(
+    std::unique_ptr<PlugPlugin> plugin(
         new PlugPlugin(pluginCreationPath, metadata.pluginName,
                        metadata.resourcePath, metadata.plugInfo, pluginType));
 
+    if (TfDebug::IsEnabled(PLUG_REGISTRATION) &&
+        !metadata.pluginPath.empty() &&
+        !TfIsFile(pluginCreationPath, /* resolveSymlinks =*/ true)) {
+            TF_DEBUG(PLUG_REGISTRATION).
+            Msg("Unable to read library plugin '%s' at '%s'.\n\n",
+                metadata.pluginName.c_str(), pluginCreationPath.c_str());
+    }
+
+    PlugPluginPtr weakPlugin = TfCreateWeakPtr(plugin.get());
+
     // Add to _allPlugins.
-    iresult.first->second = plugin;
+    iresult.first.value() = std::move(plugin);
 
     // Add to allPluginsByName too.
-    allPluginsByName[metadata.pluginName] = plugin;
+    allPluginsByName[metadata.pluginName] = weakPlugin;
 
-    return pair<PlugPluginPtr, bool>(plugin, true);
+    return {weakPlugin, true};
 }
 
 
@@ -244,8 +240,8 @@ PlugPlugin::_Load()
                 _handle = TfDlopen(_path.c_str(), ARCH_LIBRARY_NOW, &dsoError);
             }
             if (!_handle ) {
-                TF_CODING_ERROR("Load of '%s' for '%s' failed: %s",
-                                _path.c_str(), _name.c_str(), dsoError.c_str());
+                TF_CODING_ERROR("Failed to load plugin '%s': %s in '%s'",  
+                                _name.c_str(), dsoError.c_str(), _path.c_str());
                 isLoaded = false;
             }
         }
@@ -434,7 +430,7 @@ PlugPlugin::_GetAllPlugins()
     PlugPluginPtrVector plugins;
     plugins.reserve(_allPlugins->size());
     TF_FOR_ALL(it, *_allPlugins) {
-        plugins.push_back(it->second);
+        plugins.push_back(TfCreateWeakPtr(it->second.get()));
     }
     return plugins;
 }

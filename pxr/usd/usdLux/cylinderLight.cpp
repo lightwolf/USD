@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdLux/cylinderLight.h"
 #include "pxr/usd/usd/schemaRegistry.h"
@@ -34,7 +17,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_REGISTRY_FUNCTION(TfType)
 {
     TfType::Define<UsdLuxCylinderLight,
-        TfType::Bases< UsdLuxLight > >();
+        TfType::Bases< UsdLuxBoundableLightBase > >();
     
     // Register the usd prim typename as an alias under UsdSchemaBase. This
     // enables one to call
@@ -75,8 +58,9 @@ UsdLuxCylinderLight::Define(
 }
 
 /* virtual */
-UsdSchemaType UsdLuxCylinderLight::_GetSchemaType() const {
-    return UsdLuxCylinderLight::schemaType;
+UsdSchemaKind UsdLuxCylinderLight::_GetSchemaKind() const
+{
+    return UsdLuxCylinderLight::schemaKind;
 }
 
 /* static */
@@ -105,13 +89,13 @@ UsdLuxCylinderLight::_GetTfType() const
 UsdAttribute
 UsdLuxCylinderLight::GetLengthAttr() const
 {
-    return GetPrim().GetAttribute(UsdLuxTokens->length);
+    return GetPrim().GetAttribute(UsdLuxTokens->inputsLength);
 }
 
 UsdAttribute
 UsdLuxCylinderLight::CreateLengthAttr(VtValue const &defaultValue, bool writeSparsely) const
 {
-    return UsdSchemaBase::_CreateAttr(UsdLuxTokens->length,
+    return UsdSchemaBase::_CreateAttr(UsdLuxTokens->inputsLength,
                        SdfValueTypeNames->Float,
                        /* custom = */ false,
                        SdfVariabilityVarying,
@@ -122,13 +106,13 @@ UsdLuxCylinderLight::CreateLengthAttr(VtValue const &defaultValue, bool writeSpa
 UsdAttribute
 UsdLuxCylinderLight::GetRadiusAttr() const
 {
-    return GetPrim().GetAttribute(UsdLuxTokens->radius);
+    return GetPrim().GetAttribute(UsdLuxTokens->inputsRadius);
 }
 
 UsdAttribute
 UsdLuxCylinderLight::CreateRadiusAttr(VtValue const &defaultValue, bool writeSparsely) const
 {
-    return UsdSchemaBase::_CreateAttr(UsdLuxTokens->radius,
+    return UsdSchemaBase::_CreateAttr(UsdLuxTokens->inputsRadius,
                        SdfValueTypeNames->Float,
                        /* custom = */ false,
                        SdfVariabilityVarying,
@@ -170,13 +154,13 @@ const TfTokenVector&
 UsdLuxCylinderLight::GetSchemaAttributeNames(bool includeInherited)
 {
     static TfTokenVector localNames = {
-        UsdLuxTokens->length,
-        UsdLuxTokens->radius,
+        UsdLuxTokens->inputsLength,
+        UsdLuxTokens->inputsRadius,
         UsdLuxTokens->treatAsLine,
     };
     static TfTokenVector allNames =
         _ConcatenateAttributeNames(
-            UsdLuxLight::GetSchemaAttributeNames(true),
+            UsdLuxBoundableLightBase::GetSchemaAttributeNames(true),
             localNames);
 
     if (includeInherited)
@@ -195,3 +179,61 @@ PXR_NAMESPACE_CLOSE_SCOPE
 // 'PXR_NAMESPACE_OPEN_SCOPE', 'PXR_NAMESPACE_CLOSE_SCOPE'.
 // ===================================================================== //
 // --(BEGIN CUSTOM CODE)--
+
+#include "pxr/usd/usdGeom/boundableComputeExtent.h"
+
+PXR_NAMESPACE_OPEN_SCOPE
+
+static bool
+_ComputeLocalExtent(const float radius, 
+                    const float length, 
+                    VtVec3fArray *extent)
+{
+    extent->resize(2);
+    (*extent)[1] = GfVec3f(length * 0.5f, radius, radius);
+    (*extent)[0] = -(*extent)[1];
+    return true;
+}
+
+static bool 
+_ComputeExtent(
+    const UsdGeomBoundable &boundable,
+    const UsdTimeCode &time,
+    const GfMatrix4d *transform,
+    VtVec3fArray *extent)
+{
+    const UsdLuxCylinderLight light(boundable);
+    if (!TF_VERIFY(light)) {
+        return false;
+    }
+
+    float radius;
+    if (!light.GetRadiusAttr().Get(&radius, time)) {
+        return false;
+    }
+
+    float length;
+    if (!light.GetLengthAttr().Get(&length, time)) {
+        return false;
+    }
+
+    if (!_ComputeLocalExtent(radius, length, extent)) {
+        return false;
+    }
+
+    if (transform) {
+        GfBBox3d bbox(GfRange3d((*extent)[0], (*extent)[1]), *transform);
+        GfRange3d range = bbox.ComputeAlignedRange();
+        (*extent)[0] = GfVec3f(range.GetMin());
+        (*extent)[1] = GfVec3f(range.GetMax());
+    }
+
+    return true;
+}
+
+TF_REGISTRY_FUNCTION(UsdGeomBoundable)
+{
+    UsdGeomRegisterComputeExtentFunction<UsdLuxCylinderLight>(_ComputeExtent);
+}
+
+PXR_NAMESPACE_CLOSE_SCOPE

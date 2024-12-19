@@ -2,32 +2,15 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from pxr import Sdf, Tf, Usd
 import unittest
 
 class TestUsdInstanceProxy(unittest.TestCase):
     def _ValidateInstanceProxy(self, expectedPath, prim, 
-                               expectedPathInMaster=False):
+                               expectedPathInPrototype=False):
         expectedPath = Sdf.Path(expectedPath)
 
         # Verify that the instance proxy has the expected path.
@@ -37,14 +20,14 @@ class TestUsdInstanceProxy(unittest.TestCase):
         self.assertTrue(prim)
         self.assertTrue(prim.IsInstanceProxy())
 
-        # An instance proxy is not in a master unless it came from
-        # explicitly traversing within a master. For instance, calling
-        # GetPrimAtPath('/__Master_1/Instance/Child') will return
-        # an instance proxy at that path, which is inside a master.
-        if expectedPathInMaster:
-            self.assertTrue(prim.IsInMaster())
+        # An instance proxy is not in a prototype unless it came from
+        # explicitly traversing within a prototype. For instance, calling
+        # GetPrimAtPath('/__Prototype_1/Instance/Child') will return
+        # an instance proxy at that path, which is inside a prototype.
+        if expectedPathInPrototype:
+            self.assertTrue(prim.IsInPrototype())
         else:
-            self.assertFalse(prim.IsInMaster())            
+            self.assertFalse(prim.IsInPrototype())            
 
     def test_GetPrimAtPath(self):
         s = Usd.Stage.Open('nested/root.usda')
@@ -69,12 +52,12 @@ class TestUsdInstanceProxy(unittest.TestCase):
             self._ValidateInstanceProxy(path, s.GetPrimAtPath(path))
 
         # Test getting prims at paths beneath instances nested
-        # in masters.
-        master = s.GetPrimAtPath('/World/sets/Set_1').GetMaster()
-        for path in [master.GetPath().AppendPath('Prop_1/geom'),
-                     master.GetPath().AppendPath('Prop_2/geom')]:
+        # in prototypes.
+        prototype = s.GetPrimAtPath('/World/sets/Set_1').GetPrototype()
+        for path in [prototype.GetPath().AppendPath('Prop_1/geom'),
+                     prototype.GetPath().AppendPath('Prop_2/geom')]:
             self._ValidateInstanceProxy(path, s.GetPrimAtPath(path),
-                                        expectedPathInMaster=True)
+                                        expectedPathInPrototype=True)
 
     def test_GetParent(self):
         s = Usd.Stage.Open('nested/root.usda')
@@ -97,13 +80,13 @@ class TestUsdInstanceProxy(unittest.TestCase):
             self.assertEqual(prim.GetPath(), expectedPath)
             self.assertFalse(prim.IsInstanceProxy())
 
-        # Test getting parents of instance proxies inside masters
-        master = s.GetPrimAtPath('/World/sets/Set_1').GetMaster()
-        for path in [master.GetPath().AppendPath('Prop_1/geom'),
-                     master.GetPath().AppendPath('Prop_2/geom')]:
+        # Test getting parents of instance proxies inside prototypes
+        prototype = s.GetPrimAtPath('/World/sets/Set_1').GetPrototype()
+        for path in [prototype.GetPath().AppendPath('Prop_1/geom'),
+                     prototype.GetPath().AppendPath('Prop_2/geom')]:
             prim = s.GetPrimAtPath(path)
             self._ValidateInstanceProxy(path, prim, 
-                                        expectedPathInMaster=True)
+                                        expectedPathInPrototype=True)
 
             prim = prim.GetParent()
             path = path.GetParentPath()
@@ -116,7 +99,7 @@ class TestUsdInstanceProxy(unittest.TestCase):
             path = path.GetParentPath()
             self.assertEqual(prim.GetPath(), path)
             self.assertEqual(prim, s.GetPrimAtPath(path))
-            self.assertTrue(prim.IsMaster())
+            self.assertTrue(prim.IsPrototype())
             self.assertFalse(prim.IsInstanceProxy())
             
     def test_GetChildren(self):
@@ -175,47 +158,47 @@ class TestUsdInstanceProxy(unittest.TestCase):
                 '/World/sets/Set_2/Prop_2/geom',
                 '/World/sets/Set_2/Prop_2/anim'])
 
-    def test_GetPrimInMaster(self):
+    def test_GetPrimInPrototype(self):
         s = Usd.Stage.Open('nested/root.usda')
 
-        setMaster = s.GetPrimAtPath('/World/sets/Set_1').GetMaster()
-        propMaster = setMaster.GetChild('Prop_1').GetMaster()
+        setPrototype = s.GetPrimAtPath('/World/sets/Set_1').GetPrototype()
+        propPrototype = setPrototype.GetChild('Prop_1').GetPrototype()
 
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_1/Prop_1').GetPrimInMaster(),
-            setMaster.GetChild('Prop_1'))
+            s.GetPrimAtPath('/World/sets/Set_1/Prop_1').GetPrimInPrototype(),
+            setPrototype.GetChild('Prop_1'))
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_1/Prop_1/geom').GetPrimInMaster(),
-            propMaster.GetChild('geom'))
+            s.GetPrimAtPath('/World/sets/Set_1/Prop_1/geom').GetPrimInPrototype(),
+            propPrototype.GetChild('geom'))
 
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_1/Prop_2').GetPrimInMaster(),
-            setMaster.GetChild('Prop_2'))
+            s.GetPrimAtPath('/World/sets/Set_1/Prop_2').GetPrimInPrototype(),
+            setPrototype.GetChild('Prop_2'))
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_1/Prop_2/geom').GetPrimInMaster(),
-            propMaster.GetChild('geom'))
+            s.GetPrimAtPath('/World/sets/Set_1/Prop_2/geom').GetPrimInPrototype(),
+            propPrototype.GetChild('geom'))
 
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_2/Prop_1').GetPrimInMaster(),
-            setMaster.GetChild('Prop_1'))
+            s.GetPrimAtPath('/World/sets/Set_2/Prop_1').GetPrimInPrototype(),
+            setPrototype.GetChild('Prop_1'))
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_2/Prop_1/geom').GetPrimInMaster(),
-            propMaster.GetChild('geom'))
+            s.GetPrimAtPath('/World/sets/Set_2/Prop_1/geom').GetPrimInPrototype(),
+            propPrototype.GetChild('geom'))
 
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_2/Prop_2').GetPrimInMaster(),
-            setMaster.GetChild('Prop_2'))
+            s.GetPrimAtPath('/World/sets/Set_2/Prop_2').GetPrimInPrototype(),
+            setPrototype.GetChild('Prop_2'))
         self.assertEqual(
-            s.GetPrimAtPath('/World/sets/Set_2/Prop_2/geom').GetPrimInMaster(),
-            propMaster.GetChild('geom'))
+            s.GetPrimAtPath('/World/sets/Set_2/Prop_2/geom').GetPrimInPrototype(),
+            propPrototype.GetChild('geom'))
 
     def test_LoadSet(self):
         s = Usd.Stage.Open('nested_payloads/root.usda',
                       Usd.Stage.LoadNone)
 
-        master = s.GetPrimAtPath('/World/sets/Set_1').GetMaster()
+        prototype = s.GetPrimAtPath('/World/sets/Set_1').GetPrototype()
 
-        # Note that FindLoadable never returns paths to prims in masters.
+        # Note that FindLoadable never returns paths to prims in prototypes.
         self.assertEqual(
             s.FindLoadable(),
             ['/World/sets/Set_1/props/Prop_1',
@@ -358,26 +341,26 @@ class TestUsdInstanceProxy(unittest.TestCase):
                 '/World/sets/Set_2/Prop_2/geom',
                 '/World/sets/Set_2/Prop_2/anim'])
         
-        # Test iterating starting from a master prim
-        master = s.GetPrimAtPath('/World/sets/Set_1').GetMaster()
+        # Test iterating starting from a prototype prim
+        prototype = s.GetPrimAtPath('/World/sets/Set_1').GetPrototype()
         _ValidateInstanceDescendants(
-            parentPath = master.GetPath(),
+            parentPath = prototype.GetPath(),
             expectedDescendantPaths = [
-                master.GetPath(),
-                master.GetPath().AppendPath('Prop_1'),
-                master.GetPath().AppendPath('Prop_1/geom'),
-                master.GetPath().AppendPath('Prop_1/anim'),
-                master.GetPath().AppendPath('Prop_2'),
-                master.GetPath().AppendPath('Prop_2/geom'),
-                master.GetPath().AppendPath('Prop_2/anim')])
+                prototype.GetPath(),
+                prototype.GetPath().AppendPath('Prop_1'),
+                prototype.GetPath().AppendPath('Prop_1/geom'),
+                prototype.GetPath().AppendPath('Prop_1/anim'),
+                prototype.GetPath().AppendPath('Prop_2'),
+                prototype.GetPath().AppendPath('Prop_2/geom'),
+                prototype.GetPath().AppendPath('Prop_2/anim')])
 
-        master = s.GetPrimAtPath('/World/sets/Set_1/Prop_1').GetMaster()
+        prototype = s.GetPrimAtPath('/World/sets/Set_1/Prop_1').GetPrototype()
         _ValidateInstanceDescendants(
-            parentPath = master.GetPath(),
+            parentPath = prototype.GetPath(),
             expectedDescendantPaths = [
-                master.GetPath(),
-                master.GetPath().AppendPath('geom'),
-                master.GetPath().AppendPath('anim')])
+                prototype.GetPath(),
+                prototype.GetPath().AppendPath('geom'),
+                prototype.GetPath().AppendPath('anim')])
 
     def test_GetAttributeValue(self):
         s = Usd.Stage.Open('nested/root.usda')
@@ -403,6 +386,51 @@ class TestUsdInstanceProxy(unittest.TestCase):
 
         _ValidateAttributeValue(
             attrPath = '/World/sets/Set_2/Prop_2/geom.x', expectedValue = 1.0)
+
+        _ValidateAttributeValue(
+            attrPath = '/World/sets/Set_1/Prop_1/geom.pathExpr',
+            expectedValue = Sdf.PathExpression(
+                '//foo /World/sets/Set_1/Prop_1/anim//*bar'))
+        _ValidateAttributeValue(
+            attrPath = '/World/sets/Set_1/Prop_2/geom.pathExpr',
+            expectedValue = Sdf.PathExpression(
+                '//foo /World/sets/Set_1/Prop_2/anim//*bar'))
+        _ValidateAttributeValue(
+            attrPath = '/World/sets/Set_2/Prop_1/geom.pathExpr',
+            expectedValue = Sdf.PathExpression(
+                '//foo /World/sets/Set_2/Prop_1/anim//*bar'))
+        _ValidateAttributeValue(
+            attrPath = '/World/sets/Set_2/Prop_2/geom.pathExpr',
+            expectedValue = Sdf.PathExpression(
+                '//foo /World/sets/Set_2/Prop_2/anim//*bar'))
+
+        # Check that the pathExpr attribute values in prototypes also map.
+        def _ValidatePathExprAttrInPrototype(attrPath, expectedPattern):
+            import re
+            attrPath = Sdf.Path(attrPath)
+            proxyPrim = s.GetPrimAtPath(attrPath.GetPrimPath())
+            self._ValidateInstanceProxy(attrPath.GetPrimPath(), proxyPrim)
+
+            protoPrim = proxyPrim.GetPrimInPrototype()
+            attr = protoPrim.GetAttribute(attrPath.name)
+            self.assertTrue(attr)
+            self.assertTrue(re.match(expectedPattern, attr.Get().GetText()),
+                            msg=attr.Get().GetText() + ' did not match ' +
+                            expectedPattern)
+
+        pattern = r'//foo /__Prototype_\d+/anim//\*bar'
+        _ValidatePathExprAttrInPrototype(
+            attrPath = '/World/sets/Set_1/Prop_1/geom.pathExpr',
+            expectedPattern = pattern)
+        _ValidatePathExprAttrInPrototype(
+            attrPath = '/World/sets/Set_1/Prop_2/geom.pathExpr',
+            expectedPattern = pattern)
+        _ValidatePathExprAttrInPrototype(
+            attrPath = '/World/sets/Set_2/Prop_1/geom.pathExpr',
+            expectedPattern = pattern)
+        _ValidatePathExprAttrInPrototype(
+            attrPath = '/World/sets/Set_2/Prop_2/geom.pathExpr',
+            expectedPattern = pattern)
 
     def test_GetRelationshipTargets(self):
         s = Usd.Stage.Open('rels/root.usda')

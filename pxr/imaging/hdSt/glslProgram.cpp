@@ -1,38 +1,20 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
-//
-#include "pxr/imaging/glf/glew.h"
-#include "pxr/imaging/glf/contextCaps.h"
 #include "pxr/imaging/hio/glslfx.h"
 #include "pxr/imaging/hd/perfLog.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/imaging/hgi/tokens.h"
 #include "pxr/imaging/hdSt/debugCodes.h"
 #include "pxr/imaging/hdSt/package.h"
 #include "pxr/imaging/hdSt/glslProgram.h"
-#include "pxr/imaging/hdSt/glUtils.h"
 #include "pxr/imaging/hdSt/resourceRegistry.h"
+#include "pxr/base/arch/hash.h"
 #include "pxr/base/tf/diagnostic.h"
-#include "pxr/base/tf/envSetting.h"
+#include "pxr/base/tf/scopeDescription.h"
 
 #include <climits>
 #include <cstdlib>
@@ -42,9 +24,6 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
-TF_DEFINE_ENV_SETTING(HD_ENABLE_SHARED_CONTEXT_CHECK, 0,
-    "Enable GL context sharing validation");
 
 // Get the line number from the compilation error message, and return a boolean
 // indicating success/failure of parsing.
@@ -95,7 +74,7 @@ _GetCompileErrorCodeContext(std::string const &shader,
                             unsigned int lineNum,
                             unsigned int contextSize)
 {
-    unsigned int numLinesToSkip = 
+    unsigned int numLinesToSkip =
         std::max<unsigned int>(0, lineNum - contextSize - 1);
     std::string::size_type i = 0;
     for (unsigned int line = 0; line < numLinesToSkip && i != std::string::npos;
@@ -107,7 +86,7 @@ _GetCompileErrorCodeContext(std::string const &shader,
 
     // Copy context before the error line.
     std::string::size_type start = i;
-    for (unsigned int line = 0; line < contextSize && i != std::string::npos; 
+    for (unsigned int line = 0; line < contextSize && i != std::string::npos;
          line++) {
         i = shader.find('\n', i+1);
     }
@@ -121,7 +100,7 @@ _GetCompileErrorCodeContext(std::string const &shader,
 
     // Copy context after error line.
     start = i+1;
-    for (unsigned int line = 0; line < contextSize && i != std::string::npos; 
+    for (unsigned int line = 0; line < contextSize && i != std::string::npos;
          line++) {
         i = shader.find('\n', i+1);
     }
@@ -130,119 +109,88 @@ _GetCompileErrorCodeContext(std::string const &shader,
     return context;
 }
 
+static const char*
+_GetShaderType(HgiShaderStage stage)
+{
+    switch(stage) {
+        case HgiShaderStageCompute:
+            return "COMPUTE_SHADER";
+        case HgiShaderStageVertex:
+            return "VERTEX_SHADER";
+        case HgiShaderStageFragment:
+            return "FRAGMENT_SHADER";
+        case HgiShaderStageGeometry:
+            return "GEOMETRY_SHADER";
+        case HgiShaderStageTessellationControl:
+            return "TESS_CONTROL_SHADER";
+        case HgiShaderStageTessellationEval:
+            return "TESS_EVALUATION_SHADER";
+        case HgiShaderStagePostTessellationControl:
+            return "POST_TESS_CONTROL_SHADER";
+        case HgiShaderStagePostTessellationVertex:
+            return "POST_TESS_VERTEX_SHADER";
+        default:
+            return nullptr;
+    }
+}
+
 static void
 _DumpShaderSource(const char *shaderType, std::string const &shaderSource)
 {
+    std::cout << "--------- " << shaderType << " ----------\n"
+              << shaderSource
+              << "---------------------------\n"
+              << std::flush;
+}
+
+static void
+_DumpShaderSource(HgiShaderFunctionDesc const &desc)
+{
+    const char *shaderType = _GetShaderType(desc.shaderStage);
+
     std::cout << "--------- " << shaderType << " ----------\n";
-    std::cout << shaderSource;
-    std::cout << "---------------------------\n";
-    std::cout << std::flush;
-}
 
-HdStGLSLProgram::HdStGLSLProgram(TfToken const &role)
-    : _program(role), _uniformBuffer(role)
-{
-    static size_t globalDebugID = 0;
-    _debugID = globalDebugID++;
-}
-
-HdStGLSLProgram::~HdStGLSLProgram()
-{
-    GLuint program = _program.GetId();
-    if (program != 0) {
-        if (glDeleteProgram)
-            glDeleteProgram(program);
-        _program.SetAllocation(0, 0);
-    }
-    GLuint uniformBuffer = _uniformBuffer.GetId();
-    if (uniformBuffer) {
-        if (glDeleteBuffers)
-            glDeleteBuffers(1, &uniformBuffer);
-        _uniformBuffer.SetAllocation(0, 0);
-    }
-}
-
-/* static */
-HdStGLSLProgram::ID
-HdStGLSLProgram::ComputeHash(TfToken const &sourceFile)
-{
-    HD_TRACE_FUNCTION();
-
-    uint32_t hash = 0;
-    std::string const &filename = sourceFile.GetString();
-    hash = ArchHash(filename.c_str(), filename.size(), hash);
-
-    return hash;
-}
-
-bool
-HdStGLSLProgram::CompileShader(GLenum type,
-                             std::string const &shaderSource)
-{
-    HD_TRACE_FUNCTION();
-    HF_MALLOC_TAG_FUNCTION();
-
-    // early out for empty source.
-    // this may not be an error, since glslfx gives empty string
-    // for undefined shader stages (i.e. null geometry shader)
-    if (shaderSource.empty()) return false;
-
-    const char *shaderType = NULL;
-    if (type == GL_VERTEX_SHADER) {
-        shaderType = "GL_VERTEX_SHADER";
-    } else if (type == GL_TESS_CONTROL_SHADER) {
-        shaderType = "GL_TESS_CONTROL_SHADER";
-    } else if (type == GL_TESS_EVALUATION_SHADER) {
-        shaderType = "GL_TESS_EVALUATION_SHADER";
-    } else if (type == GL_GEOMETRY_SHADER) {
-        shaderType = "GL_GEOMETRY_SHADER";
-    } else if (type == GL_FRAGMENT_SHADER) {
-        shaderType = "GL_FRAGMENT_SHADER";
-    } else if (type == GL_COMPUTE_SHADER) {
-        shaderType = "GL_COMPUTE_SHADER";
+    if (desc.shaderCodeDeclarations) {
+        std::cout << desc.shaderCodeDeclarations;
     } else {
-        TF_CODING_ERROR("Invalid shader type %d\n", type);
-        return false;
+        std::cout << "(shaderCodeDeclarations empty)\n"; 
     }
 
-    if (TfDebug::IsEnabled(HDST_DUMP_SHADER_SOURCE)) {
-        _DumpShaderSource(shaderType, shaderSource);
+    if (TF_VERIFY(desc.shaderCode)) {
+        std::cout << desc.shaderCode;
+    } else {
+        std::cout << "(shaderCode empty)\n"; 
     }
 
-    // glew has to be initialized
-    if (!glCreateProgram)
-        return false;
+    std::cout << "---------------------------\n" << std::flush;
+}
 
-    // create a program if not exists
-    GLuint program = _program.GetId();
-    if (program == 0) {
-        program = glCreateProgram();
-        _program.SetAllocation(program, 0);
-    }
-
-    // create a shader, compile it
-    const char *shaderSources[1];
-    shaderSources[0] = shaderSource.c_str();
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, sizeof(shaderSources)/sizeof(const char *), shaderSources, NULL);
-    glCompileShader(shader);
-
+static bool
+_ValidateCompilation(
+    HgiShaderFunctionHandle shaderFn,
+    const char *shaderType,
+    std::string const &shaderSource,
+    size_t debugID)
+{
     std::string fname;
-    if (TfDebug::IsEnabled(HDST_DUMP_SHADER_SOURCEFILE)) {
+    if (TfDebug::IsEnabled(HDST_DUMP_SHADER_SOURCEFILE) ||
+        ( TfDebug::IsEnabled(HDST_DUMP_FAILING_SHADER_SOURCEFILE) &&
+          !shaderFn->IsValid())) {
         std::stringstream fnameStream;
         static size_t debugShaderID = 0;
-        fnameStream << "program" << _debugID << "_shader" << debugShaderID++
+        fnameStream << "program" << debugID << "_shader" << debugShaderID++
                 << "_" << shaderType << ".glsl";
         fname = fnameStream.str();
         std::fstream output(fname.c_str(), std::ios::out);
         output << shaderSource;
         output.close();
 
-        std::cout << "Write " << fname << " (size=" << shaderSource.size() << ")\n";
+        std::cout << "Write " << fname
+                  << " (size=" << shaderSource.size() << ")\n";
     }
 
-    std::string logString;
-    if (!HdStGLUtils::GetShaderCompileStatus(shader, &logString)) {
+    if (!shaderFn->IsValid()) {
+        std::string logString = shaderFn->GetCompileErrors();
         unsigned int lineNum = 0;
         if (_ParseLineNumberOfError(logString, &lineNum)) {
             // Get lines surrounding the erroring line for context.
@@ -257,8 +205,9 @@ HdStGLSLProgram::CompileShader(GLenum type,
                 logString.append(errorContext);
             }
         }
-        
-        const char* programName = fname.empty() ? shaderType : fname.c_str();
+
+        const char * const programName =
+                fname.empty() ? shaderType : fname.c_str();
         TF_WARN("Failed to compile shader (%s): %s",
                 programName, logString.c_str());
 
@@ -266,75 +215,179 @@ HdStGLSLProgram::CompileShader(GLenum type,
             _DumpShaderSource(shaderType, shaderSource);
         }
 
-        // shader is no longer needed.
-        glDeleteShader(shader);
-        
+        return false;
+    }
+    return true;
+}
+
+static std::string
+_GetScopeDescriptionLabel(HgiShaderProgramDesc const &desc)
+{
+    if (desc.debugName.empty()) {
+        return {};
+    } else {
+        return TfStringPrintf(" (%s)", desc.debugName.c_str());
+    }
+}
+
+HdStGLSLProgram::HdStGLSLProgram(
+    TfToken const &role,
+    HdStResourceRegistry *const registry)
+    :_registry(registry)
+    , _role(role)
+{
+    static size_t globalDebugID = 0;
+    _debugID = globalDebugID++;
+}
+
+HdStGLSLProgram::~HdStGLSLProgram()
+{
+    Hgi *const hgi = _registry->GetHgi();
+
+    for (HgiShaderFunctionHandle fn : _programDesc.shaderFunctions) {
+        hgi->DestroyShaderFunction(&fn);
+    }
+
+    if (_program) {
+        hgi->DestroyShaderProgram(&_program);
+    }
+}
+
+/* static */
+static
+HdStGLSLProgram::ID
+_ComputeHash(TfToken const &sourceFile,
+             std::string const &defines = std::string())
+{
+    HD_TRACE_FUNCTION();
+
+    uint32_t hash = 0;
+    std::string const &filename = sourceFile.GetString();
+    hash = ArchHash(filename.c_str(), filename.size(), hash);
+    hash = ArchHash(defines.c_str(), defines.size(), hash);
+
+    return hash;
+}
+
+bool
+HdStGLSLProgram::CompileShader(
+    HgiShaderStage stage,
+    std::string const &shaderSource)
+{
+    HD_TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
+
+    // early out for empty source.
+    // this may not be an error, since glslfx gives empty string
+    // for undefined shader stages (i.e. null geometry shader)
+    if (shaderSource.empty()) {
         return false;
     }
 
-    // attach the shader to the program
-    glAttachShader(program, shader);
+    const char *shaderType = _GetShaderType(stage);
+    if (!shaderType) {
+        TF_CODING_ERROR("Invalid shader type %d\n", stage);
+        return false;
+    }
 
-    // shader is no longer needed.
-    glDeleteShader(shader);
+    TF_DESCRIBE_SCOPE(
+        "Compiling GLSL shader" + _GetScopeDescriptionLabel(_programDesc));
+
+    if (TfDebug::IsEnabled(HDST_DUMP_SHADER_SOURCE)) {
+        _DumpShaderSource(shaderType, shaderSource);
+    }
+
+    Hgi *const hgi = _registry->GetHgi();
+
+    // Create a shader, compile it
+    HgiShaderFunctionDesc shaderFnDesc;
+    shaderFnDesc.shaderCode = shaderSource.c_str();
+    shaderFnDesc.shaderStage = stage;
+
+    std::string generatedCode;
+    shaderFnDesc.generatedShaderCodeOut = &generatedCode;
+
+    HgiShaderFunctionHandle shaderFn = hgi->CreateShaderFunction(shaderFnDesc);
+
+    if (!_ValidateCompilation(shaderFn, shaderType, generatedCode, _debugID)) {
+        // shader is no longer needed.
+        hgi->DestroyShaderFunction(&shaderFn);
+
+        return false;
+    }
+
+    // Store the shader function in the program descriptor so it can be used
+    // during Link time.
+    _programDesc.shaderFunctions.push_back(shaderFn);
+
+    return true;
+}
+
+bool
+HdStGLSLProgram::CompileShader(HgiShaderFunctionDesc const &desc)
+{
+    HD_TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
+
+    // early out for empty source.
+    // this may not be an error, since glslfx gives empty string
+    // for undefined shader stages (i.e. null geometry shader)
+    if (!desc.shaderCode) return false;
+
+    const char *shaderType = _GetShaderType(desc.shaderStage);
+    if (!shaderType) {
+        TF_CODING_ERROR("Invalid shader type %d\n", desc.shaderStage);
+        return false;
+    }
+
+    TF_DESCRIBE_SCOPE(
+        "Compiling GLSL shader" + _GetScopeDescriptionLabel(_programDesc));
+
+    if (TfDebug::IsEnabled(HDST_DUMP_SHADER_SOURCE)) {
+        _DumpShaderSource(desc);
+    }
+
+    // Create a shader, compile it
+    Hgi *const hgi = _registry->GetHgi();
+
+    // Optionally, capture generated shader code for diagnostic output.
+    std::string *generatedCode = desc.generatedShaderCodeOut;
+
+    HgiShaderFunctionHandle shaderFn = hgi->CreateShaderFunction(desc);
+
+    if (!_ValidateCompilation(shaderFn, shaderType, *generatedCode, _debugID)) {
+        // shader is no longer needed.
+        hgi->DestroyShaderFunction(&shaderFn);
+
+        return false;
+    }
+
+    // Store the shader function in the program descriptor so it can be used
+    // during Link time.
+    _programDesc.shaderFunctions.push_back(shaderFn);
 
     return true;
 }
 
 static std::string
-_GetShaderType(GLint type)
-{
-    switch(type) {
-        case GL_VERTEX_SHADER:
-            return "--------GL_VERTEX_SHADER--------\n";
-        case GL_FRAGMENT_SHADER:
-            return "--------GL_FRAGMENT_SHADER--------\n";
-        case GL_GEOMETRY_SHADER:
-            return "--------GL_GEOMETRY_SHADER--------\n";
-        case GL_TESS_CONTROL_SHADER:
-            return "--------GL_TESS_CONTROL_SHADER--------\n";
-        case GL_TESS_EVALUATION_SHADER:
-            return "--------GL_TESS_EVALUATION_SHADER--------\n";
-
-        default:
-            return "--------UNKNOWN_SHADER_STAGE--------\n";
-    }
-}
-
-static void
-_DebugAppendShaderSource(GLuint shader, std::string * result)
-{
-    GLint sourceType = 0;
-    glGetShaderiv(shader, GL_SHADER_TYPE, &sourceType);
-
-    GLint sourceLength = 0;
-    glGetShaderiv(shader, GL_SHADER_SOURCE_LENGTH, &sourceLength);
-    if (sourceLength > 0) {
-        char *shaderSource = new char[sourceLength];
-        glGetShaderSource(shader, sourceLength, NULL, shaderSource);
-        // don't copy in the null terminator from the char*
-        result->append(_GetShaderType(sourceType));
-        result->append(shaderSource, sourceLength-1);
-        delete[] shaderSource;
-    }
-}
-
-static std::string
-_DebugLinkSource(GLuint program)
+_DebugLinkSource(HgiShaderProgramHandle const& program)
 {
     std::string result;
-    result = TfStringPrintf("==== Source Program ID=%d\nBEGIN_DUMP\n", program);
+    result = TfStringPrintf("==== Source Program ID=%p\nBEGIN_DUMP\n",
+                            program.Get());
 
-    GLint numAttachedShaders = 0;
-    glGetProgramiv(program, GL_ATTACHED_SHADERS, &numAttachedShaders);
-    if (numAttachedShaders > 0) {
-        GLuint * attachedShaders = new GLuint[numAttachedShaders];
-        glGetAttachedShaders(program,
-                             numAttachedShaders, NULL, attachedShaders);
-        for (int i=0; i<numAttachedShaders; ++i) {
-            _DebugAppendShaderSource(attachedShaders[i], &result);
+    for (HgiShaderFunctionHandle fn : program->GetShaderFunctions()) {
+        HgiShaderFunctionDesc const& desc = fn->GetDescriptor();
+        result.append("--------");
+        result.append(_GetShaderType(desc.shaderStage));
+        result.append("--------\n");
+        if (TF_VERIFY(desc.shaderCode)) {
+            result.append(desc.shaderCode);
+        } else {
+            result.append("(shaderCode empty)\n");
         }
     }
+
     result += "END DUMP\n";
 
     return result;
@@ -346,72 +399,30 @@ HdStGLSLProgram::Link()
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    if (!glLinkProgram) return false; // glew initialized
-
-    GLuint program = _program.GetId();
-    if (program == 0) {
+    if (_programDesc.shaderFunctions.empty()) {
         TF_CODING_ERROR("At least one shader has to be compiled before linking.");
         return false;
     }
 
-    bool dumpShaderBinary = TfDebug::IsEnabled(HDST_DUMP_SHADER_BINARY);
+    TF_DESCRIBE_SCOPE(
+        "Linking GLSL shader" + _GetScopeDescriptionLabel(_programDesc));
 
-    if (dumpShaderBinary) {
-        // set RETRIEVABLE_HINT to true for getting program binary length.
-        // note: Actually the GL driver may recompile the program dynamically on
-        // some state changes, so the size of program could be inaccurate.
-        glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT,
-                            GL_TRUE);
+    Hgi *const hgi = _registry->GetHgi();
+
+    // Create the shader program.
+    if (_program) {
+        hgi->DestroyShaderProgram(&_program);
     }
+    _program = hgi->CreateShaderProgram(_programDesc);
 
-    // link
-    glLinkProgram(program);
-
-    std::string logString;
-    bool success = true;
-    if (!HdStGLUtils::GetProgramLinkStatus(program, &logString)) {
-        // XXX:validation
+    bool success = _program->IsValid();
+    if (!success) {
+        std::string const& logString = _program->GetCompileErrors();
         TF_WARN("Failed to link shader: %s", logString.c_str());
-        success = false;
 
         if (TfDebug::IsEnabled(HDST_DUMP_FAILING_SHADER_SOURCE)) {
-            std::cout << _DebugLinkSource(program) << std::flush;
+            std::cout << _DebugLinkSource(_program) << std::flush;
         }
-    }
-
-    // initial program size
-    GLint size;
-    glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &size);
-
-    // update the program resource allocation
-    _program.SetAllocation(program, size);
-
-    // create an uniform buffer
-    GLuint uniformBuffer = _uniformBuffer.GetId();
-    if (uniformBuffer == 0) {
-        GlfContextCaps const &caps = GlfContextCaps::GetInstance();
-        if (ARCH_LIKELY(caps.directStateAccessEnabled)) {
-            glCreateBuffers(1, &uniformBuffer);
-        } else {
-            glGenBuffers(1, &uniformBuffer);
-        }
-        _uniformBuffer.SetAllocation(uniformBuffer, 0);
-    }
-
-    // binary dump out
-    if (dumpShaderBinary) {
-        std::vector<char> bin(size);
-        GLsizei len;
-        GLenum format;
-        glGetProgramBinary(program, size, &len, &format, &bin[0]);
-        std::stringstream fname;
-        fname << "program" << _debugID << ".bin";
-
-        std::fstream output(fname.str().c_str(), std::ios::out|std::ios::binary);
-        output.write(&bin[0], size);
-        output.close();
-
-        std::cout << "Write " << fname.str() << " (size=" << size << ")\n";
     }
 
     return success;
@@ -420,25 +431,10 @@ HdStGLSLProgram::Link()
 bool
 HdStGLSLProgram::Validate() const
 {
-    GLuint program = _program.GetId();
-    if (program == 0) return false;
-
-    if (TfDebug::IsEnabled(HD_SAFE_MODE) ||
-        TfGetEnvSetting(HD_ENABLE_SHARED_CONTEXT_CHECK)) {
-
-        HD_TRACE_FUNCTION();
-
-        // make sure the binary size is same as when it's created.
-        if (glIsProgram(program) == GL_FALSE) return false;
-        GLint size = 0;
-        glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &size);
-        if (size == 0) {
-            return false;
-        }
-        if (static_cast<size_t>(size) != _program.GetSize()) {
-            return false;
-        }
+    if (!_program || !_program->IsValid()) {
+        return false;
     }
+
     return true;
 }
 
@@ -457,34 +453,139 @@ HdStGLSLProgram::GetComputeProgram(
         TfToken const &shaderToken,
         HdStResourceRegistry *resourceRegistry)
 {
+    const HdStGLSLProgram::ID hash = _ComputeHash(shaderToken);
+
     // Find the program from registry
     HdInstance<HdStGLSLProgramSharedPtr> programInstance =
-                resourceRegistry->RegisterGLSLProgram(
-                        HdStGLSLProgram::ComputeHash(shaderToken));
+                resourceRegistry->RegisterGLSLProgram(hash);
 
     if (programInstance.IsFirstInstance()) {
+
+        TF_DEBUG(HDST_LOG_COMPUTE_SHADER_PROGRAM_MISSES).Msg(
+            "(MISS) First compute program instance for %s (hash = %zu)\n",
+            shaderFileName.GetText(), hash);
+
         // if not exists, create new one
-        HdStGLSLProgramSharedPtr newProgram(
-            new HdStGLSLProgram(HdTokens->computeShader));
+        HdStGLSLProgramSharedPtr newProgram =
+            std::make_shared<HdStGLSLProgram>(
+                HdTokens->computeShader, resourceRegistry);
 
         HioGlslfx glslfx(shaderFileName);
         std::string errorString;
         if (!glslfx.IsValid(&errorString)){
             TF_CODING_ERROR("Failed to parse " + shaderFileName.GetString() 
                             + ": " + errorString);
-            return HdStGLSLProgramSharedPtr();
+            return nullptr;
         }
-        std::string version = "#version 430\n";
         if (!newProgram->CompileShader(
-                GL_COMPUTE_SHADER, version + glslfx.GetSource(shaderToken))) {
+                HgiShaderStageCompute, glslfx.GetSource(shaderToken))) {
             TF_CODING_ERROR("Fail to compile " + shaderToken.GetString());
-            return HdStGLSLProgramSharedPtr();
+            return nullptr;
         }
         if (!newProgram->Link()) {
             TF_CODING_ERROR("Fail to link " + shaderToken.GetString());
-            return HdStGLSLProgramSharedPtr();
+            return nullptr;
         }
         programInstance.SetValue(newProgram);
+
+    } else {
+        TF_DEBUG(HDST_LOG_COMPUTE_SHADER_PROGRAM_HITS).Msg(
+            "(HIT) Found compute program instance for %s (hash = %zu)\n",
+            shaderFileName.GetText(), hash);
+    }
+    return programInstance.GetValue();
+}
+
+HdStGLSLProgramSharedPtr
+HdStGLSLProgram::GetComputeProgram(
+    TfToken const &shaderToken,
+    HdStResourceRegistry *resourceRegistry,
+    PopulateDescriptorCallback populateDescriptor)
+{
+    return GetComputeProgram(shaderToken,
+                             std::string(),
+                             resourceRegistry,
+                             populateDescriptor);
+}
+
+HdStGLSLProgramSharedPtr
+HdStGLSLProgram::GetComputeProgram(
+    TfToken const &shaderToken,
+    std::string const &defines,
+    HdStResourceRegistry *resourceRegistry,
+    PopulateDescriptorCallback populateDescriptor)
+{
+    return GetComputeProgram(HdStPackageComputeShader(),
+                             shaderToken,
+                             defines,
+                             resourceRegistry,
+                             populateDescriptor);
+}
+
+HdStGLSLProgramSharedPtr
+HdStGLSLProgram::GetComputeProgram(
+    TfToken const &shaderFileName,
+    TfToken const &shaderToken,
+    std::string const &defines,
+    HdStResourceRegistry *resourceRegistry,
+    PopulateDescriptorCallback populateDescriptor)
+{
+    const HdStGLSLProgram::ID hash = _ComputeHash(shaderToken, defines);
+    // Find the program from registry
+    HdInstance<HdStGLSLProgramSharedPtr> programInstance =
+                resourceRegistry->RegisterGLSLProgram(hash);
+
+    if (programInstance.IsFirstInstance()) {
+
+        TF_DEBUG(HDST_LOG_COMPUTE_SHADER_PROGRAM_MISSES).Msg(
+            "(MISS) First compute program instance for %s (hash = %zu)\n",
+            shaderFileName.GetText(), hash);
+
+        // If program does not exist, create new one
+        const HioGlslfx glslfx(shaderFileName, HioGlslfxTokens->defVal);
+        std::string errorString;
+        if (!glslfx.IsValid(&errorString)){
+            TF_CODING_ERROR("Failed to parse " + shaderFileName.GetString()
+                            + ": " + errorString);
+            return nullptr;
+        }
+
+        Hgi *hgi = resourceRegistry->GetHgi();
+
+        HgiShaderFunctionDesc computeDesc;
+        populateDescriptor(computeDesc);
+
+        const std::string sourceCode = defines + glslfx.GetSource(shaderToken);
+        computeDesc.shaderCode = sourceCode.c_str();
+
+        std::string generatedCode;
+        computeDesc.generatedShaderCodeOut = &generatedCode;
+
+        HgiShaderFunctionHandle computeFn =
+            hgi->CreateShaderFunction(computeDesc);
+
+        static const char *shaderType = "GL_COMPUTE_SHADER";
+
+        if (!_ValidateCompilation(computeFn, shaderType, generatedCode, 0)) {
+            // shader is no longer needed.
+            hgi->DestroyShaderFunction(&computeFn);
+            return nullptr;
+        }
+
+        HdStGLSLProgramSharedPtr newProgram =
+            std::make_shared<HdStGLSLProgram>(
+                HdTokens->computeShader, resourceRegistry);
+
+        newProgram->_programDesc.shaderFunctions.push_back(computeFn);
+        if (!newProgram->Link()) {
+            TF_CODING_ERROR("Fail to link " + shaderToken.GetString());
+            return nullptr;
+        }
+        programInstance.SetValue(newProgram);
+    } else {
+        TF_DEBUG(HDST_LOG_COMPUTE_SHADER_PROGRAM_HITS).Msg(
+            "(HIT) Found compute program instance for %s (hash = %zu)\n",
+            shaderFileName.GetText(), hash);
     }
     return programInstance.GetValue();
 }

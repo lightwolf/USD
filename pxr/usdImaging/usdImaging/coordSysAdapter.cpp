@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usdImaging/usdImaging/coordSysAdapter.h"
 #include "pxr/usdImaging/usdImaging/delegate.h"
@@ -63,6 +46,8 @@ UsdImagingCoordSysAdapter::Populate(UsdPrim const& usdPrim,
             *(bindings.usdBindingVecPtr);
         TF_VERIFY(idVec.size() == bindingVec.size());
         for (size_t i=0, n=idVec.size(); i<n; ++i) {
+            // Verify that target path exists
+            TF_VERIFY(_GetPrim(bindingVec[i].coordSysPrimPath));
             if (!index->IsPopulated(idVec[i])) {
                 index->InsertSprim(HdPrimTypeTokens->coordSys, idVec[i],
                                    _GetPrim(bindingVec[i].coordSysPrimPath),
@@ -89,6 +74,11 @@ UsdImagingCoordSysAdapter::TrackVariability(UsdPrim const& prim,
                                         UsdImagingInstancerContext const* 
                                             instancerContext) const
 {
+    // Discover time-varying transform on the target prim.
+    _IsTransformVarying(prim,
+        HdCoordSys::DirtyTransform,
+        UsdImagingTokens->usdVaryingXform,
+        timeVaryingBits);
 }
 
 void 
@@ -99,13 +89,6 @@ UsdImagingCoordSysAdapter::UpdateForTime(UsdPrim const& prim,
                                UsdImagingInstancerContext const* 
                                    instancerContext) const
 {
-    UsdImagingValueCache* valueCache = _GetValueCache();
-    if (requestedBits & HdChangeTracker::DirtyTransform) {
-        // For coordinate system adapters, the UsdPrim will be the
-        // UsdGeomXformable that the coordSys relationship targets,
-        // and we compute its transform.
-        valueCache->GetTransform(cachePath) = GetTransform(prim, time);
-    }
 }
 
 void
@@ -122,9 +105,10 @@ UsdImagingCoordSysAdapter::ProcessPropertyChange(UsdPrim const& prim,
                                       SdfPath const& cachePath, 
                                       TfToken const& propertyName)
 {
-    // TODO: We could potentially detect xform-specific edits here
-    // and only 
-    return HdChangeTracker::AllDirty;
+    if (UsdGeomXformable::IsTransformationAffectedByAttrNamed(propertyName)) {
+        return HdCoordSys::DirtyTransform;
+    }
+    return HdChangeTracker::Clean;
 }
 
 void
@@ -141,7 +125,7 @@ UsdImagingCoordSysAdapter::MarkTransformDirty(UsdPrim const& prim,
                                            SdfPath const& cachePath,
                                            UsdImagingIndexProxy* index)
 {
-    index->MarkSprimDirty(cachePath, HdChangeTracker::DirtyTransform);
+    index->MarkSprimDirty(cachePath, HdCoordSys::DirtyTransform);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

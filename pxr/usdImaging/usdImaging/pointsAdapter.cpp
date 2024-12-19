@@ -1,30 +1,15 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usdImaging/usdImaging/pointsAdapter.h"
 
+#include "pxr/usdImaging/usdImaging/dataSourcePoints.h"
 #include "pxr/usdImaging/usdImaging/delegate.h"
 #include "pxr/usdImaging/usdImaging/indexProxy.h"
+#include "pxr/usdImaging/usdImaging/primvarUtils.h"
 #include "pxr/usdImaging/usdImaging/tokens.h"
 
 #include "pxr/imaging/hd/points.h"
@@ -47,6 +32,53 @@ TF_REGISTRY_FUNCTION(TfType)
 
 UsdImagingPointsAdapter::~UsdImagingPointsAdapter() 
 {
+}
+
+TfTokenVector
+UsdImagingPointsAdapter::GetImagingSubprims(UsdPrim const& prim)
+{
+    return { TfToken() };
+}
+
+TfToken
+UsdImagingPointsAdapter::GetImagingSubprimType(
+        UsdPrim const& prim,
+        TfToken const& subprim)
+{
+    if (subprim.IsEmpty()) {
+        return HdPrimTypeTokens->points;
+    }
+    return TfToken();
+}
+
+HdContainerDataSourceHandle
+UsdImagingPointsAdapter::GetImagingSubprimData(
+        UsdPrim const& prim,
+        TfToken const& subprim,
+        const UsdImagingDataSourceStageGlobals &stageGlobals)
+{
+    if (subprim.IsEmpty()) {
+        return UsdImagingDataSourcePointsPrim::New(
+            prim.GetPath(),
+            prim,
+            stageGlobals);
+    }
+    return nullptr;
+}
+
+HdDataSourceLocatorSet
+UsdImagingPointsAdapter::InvalidateImagingSubprim(
+        UsdPrim const& prim,
+        TfToken const& subprim,
+        TfTokenVector const& properties,
+        const UsdImagingPropertyInvalidationType invalidationType)
+{
+    if (subprim.IsEmpty()) {
+        return UsdImagingDataSourcePointsPrim::Invalidate(
+            prim, subprim, properties, invalidationType);
+    }
+
+    return HdDataSourceLocatorSet();
 }
 
 bool
@@ -153,9 +185,10 @@ UsdImagingPointsAdapter::UpdateForTime(UsdPrim const& prim,
 {
     BaseAdapter::UpdateForTime(
         prim, cachePath, time, requestedBits, instancerContext);
-    UsdImagingValueCache* valueCache = _GetValueCache();
 
-    HdPrimvarDescriptorVector& primvars = valueCache->GetPrimvars(cachePath);
+    UsdImagingPrimvarDescCache* primvarDescCache = _GetPrimvarDescCache();
+    HdPrimvarDescriptorVector& primvars = 
+        primvarDescCache->GetPrimvars(cachePath);
 
     if (requestedBits & HdChangeTracker::DirtyWidths) {
         // First check for "primvars:widths"
@@ -166,22 +199,19 @@ UsdImagingPointsAdapter::UpdateForTime(UsdPrim const& prim,
             // If it's not found locally, see if it's inherited
             pv = _GetInheritedPrimvar(prim, HdTokens->widths);
         }
+
         if (pv) {
-            _ComputeAndMergePrimvar(prim, cachePath, pv, time, valueCache);
+            _ComputeAndMergePrimvar(prim, pv, time, &primvars);
         } else {
             UsdGeomPoints points(prim);
-            HdInterpolation interpolation;
             VtFloatArray widths;
             if (points.GetWidthsAttr().Get(&widths, time)) {
-                interpolation = _UsdToHdInterpolation(
+                HdInterpolation interpolation = UsdImagingUsdToHdInterpolation(
                     points.GetWidthsInterpolation());
+                _MergePrimvar(&primvars, UsdGeomTokens->widths, interpolation);
             } else {
-                widths = VtFloatArray(1);
-                widths[0] = 1.0f;
-                interpolation = HdInterpolationConstant;
+                _RemovePrimvar(&primvars, UsdGeomTokens->widths);
             }
-            _MergePrimvar(&primvars, UsdGeomTokens->widths, interpolation);
-            valueCache->GetWidths(cachePath) = VtValue(widths);
         }
     }
 
@@ -194,17 +224,20 @@ UsdImagingPointsAdapter::UpdateForTime(UsdPrim const& prim,
             // If it's not found locally, see if it's inherited
             pv = _GetInheritedPrimvar(prim, HdTokens->normals);
         }
+    
         if (pv) {
-            _ComputeAndMergePrimvar(prim, cachePath, pv, time, valueCache);
+            _ComputeAndMergePrimvar(prim, pv, time, &primvars);
         } else {
             UsdGeomPoints points(prim);
             VtVec3fArray normals;
             if (points.GetNormalsAttr().Get(&normals, time)) {
-                _MergePrimvar(&primvars,
-                        UsdGeomTokens->normals,
-                        _UsdToHdInterpolation(points.GetNormalsInterpolation()),
-                        HdPrimvarRoleTokens->normal);
-                valueCache->GetNormals(cachePath) = VtValue(normals);
+                _MergePrimvar(
+                    &primvars,
+                    UsdGeomTokens->normals,
+                    UsdImagingUsdToHdInterpolation(points.GetNormalsInterpolation()),
+                    HdPrimvarRoleTokens->normal);
+            } else {
+                _RemovePrimvar(&primvars, UsdGeomTokens->normals);
             }
         }
     }
@@ -223,14 +256,14 @@ UsdImagingPointsAdapter::ProcessPropertyChange(UsdPrim const& prim,
         UsdGeomPoints points(prim);
         return UsdImagingPrimAdapter::_ProcessNonPrefixedPrimvarPropertyChange(
             prim, cachePath, propertyName, HdTokens->widths,
-            _UsdToHdInterpolation(points.GetWidthsInterpolation()),
+            UsdImagingUsdToHdInterpolation(points.GetWidthsInterpolation()),
             HdChangeTracker::DirtyWidths);
     
     } else if (propertyName == UsdGeomTokens->normals) {
         UsdGeomPoints points(prim);
         return UsdImagingPrimAdapter::_ProcessNonPrefixedPrimvarPropertyChange(
             prim, cachePath, propertyName, HdTokens->normals,
-            _UsdToHdInterpolation(points.GetNormalsInterpolation()),
+            UsdImagingUsdToHdInterpolation(points.GetNormalsInterpolation()),
             HdChangeTracker::DirtyNormals);
     }
     // Handle prefixed primvars that use special dirty bits.
@@ -245,6 +278,80 @@ UsdImagingPointsAdapter::ProcessPropertyChange(UsdPrim const& prim,
 
     // Allow base class to handle change processing.
     return BaseAdapter::ProcessPropertyChange(prim, cachePath, propertyName);
+}
+
+/*virtual*/
+VtValue
+UsdImagingPointsAdapter::Get(UsdPrim const& prim,
+                             SdfPath const& cachePath,
+                             TfToken const& key,
+                             UsdTimeCode time,
+                             VtIntArray *outIndices) const
+{
+    TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
+
+    if (key == HdTokens->normals) {
+        // First check for "primvars:normals"
+        UsdGeomPrimvarsAPI primvarsApi(prim);
+        UsdGeomPrimvar pv = primvarsApi.GetPrimvar(
+            UsdImagingTokens->primvarsNormals);
+        if (!pv) {
+            // If it's not found locally, see if it's inherited
+            pv = _GetInheritedPrimvar(prim, HdTokens->normals);
+        }
+
+        VtValue value;
+        
+        if (outIndices) {
+            if (pv && pv.Get(&value, time)) {
+                pv.GetIndices(outIndices, time);
+                return value;
+            }
+        } else if (pv && pv.ComputeFlattened(&value, time)) {
+            return value;
+        }
+
+        // If there's no "primvars:normals",
+        // fall back to UsdGeomPoints's "normals" attribute. 
+        UsdGeomPoints points(prim);
+        VtVec3fArray normals;
+        if (points && points.GetNormalsAttr().Get(&normals, time)) {
+            value = normals;
+            return value;
+        }
+
+    } else if (key == HdTokens->widths) {
+        // First check for "primvars:widths"
+        UsdGeomPrimvarsAPI primvarsApi(prim);
+        UsdGeomPrimvar pv = primvarsApi.GetPrimvar(
+            UsdImagingTokens->primvarsWidths);
+        if (!pv) {
+            // If it's not found locally, see if it's inherited
+            pv = _GetInheritedPrimvar(prim, HdTokens->widths);
+        }
+
+        VtValue value;
+
+        if (outIndices) {
+            if (pv && pv.Get(&value, time)) {
+                pv.GetIndices(outIndices, time);
+                return value;
+            }
+        } else if (pv && pv.ComputeFlattened(&value, time)) {
+            return value;
+        }
+
+        // Fallback to UsdGeomPoints' "normals" attribute.
+        UsdGeomPoints points(prim);
+        VtFloatArray widths;
+        if (points && points.GetWidthsAttr().Get(&widths, time)) {
+            value = widths;
+            return value;
+        }
+    }
+
+    return BaseAdapter::Get(prim, cachePath, key, time, outIndices);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

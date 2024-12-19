@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_SCHEMA_BASE_H
 #define PXR_USD_USD_SCHEMA_BASE_H
@@ -57,47 +40,48 @@ class UsdSchemaBase {
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType in usd/common.h
-    static const UsdSchemaType schemaType = UsdSchemaType::AbstractBase;
+    /// \sa UsdSchemaKind in usd/common.h
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::AbstractBase;
 
     /// Returns whether or not this class corresponds to a concrete instantiable
     /// prim type in scene description.  If this is true,
     /// GetStaticPrimDefinition() will return a valid prim definition with
     /// a non-empty typeName.
     bool IsConcrete() const {
-        return _GetSchemaType() == UsdSchemaType::ConcreteTyped;
+        return GetSchemaKind() == UsdSchemaKind::ConcreteTyped;
     }
 
     /// Returns whether or not this class inherits from UsdTyped. Types which
     /// inherit from UsdTyped can impart a typename on a UsdPrim.
     bool IsTyped() const {
-        return _GetSchemaType() == UsdSchemaType::ConcreteTyped
-            || _GetSchemaType() == UsdSchemaType::AbstractTyped;
+        return GetSchemaKind() == UsdSchemaKind::ConcreteTyped
+            || GetSchemaKind() == UsdSchemaKind::AbstractTyped;
     }
 
     /// Returns whether this is an API schema or not.
     bool IsAPISchema() const {
-        return _GetSchemaType() == UsdSchemaType::NonAppliedAPI
-            || _GetSchemaType() == UsdSchemaType::SingleApplyAPI
-            || _GetSchemaType() == UsdSchemaType::MultipleApplyAPI;
+        return GetSchemaKind() == UsdSchemaKind::NonAppliedAPI
+            || GetSchemaKind() == UsdSchemaKind::SingleApplyAPI
+            || GetSchemaKind() == UsdSchemaKind::MultipleApplyAPI;
     }
 
     /// Returns whether this is an applied API schema or not. If this returns
     /// true this class will have an Apply() method
     bool IsAppliedAPISchema() const {
-        return _GetSchemaType() == UsdSchemaType::SingleApplyAPI
-            || _GetSchemaType() == UsdSchemaType::MultipleApplyAPI;
+        return GetSchemaKind() == UsdSchemaKind::SingleApplyAPI
+            || GetSchemaKind() == UsdSchemaKind::MultipleApplyAPI;
     }
 
     /// Returns whether this is an applied API schema or not. If this returns
     /// true the constructor, Get and Apply methods of this class will take
     /// in the name of the API schema instance.
     bool IsMultipleApplyAPISchema() const {
-        return _GetSchemaType() == UsdSchemaType::MultipleApplyAPI;
+        return GetSchemaKind() == UsdSchemaKind::MultipleApplyAPI;
     }
 
-    UsdSchemaType GetSchemaType() const {
-        return _GetSchemaType();
+    /// Returns the kind of schema this class is.
+    UsdSchemaKind GetSchemaKind() const {
+        return _GetSchemaKind();
     }
 
     /// Construct and store \p prim as the held prim.
@@ -151,6 +135,7 @@ public:
         return names;
     }
 
+    /// \anchor UsdSchemaBase_bool
     /// Return true if this schema object is compatible with its held prim,
     /// false otherwise.  For untyped schemas return true if the held prim is
     /// not expired, otherwise return false.  For typed schemas return true if
@@ -165,12 +150,25 @@ public:
     }
 
 protected:
-    /// Returns the type of schema this class is.
+    /// Returns the kind of schema this class is.
     ///
-    /// \sa UsdSchemaBase::schemaType
-    virtual UsdSchemaType _GetSchemaType() const {
-        return schemaType;
+    /// \sa UsdSchemaBase::schemaKind
+    virtual UsdSchemaKind _GetSchemaKind() const {
+        return schemaKind;
     }
+
+    /// \deprecated
+    /// This has been replace with _GetSchemaKind but is around for now for 
+    /// backwards compatibility while schemas are being updated.
+    ///
+    /// Leaving this around for one more release as schema classes up until now
+    /// have been generated with an override of this function. We don't want 
+    /// those classes to immediately not compile before a chance is given to 
+    /// regenerate the schemas.
+    virtual UsdSchemaKind _GetSchemaType() const {
+        return schemaKind;
+    }
+
     // Helper for subclasses to get the TfType for this schema object's dynamic
     // C++ type.
     const TfType &_GetType() const {
@@ -192,6 +190,11 @@ protected:
     virtual bool _IsCompatible() const;
 
 private:
+    // needs to invoke _GetStaticTfType.
+    friend class UsdSchemaRegistry;
+    USD_API
+    static const TfType &_GetStaticTfType();
+
     // Subclasses should not override _GetTfType.  It is implemented by the
     // schema class code generator.
     USD_API

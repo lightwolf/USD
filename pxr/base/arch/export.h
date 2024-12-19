@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_ARCH_EXPORT_H
 #define PXR_BASE_ARCH_EXPORT_H
@@ -83,7 +66,9 @@
 /// and the type_info.  The type_info is especially important.  If you
 /// will dynamic_cast to the type or catch an exception using the type
 /// outside of the library, you \b must put its type_info into the API.
-/// The only way to do that is to put the whole class into the API.
+/// To export the vtable & type_info specifically, use \c ARCH_EXPORT_TYPE.
+/// However, due to compiler limitations, ARCH_EXPORT_TYPE may put the
+/// whole class into the API as if ARCH_EXPORT were used.
 ///
 /// Note that template classes do not get added to the API that way.
 /// Instead they are added when explicitly instantiated like so:
@@ -159,19 +144,27 @@
 #       define ARCH_EXPORT __attribute__((dllexport))
 #       define ARCH_IMPORT __attribute__((dllimport))
 #       define ARCH_HIDDEN
+#       define ARCH_EXPORT_TYPE
 #   else
 #       define ARCH_EXPORT __declspec(dllexport)
 #       define ARCH_IMPORT __declspec(dllimport)
 #       define ARCH_HIDDEN
+#       define ARCH_EXPORT_TYPE
 #   endif
 #elif defined(ARCH_COMPILER_GCC) && ARCH_COMPILER_GCC_MAJOR >= 4 || defined(ARCH_COMPILER_CLANG)
 #   define ARCH_EXPORT __attribute__((visibility("default")))
 #   define ARCH_IMPORT
 #   define ARCH_HIDDEN __attribute__((visibility("hidden")))
+#   if defined(ARCH_COMPILER_CLANG)
+#       define ARCH_EXPORT_TYPE __attribute__((type_visibility("default")))
+#   else
+#       define ARCH_EXPORT_TYPE __attribute__((visibility("default")))
+#   endif
 #else
 #   define ARCH_EXPORT
 #   define ARCH_IMPORT
 #   define ARCH_HIDDEN
+#   define ARCH_EXPORT_TYPE
 #endif
 #define ARCH_EXPORT_TEMPLATE(type, ...)
 #define ARCH_IMPORT_TEMPLATE(type, ...) extern template type ARCH_IMPORT __VA_ARGS__

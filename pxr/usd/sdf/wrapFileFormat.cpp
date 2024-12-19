@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 ///
 /// \file Sdf/wrapFileFormat.cpp
@@ -31,12 +14,12 @@
 #include "pxr/base/tf/pyStaticTokens.h"
 #include "pxr/base/tf/pyResultConversions.h"
 
-#include <boost/python/class.hpp>
-#include <boost/python/scope.hpp>
-
-using namespace boost::python;
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/scope.hpp"
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -68,32 +51,6 @@ private:
     mutable TfPyCall<SdfFileFormatRefPtr> _factory;
 };
 
-// Helper function for registering a file format from Python.
-// Shamelessly stolen from Mf/wrapMapper.cpp and Mf/wrapExpression.cpp.
-void
-_RegisterFileFormat(object classObject)
-{
-    std::string typeName =
-        extract<std::string>( classObject.attr("__name__") );
-
-    TfType fileFormatType = TfType_DefinePythonTypeAndBases(classObject);
-
-    if (fileFormatType.IsUnknown()) {
-        // CODE_COVERAGE_OFF - The code above registers this TfType, and
-        // currently never fails.
-        TF_CODING_ERROR("Could not define Python type for %s.",
-                        typeName.c_str());
-        return;
-        // CODE_COVERAGE_ON
-    }
-
-    // Set an type alias under MfPrim with the module-less name of the
-    // Python class.
-    fileFormatType.AddAlias( TfType::Find<SdfFileFormat>(), typeName );
-
-    // Register the factory function with the type.
-    fileFormatType.SetFactory(Sdf_PyFileFormatFactory::New(classObject));
-}
 
 } // anonymous namespace 
 
@@ -103,7 +60,7 @@ void wrapFileFormat()
     typedef SdfFileFormatPtr ThisPtr;
 
     scope s = 
-        class_<This, ThisPtr, boost::noncopyable>("FileFormat", no_init)
+        class_<This, ThisPtr, noncopyable>("FileFormat", no_init)
 
         .def(TfPyRefAndWeakPtr())
 
@@ -136,20 +93,52 @@ void wrapFileFormat()
              return_value_policy<TfPySequenceToList>())
         .staticmethod("FindAllFileFormatExtensions")
 
+        .def("FindAllDerivedFileFormatExtensions",
+             &This::FindAllDerivedFileFormatExtensions,
+             return_value_policy<TfPySequenceToList>())
+        .staticmethod("FindAllDerivedFileFormatExtensions")
+
         .def("FindById", &This::FindById)
         .staticmethod("FindById")
 
-        .def("FindByExtension", &This::FindByExtension,
+        .def("SupportsReading", &SdfFileFormat::SupportsReading)
+        .def("SupportsWriting", &SdfFileFormat::SupportsWriting)
+        .def("SupportsEditing", &SdfFileFormat::SupportsEditing)
+
+        .def("FormatSupportsReading", 
+                SdfFileFormat::FormatSupportsReading,
+                ( arg("extension"),
+                  arg("target") = std::string() ))
+        .staticmethod("FormatSupportsReading")
+
+        .def("FormatSupportsWriting", 
+                SdfFileFormat::FormatSupportsWriting,
+                ( arg("extension"),
+                  arg("target") = std::string() ))
+        .staticmethod("FormatSupportsWriting")
+
+        .def("FormatSupportsEditing", 
+                SdfFileFormat::FormatSupportsEditing,
+                ( arg("extension"),
+                  arg("target") = std::string() ))
+        .staticmethod("FormatSupportsEditing")
+
+        .def("FindByExtension",
+             (SdfFileFormatConstPtr(*)(const std::string&, const std::string&))
+                &This::FindByExtension,
              ( arg("extension"),
                arg("target") = std::string() ))
+        .def("FindByExtension",
+             (SdfFileFormatConstPtr(*)
+                (const std::string&, const SdfFileFormat::FileFormatArguments&))
+                &This::FindByExtension,
+             ( arg("extension"),
+               arg("args") ))
         .staticmethod("FindByExtension")
 
-        .def("RegisterFileFormat", &_RegisterFileFormat)
-        .staticmethod("RegisterFileFormat")
         ;
 
     TF_PY_WRAP_PUBLIC_TOKENS(
         "Tokens", SdfFileFormatTokens, SDF_FILE_FORMAT_TOKENS);
-}
 
-TF_REFPTR_CONST_VOLATILE_GET(SdfFileFormat)
+}

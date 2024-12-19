@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 
@@ -50,9 +33,9 @@ HdSt_TriangleIndexBuilderComputation::GetBufferSpecs(
     // triangles don't support ptex indexing (at least for now).
     specs->emplace_back(HdTokens->primitiveParam,
                         HdTupleType{HdTypeInt32, 1});
-    // 3 edge indices per triangle
+    // 1 edge index per triangle
     specs->emplace_back(HdTokens->edgeIndices,
-                        HdTupleType{HdTypeInt32Vec3, 1});
+                        HdTupleType{HdTypeInt32, 1});
 }
 
 bool
@@ -64,7 +47,7 @@ HdSt_TriangleIndexBuilderComputation::Resolve()
 
     VtVec3iArray trianglesFaceVertexIndices;
     VtIntArray primitiveParam;
-    VtVec3iArray trianglesEdgeIndices;
+    VtIntArray trianglesEdgeIndices;
 
     HdMeshUtil meshUtil(_topology, _id);
     meshUtil.ComputeTriangleIndices(
@@ -72,10 +55,9 @@ HdSt_TriangleIndexBuilderComputation::Resolve()
             &primitiveParam,
             &trianglesEdgeIndices);
 
-    _SetResult(HdBufferSourceSharedPtr(
-                   new HdVtBufferSource(
+    _SetResult(std::make_shared<HdVtBufferSource>(
                        HdTokens->indices,
-                       VtValue(trianglesFaceVertexIndices))));
+                       VtValue(trianglesFaceVertexIndices)));
 
     _primitiveParam.reset(new HdVtBufferSource(
                               HdTokens->primitiveParam,
@@ -135,10 +117,9 @@ HdSt_TriangulateFaceVaryingComputation::Resolve()
             _source->GetNumElements(),
             _source->GetTupleType().type,
             &result)) {
-        _SetResult(HdBufferSourceSharedPtr(
-                    new HdVtBufferSource(
+        _SetResult(std::make_shared<HdVtBufferSource>(
                         _source->GetName(),
-                        result)));
+                        result));
     } else {
         _SetResult(_source);
     }

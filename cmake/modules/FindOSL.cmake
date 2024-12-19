@@ -1,25 +1,8 @@
 #
 # Copyright 2018 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 # Find OSL header.
@@ -43,16 +26,38 @@ if(OSL_INCLUDE_DIR)
                 ${osl_config_file}
                 TMP
                 REGEX "#define OSL_LIBRARY_VERSION_MAJOR.*$")
-        string(REGEX MATCHALL "[0-9]" OSL_MAJOR_VERSION ${TMP})
+        string(REGEX MATCHALL "[0-9]+" OSL_MAJOR_VERSION ${TMP})
         file(STRINGS
                 ${osl_config_file}
                 TMP
                 REGEX "#define OSL_LIBRARY_VERSION_MINOR.*$")
-        string(REGEX MATCHALL "[0-9]" OSL_MINOR_VERSION ${TMP})
+        string(REGEX MATCHALL "[0-9]+" OSL_MINOR_VERSION ${TMP})
+        file(STRINGS
+                ${osl_config_file}
+                TMP
+                REGEX "#define OSL_LIBRARY_VERSION_PATCH.*$")
+        string(REGEX MATCHALL "[0-9]+" OSL_PATCH_VERSION ${TMP})
+
+        string(JOIN "." OSL_VERSION
+               ${OSL_MAJOR_VERSION} ${OSL_MINOR_VERSION} ${OSL_PATCH_VERSION})
     endif()
 endif()
 
 # Find libraries and binaries
+
+# OSL v1.11.0+ provide the shader install directory
+# in a macro in OSL/oslversion.h, but for older versions
+# we need to find this location ourselves.
+if (${OSL_VERSION} VERSION_LESS "1.11.0")
+    find_path (OSL_SHADER_INSTALL_DIR
+        NAMES
+            stdosl.h
+        HINTS
+            "${OSL_LOCATION}/shaders"
+            "$ENV{OSL_LOCATION}/shaders"
+    )
+endif()
+
 find_library (OSL_EXEC_LIBRARY
     NAMES
         oslexec
@@ -100,7 +105,20 @@ find_program (OSL_OSLINFO_EXECUTABLE
     )
 
 include (FindPackageHandleStandardArgs)
-find_package_handle_standard_args (OSL
+
+if (${OSL_VERSION} VERSION_LESS "1.11.0")
+    find_package_handle_standard_args (OSL
+        DEFAULT_MSG
+        OSL_INCLUDE_DIR
+        OSL_EXEC_LIBRARY
+        OSL_COMP_LIBRARY
+        OSL_QUERY_LIBRARY
+        OSL_SHADER_INSTALL_DIR
+        OSL_OSLC_EXECUTABLE
+        OSL_OSLINFO_EXECUTABLE
+    )
+else()
+    find_package_handle_standard_args (OSL
         DEFAULT_MSG
         OSL_INCLUDE_DIR
         OSL_EXEC_LIBRARY
@@ -109,3 +127,4 @@ find_package_handle_standard_args (OSL
         OSL_OSLC_EXECUTABLE
         OSL_OSLINFO_EXECUTABLE
     )
+endif()

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_GLF_SIMPLE_LIGHTING_CONTEXT_H
 #define PXR_IMAGING_GLF_SIMPLE_LIGHTING_CONTEXT_H
@@ -38,6 +21,9 @@
 #include "pxr/base/tf/declarePtrs.h"
 #include "pxr/base/tf/refBase.h"
 #include "pxr/base/tf/weakBase.h"
+#include "pxr/base/tf/token.h"
+
+#include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -57,7 +43,7 @@ public:
     GLF_API
     void SetLights(GlfSimpleLightVector const & lights);
     GLF_API
-    GlfSimpleLightVector & GetLights();
+    GlfSimpleLightVector const & GetLights() const;
 
     // returns the effective number of lights taken into account
     // in composable/compatible shader constraints
@@ -72,7 +58,7 @@ public:
     GLF_API
     void SetShadows(GlfSimpleShadowArrayRefPtr const & shadows);
     GLF_API
-    GlfSimpleShadowArrayRefPtr const & GetShadows();
+    GlfSimpleShadowArrayRefPtr const & GetShadows() const;
 
     GLF_API
     void SetMaterial(GlfSimpleMaterial const & material);
@@ -118,11 +104,30 @@ public:
     GLF_API
     void SetStateFromOpenGL();
 
+    /// \name Post Surface Lighting
+    ///
+    /// This context can provide additional shader source, currently
+    /// used to implement post surface lighting, along with a hash
+    /// to help de-duplicate use by client shader programs.
+    ///
+    /// @{
+
+    GLF_API
+    size_t ComputeShaderSourceHash();
+
+    GLF_API
+    std::string const & ComputeShaderSource(TfToken const &shaderStageKey);
+
+    /// @}
+
 protected:
     GLF_API
     GlfSimpleLightingContext();
     GLF_API
     ~GlfSimpleLightingContext();
+
+    void _ComputePostSurfaceShaderState();
+    void _BindPostSurfaceShaderParams(GlfBindingMapPtr const &bindingMap);
 
 private:
     GlfSimpleLightVector _lights;
@@ -143,9 +148,13 @@ private:
     GlfUniformBlockRefPtr _materialUniformBlock;
     GlfUniformBlockRefPtr _bindlessShadowlUniformBlock;
 
+    class _PostSurfaceShaderState;
+    std::unique_ptr<_PostSurfaceShaderState> _postSurfaceShaderState;
+
     bool _lightingUniformBlockValid;
     bool _shadowUniformBlockValid;
     bool _materialUniformBlockValid;
+    bool _postSurfaceShaderStateValid;
 };
 
 

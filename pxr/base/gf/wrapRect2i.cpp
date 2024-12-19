@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -28,36 +11,40 @@
 #include "pxr/base/tf/wrapTypeHelpers.h"
 #include "pxr/base/tf/pyContainerConversions.h"
 
-#include <boost/python/class.hpp>
-#include <boost/python/copy_const_reference.hpp>
-#include <boost/python/operators.hpp>
-#include <boost/python/return_arg.hpp>
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/copy_const_reference.hpp"
+#include "pxr/external/boost/python/operators.hpp"
+#include "pxr/external/boost/python/return_arg.hpp"
 
 #include <string>
-
-using namespace boost::python;
 
 using std::string;
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+using namespace pxr_boost::python;
+
 namespace {
 
 static string _Repr(GfRect2i const &self) {
-    return TF_PY_REPR_PREFIX + "Rect2i(" + TfPyRepr(self.GetLower()) + ", " +
-        TfPyRepr(self.GetHigher()) + ")";
+    return TF_PY_REPR_PREFIX + "Rect2i(" + TfPyRepr(self.GetMin()) + ", " +
+        TfPyRepr(self.GetMax()) + ")";
+}
+
+static size_t __hash__(GfRect2i const &self) {
+    return TfHash()(self);
 }
 
 } // anonymous namespace 
 
 void wrapRect2i()
 {    
-    typedef GfRect2i This;
+    using This = GfRect2i;
 
-    object getLower = make_function(&This::GetLower,
+    object getMin = make_function(&This::GetMin,
                                     return_value_policy<return_by_value>());
 
-    object getHigher = make_function(&This::GetHigher,
+    object getMax = make_function(&This::GetMax,
                                      return_value_policy<return_by_value>());
 
     class_<This>( "Rect2i", init<>() )
@@ -71,29 +58,29 @@ void wrapRect2i()
         .def("IsEmpty", &This::IsEmpty)
         .def("IsValid", &This::IsValid)
 
-        .add_property("lower", getLower, &This::SetLower)
-        .add_property("higher", getHigher, &This::SetHigher)
+        .add_property("min", getMin, &This::SetMin)
+        .add_property("max", getMax, &This::SetMax)
 
-        .add_property("bottom", &This::GetBottom, &This::SetBottom) 
-        .add_property("left", &This::GetLeft, &This::SetLeft) 
-        .add_property("right", &This::GetRight, &This::SetRight) 
-        .add_property("top", &This::GetTop, &This::SetTop) 
+        .add_property("minX", &This::GetMinX, &This::SetMinX) 
+        .add_property("maxX", &This::GetMaxX, &This::SetMaxX) 
+        .add_property("minY", &This::GetMinY, &This::SetMinY) 
+        .add_property("maxY", &This::GetMaxY, &This::SetMaxY) 
 
-        .def("GetLower", getLower)
-        .def("GetHigher", getHigher)
+        .def("GetMin", getMin)
+        .def("GetMax", getMax)
 
-        .def("GetBottom", &This::GetBottom)
-        .def("GetLeft", &This::GetLeft)
-        .def("GetRight", &This::GetRight)
-        .def("GetTop", &This::GetTop)
+        .def("GetMinX", &This::GetMinX)
+        .def("GetMaxX", &This::GetMaxX)
+        .def("GetMinY", &This::GetMinY)
+        .def("GetMaxY", &This::GetMaxY)
 
-        .def("SetLower", &This::SetLower)
-        .def("SetHigher", &This::SetHigher)
+        .def("SetMin", &This::SetMin)
+        .def("SetMax", &This::SetMax)
 
-        .def("SetBottom", &This::SetBottom)
-        .def("SetLeft", &This::SetLeft)
-        .def("SetRight", &This::SetRight)
-        .def("SetTop", &This::SetTop)
+        .def("SetMinX", &This::SetMinX)
+        .def("SetMaxX", &This::SetMaxX)
+        .def("SetMinY", &This::SetMinY)
+        .def("SetMaxY", &This::SetMaxY)
 
         .def("GetArea", &This::GetArea)
         .def("GetCenter", &This::GetCenter)
@@ -115,7 +102,7 @@ void wrapRect2i()
         .def( self + self )
         
         .def("__repr__", _Repr)
-        
+        .def("__hash__", __hash__)
         ;
     to_python_converter<std::vector<This>,
         TfPySequenceToPython<std::vector<This> > >();

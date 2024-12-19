@@ -2,27 +2,10 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
-from pxr import Gf, Usd, UsdGeom
+from pxr import Gf, Usd, UsdGeom, Sdf, Tf
 import unittest, math
 
 class TestUsdGeomCamera(unittest.TestCase):
@@ -127,6 +110,34 @@ class TestUsdGeomCamera(unittest.TestCase):
 
         for a, e in zip(actual, expected):
             self.assertTrue(Gf.IsClose(a, e, 1e-2))
+
+    def test_SetFromCameraWithComposition(self):
+        stage = Usd.Stage.Open("layers_a_b.usda")
+        layerA = Sdf.Layer.FindOrOpen("a.usda")
+        layerB = Sdf.Layer.FindOrOpen("b.usda")
+        stage.SetEditTarget(layerB)
+
+        usdCamera = UsdGeom.Camera.Define(stage, '/camera')
+
+        camera = Gf.Camera()
+        newXform = Gf.Matrix4d().SetTranslate(Gf.Vec3d(100, 200, 300))
+        camera.transform = newXform
+        camera.horizontalAperture = 500.0
+
+        # Verify that trying to SetFromCamera from a weaker edit target does not crash,
+        # and does not modify any existing camera attributes.
+        usdCamera.SetFromCamera(camera, 1.0)
+        self.assertEqual(usdCamera.GetHorizontalApertureAttr().Get(1.0), 1.0)
+
+        # Now use the stronger layer
+        stage.SetEditTarget(layerA)
+
+        # This should succeed
+        usdCamera.SetFromCamera(camera, 1.0)
+
+        self.assertEqual(usdCamera.GetHorizontalApertureAttr().Get(1.0), 500.0)
+        self.assertEqual(usdCamera.ComputeLocalToWorldTransform(1.0), newXform)
+
 
 if __name__ == '__main__':
     unittest.main()

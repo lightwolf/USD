@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_GF_ROTATION_H
 #define PXR_BASE_GF_ROTATION_H
@@ -34,8 +17,7 @@
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/api.h"
-
-#include <boost/functional/hash.hpp>
+#include "pxr/base/tf/hash.h"
 
 #include <iosfwd>
 
@@ -158,7 +140,7 @@ class GfRotation {
     // an equivalent rotation that is as close as possible to the hints.
     //
     // One can use this routine to generate any combination of the three 
-    // angles by passing in NULL for the angle that is to be omitted.
+    // angles by passing in nullptr for the angle that is to be omitted.
     // 
     // Passing in valid pointers for all four angles will decompose into
     // Tw, FB, and LR but allows Sw to be used for best matching of hint 
@@ -185,9 +167,9 @@ class GfRotation {
                                   double *thetaTw,
                                   double *thetaFB,
                                   double *thetaLR,
-                                  double *thetaSw = NULL,
+                                  double *thetaSw = nullptr,
                                   bool   useHint=false,
-                                  const double *swShift=NULL);
+                                  const double *swShift=nullptr);
 
     // This function projects the vectors \p v1 and \p v2 onto the plane 
     // normal to \p axis, and then returns the rotation about \p axis that 
@@ -197,20 +179,27 @@ class GfRotation {
                                           const GfVec3d &v2,
                                           const GfVec3d &axis);
 
-    /// Transforms row vector \p vec by the rotation, returning the result. 
+    /// Replace the hint angles with the closest rotation of the given
+    /// rotation to the hint.
+    ///
+    /// Each angle in the rotation will be within Pi of the corresponding
+    /// hint angle and the sum of the differences with the hint will
+    /// be minimized. If a given rotation value is null then that angle will
+    /// be treated as 0.0 and ignored in the calculations.
+    ///
+    /// All angles are in radians. The rotation order is Tw/FB/LR/Sw.
     GF_API
-    GfVec3f TransformDir( const GfVec3f &vec ) const;
+    static void MatchClosestEulerRotation(
+        double targetTw, double targetFB, double targetLR, double targetSw,
+        double *thetaTw, double *thetaFB, double *thetaLR, double *thetaSw);
 
-    /// \overload
+    /// Transforms row vector \p vec by the rotation, returning the result. 
     GF_API
     GfVec3d TransformDir( const GfVec3d &vec ) const;
 
     /// Hash.
     friend inline size_t hash_value(const GfRotation &r) {
-        size_t h = 0;
-        boost::hash_combine(h, r._axis);
-        boost::hash_combine(h, r._angle);
-        return h;
+        return TfHash::Combine(r._axis, r._angle);
     }
 
     /// Component-wise rotation equality test. The axes and angles must match

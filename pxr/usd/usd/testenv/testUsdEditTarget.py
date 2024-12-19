@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 import os, sys, unittest
 from pxr import Gf, Tf, Sdf, Pcp, Usd
@@ -258,6 +241,61 @@ class TestUsdEditTarget(unittest.TestCase):
             primPath = '/ReferencedModel/MyPrim'
             attrName = 'ReferencedModelSessionSublayerStringAttr'
             _CreateAndTestPrimAttribute(stage, primPath, attrName)
+
+    def test_StageEditTargetInstancing2(self):
+        rootLayer = Sdf.Layer.CreateAnonymous(".usda")
+        rootLayer.ImportFromString('''\
+        #usda 1.0
+
+        def "Class"
+        {
+        }
+
+        def "A" (
+            inherits = </Class>
+            instanceable = True
+        )
+        {
+        }
+        ''')
+
+        stage = Usd.Stage.Open(rootLayer)
+
+        # Set up an edit target that points across the inherit arc
+        # between /A and /Class. We expect that any edits
+        # to /Model or descendants will be mapped to /Class.
+        instance = stage.GetPrimAtPath('/A')
+        n = instance.GetPrimIndex().rootNode.children[0]
+        self.assertEqual(n.arcType, Pcp.ArcTypeInherit)
+        stage.SetEditTarget(Usd.EditTarget(stage.GetRootLayer(), n))
+
+        # These editing operations would fail if they were authoring
+        # local opinions because local overrides on descendants of
+        # instances are ignored. However, because the stage's edit
+        # target remaps these edits to the inherited class, these
+        # operations succeed.
+        instanceChild = stage.DefinePrim('/A/Child')
+        self.assertTrue(instanceChild.IsInstanceProxy())
+        self.assertEqual(instanceChild.GetPath(), '/A/Child')
+        self.assertTrue(stage.GetRootLayer().GetPrimAtPath(
+            '/Class/Child'))
+
+        instanceChildAttr = instanceChild.CreateAttribute(
+            'testAttr', Sdf.ValueTypeNames.String)
+        self.assertEqual(instanceChildAttr.GetPath(), '/A/Child.testAttr')
+        self.assertTrue(stage.GetRootLayer().GetAttributeAtPath(
+            '/Class/Child.testAttr'))
+
+        self.assertTrue(instanceChildAttr.Set("foo"))
+        self.assertEqual(stage.GetRootLayer().GetAttributeAtPath(
+            '/Class/Child.testAttr').default, "foo")
+
+    def test_InvalidStage(self):
+        # Check that constructing an EditContext with an invalid stage
+        # raises an exception
+        with self.assertRaises(RuntimeError):
+            with Usd.EditContext(None):
+                pass
 
 if __name__ == "__main__":
     unittest.main()

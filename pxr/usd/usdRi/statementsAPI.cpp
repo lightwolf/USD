@@ -1,30 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdRi/statementsAPI.h"
 #include "pxr/usd/usd/schemaRegistry.h"
 #include "pxr/usd/usd/typed.h"
-#include "pxr/usd/usd/tokens.h"
 
 #include "pxr/usd/sdf/types.h"
 #include "pxr/usd/sdf/assetPath.h"
@@ -38,11 +20,6 @@ TF_REGISTRY_FUNCTION(TfType)
         TfType::Bases< UsdAPISchemaBase > >();
     
 }
-
-TF_DEFINE_PRIVATE_TOKENS(
-    _schemaTokens,
-    (StatementsAPI)
-);
 
 /* virtual */
 UsdRiStatementsAPI::~UsdRiStatementsAPI()
@@ -62,16 +39,27 @@ UsdRiStatementsAPI::Get(const UsdStagePtr &stage, const SdfPath &path)
 
 
 /* virtual */
-UsdSchemaType UsdRiStatementsAPI::_GetSchemaType() const {
-    return UsdRiStatementsAPI::schemaType;
+UsdSchemaKind UsdRiStatementsAPI::_GetSchemaKind() const
+{
+    return UsdRiStatementsAPI::schemaKind;
+}
+
+/* static */
+bool
+UsdRiStatementsAPI::CanApply(
+    const UsdPrim &prim, std::string *whyNot)
+{
+    return prim.CanApplyAPI<UsdRiStatementsAPI>(whyNot);
 }
 
 /* static */
 UsdRiStatementsAPI
 UsdRiStatementsAPI::Apply(const UsdPrim &prim)
 {
-    return UsdAPISchemaBase::_ApplyAPISchema<UsdRiStatementsAPI>(
-            prim, _schemaTokens->StatementsAPI);
+    if (prim.ApplyAPI<UsdRiStatementsAPI>()) {
+        return UsdRiStatementsAPI(prim);
+    }
+    return UsdRiStatementsAPI();
 }
 
 /* static */
@@ -132,11 +120,6 @@ using std::string;
 PXR_NAMESPACE_OPEN_SCOPE
 
 TF_DEFINE_ENV_SETTING(
-    USDRI_STATEMENTS_WRITE_NEW_ATTR_ENCODING, true,
-    "If off, UsdRiStatementsAPI will write old-style attributes.  "
-    "Otherwise, primvars in the ri: namespace will be written instead.");
-
-TF_DEFINE_ENV_SETTING(
     USDRI_STATEMENTS_READ_OLD_ATTR_ENCODING, true,
     "If on, UsdRiStatementsAPI will read old-style attributes.  "
     "Otherwise, primvars in the ri: namespace will be read instead.");
@@ -168,17 +151,8 @@ UsdRiStatementsAPI::CreateRiAttribute(
 {
     TfToken fullName = _MakeRiAttrNamespace(nameSpace, name.GetString());
     SdfValueTypeName usdType = UsdRi_GetUsdType(riType);
-    if (TfGetEnvSetting(USDRI_STATEMENTS_WRITE_NEW_ATTR_ENCODING)) {
-        return UsdGeomPrimvarsAPI(GetPrim())
-            .CreatePrimvar(fullName, usdType).GetAttr();
-    } else {
-        UsdAttribute attr = GetPrim().CreateAttribute(fullName, usdType, 
-                                                      /* custom = */ false);
-        if (!TF_VERIFY(attr)) {
-            return UsdAttribute();
-        }
-        return attr;
-    }
+    return UsdGeomPrimvarsAPI(GetPrim())
+        .CreatePrimvar(fullName, usdType).GetAttr();
 }
 
 UsdAttribute
@@ -189,17 +163,8 @@ UsdRiStatementsAPI::CreateRiAttribute(
 {
     TfToken fullName = _MakeRiAttrNamespace(nameSpace, name.GetString());
     SdfValueTypeName usdType = SdfSchema::GetInstance().FindType(tfType);
-    if (TfGetEnvSetting(USDRI_STATEMENTS_WRITE_NEW_ATTR_ENCODING)) {
-        return UsdGeomPrimvarsAPI(GetPrim())
-            .CreatePrimvar(fullName, usdType).GetAttr();
-    } else {
-        UsdAttribute attr = GetPrim().CreateAttribute(fullName, usdType,
-                                                      /* custom = */ false);
-        if (!TF_VERIFY(attr)) {
-            return UsdAttribute();
-        }
-        return attr;
-    }
+    return UsdGeomPrimvarsAPI(GetPrim())
+        .CreatePrimvar(fullName, usdType).GetAttr();
 }
 
 UsdAttribute
@@ -313,11 +278,9 @@ UsdRiStatementsAPI::MakeRiAttributePropertyName(const std::string &attrName)
     std::vector<string> names = TfStringTokenize(attrName, ":");
 
     // If this is an already-encoded name, return it unchanged.
-    if (TfGetEnvSetting(USDRI_STATEMENTS_WRITE_NEW_ATTR_ENCODING)) {
-        if (names.size() == 5 &&
-            TfStringStartsWith(attrName, _tokens->primvarAttrNamespace)) {
-            return attrName;
-        }
+    if (names.size() == 5 &&
+        TfStringStartsWith(attrName, _tokens->primvarAttrNamespace)) {
+        return attrName;
     }
     if (names.size() == 4 &&
         TfStringStartsWith(attrName, _tokens->fullAttributeNamespace)) {
@@ -337,12 +300,8 @@ UsdRiStatementsAPI::MakeRiAttributePropertyName(const std::string &attrName)
         names.insert(names.begin(), "user");
     }
 
-    TfToken prefix =
-        TfGetEnvSetting(USDRI_STATEMENTS_WRITE_NEW_ATTR_ENCODING) ?
-        _tokens->primvarAttrNamespace :
-        _tokens->fullAttributeNamespace;
-
-    string fullName = prefix.GetString() + 
+    string fullName =
+        _tokens->primvarAttrNamespace.GetString() +
         names[0] + ":" + ( names.size() > 2 ?
                            TfStringJoin(names.begin() + 1, names.end(), "_")
                            : names[1]);

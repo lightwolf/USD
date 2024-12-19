@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDGEOM_GENERATED_PRIMVARSAPI_H
 #define USDGEOM_GENERATED_PRIMVARSAPI_H
@@ -84,8 +67,8 @@ class UsdGeomPrimvarsAPI : public UsdAPISchemaBase
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::NonAppliedAPI;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::NonAppliedAPI;
 
     /// Construct a UsdGeomPrimvarsAPI on UsdPrim \p prim .
     /// Equivalent to UsdGeomPrimvarsAPI::Get(prim.GetStage(), prim.GetPath())
@@ -130,11 +113,11 @@ public:
 
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -165,10 +148,10 @@ public:
     /// UsdGeomPrimvar).
     ///
     /// The name of the created attribute may or may not be the specified
-    /// \p attrName, due to the possible need to apply property namespacing
+    /// \p name, due to the possible need to apply property namespacing
     /// for primvars.  See \ref Usd_Creating_and_Accessing_Primvars
     /// for more information.  Creation may fail and return an invalid
-    /// Primvar if \p attrName contains a reserved keyword, such as the 
+    /// Primvar if \p name contains a reserved keyword, such as the 
     /// "indices" suffix we use for indexed primvars.
     ///
     /// The behavior with respect to the provided \p typeName
@@ -188,10 +171,99 @@ public:
     ///
     /// \sa UsdPrim::CreateAttribute(), UsdGeomPrimvar::IsPrimvar()
     USDGEOM_API
-    UsdGeomPrimvar CreatePrimvar(const TfToken& attrName,
+    UsdGeomPrimvar CreatePrimvar(const TfToken& name,
                                  const SdfValueTypeName &typeName,
                                  const TfToken& interpolation = TfToken(),
                                  int elementSize = -1) const;
+
+    /// Author scene description to create an attribute and authoring a \p value
+    /// on this prim that will be recognized as a Primvar (i.e. will present as 
+    /// a valid UsdGeomPrimvar). Note that unlike CreatePrimvar using this API 
+    /// explicitly authors a block for the indices attr associated with the
+    /// primvar, thereby blocking any indices set in any weaker layers.
+    ///
+    /// \return an invalid UsdGeomPrimvar on error, a valid UsdGeomPrimvar 
+    /// otherwise. It is fine to call this method multiple times, and in
+    /// different UsdEditTargets, even if there is an existing primvar of the
+    /// same name, indexed or not.
+    ///
+    /// \sa CreatePrimvar(), CreateIndexedPrimvar(), UsdPrim::CreateAttribute(), 
+    /// UsdGeomPrimvar::IsPrimvar()
+    template <typename T>
+    UsdGeomPrimvar CreateNonIndexedPrimvar(
+            const TfToken& name,
+            const SdfValueTypeName &typeName,
+            const T &value,
+            const TfToken &interpolation = TfToken(),
+            int elementSize = -1,
+            UsdTimeCode time = UsdTimeCode::Default()) const
+    {
+        UsdGeomPrimvar primvar = 
+            CreatePrimvar(name, typeName, interpolation, elementSize);
+
+        primvar.GetAttr().Set(value, time);
+        primvar.BlockIndices();
+        return primvar;
+    }
+
+    /// Author scene description to create an attribute and authoring a \p value
+    /// on this prim that will be recognized as an indexed Primvar with \p
+    /// indices appropriately set (i.e. will present as a valid UsdGeomPrimvar).
+    ///
+    /// \return an invalid UsdGeomPrimvar on error, a valid UsdGeomPrimvar 
+    /// otherwise. It is fine to call this method multiple times, and in
+    /// different UsdEditTargets, even if there is an existing primvar of the
+    /// same name, indexed or not.
+    ///
+    /// \sa CreatePrimvar(), CreateNonIndexedPrimvar(), 
+    /// UsdPrim::CreateAttribute(), UsdGeomPrimvar::IsPrimvar()
+    template <typename T>
+    UsdGeomPrimvar CreateIndexedPrimvar(
+            const TfToken& name,
+            const SdfValueTypeName &typeName,
+            const T &value,
+            const VtIntArray &indices,
+            const TfToken &interpolation = TfToken(),
+            int elementSize = -1,
+            UsdTimeCode time = UsdTimeCode::Default()) const
+    {
+        UsdGeomPrimvar primvar = 
+            CreatePrimvar(name, typeName, interpolation, elementSize);
+
+        primvar.GetAttr().Set(value, time);
+        primvar.SetIndices(indices, time);
+        return primvar;
+    }
+
+    /// Author scene description to delete an attribute on this prim that
+    /// was recognized as Primvar (i.e. will present as a valid UsdGeomPrimvar),
+    /// <em>in the current UsdEditTarget</em>.
+    ///
+    /// Because this method can only remove opinions about the primvar 
+    /// from the current EditTarget, you may generally find it more useful to 
+    /// use BlockPrimvar() which will ensure that all values from the EditTarget 
+    /// and weaker layers for the primvar and its indices will be ignored.
+    ///
+    /// Removal may fail and return false if \p name contains a reserved 
+    /// keyword, such as the "indices" suffix we use for indexed primvars.
+    ///
+    /// Note this will also remove the indices attribute associated with an
+    /// indiced primvar. 
+    ///
+    /// \return true if UsdGeomPrimvar and indices attribute was successfully 
+    /// removed, false otherwise.
+    ///
+    /// \sa UsdPrim::RemoveProperty())
+    USDGEOM_API
+    bool RemovePrimvar(const TfToken& name);
+
+    /// Remove all time samples on the primvar and its associated indices attr, 
+    /// and author a *block* \c default value. This will cause authored opinions
+    /// in weaker layers to be ignored.
+    ///
+    /// \sa UsdAttribute::Block(), UsdGeomPrimvar::BlockIndices
+    USDGEOM_API
+    void BlockPrimvar(const TfToken& name);
 
     /// Return the Primvar object named by \p name, which will
     /// be valid if a Primvar attribute definition already exists.
@@ -357,6 +429,10 @@ public:
     USDGEOM_API
     bool HasPossiblyInheritedPrimvar(const TfToken &name) const;
 
+    /// Test whether a given \p name contains the "primvars:" prefix
+    ///
+    USDGEOM_API
+    static bool CanContainPropertyName(const TfToken& name);
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

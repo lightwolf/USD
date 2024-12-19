@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_PCP_DEPENDENCY_H
 #define PXR_USD_PCP_DEPENDENCY_H
@@ -27,11 +10,16 @@
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
 #include "pxr/usd/pcp/mapFunction.h"
+#include "pxr/usd/pcp/types.h"
 #include "pxr/usd/sdf/path.h"
+
+#include "pxr/base/tf/declarePtrs.h"
 
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+TF_DECLARE_WEAK_AND_REF_PTRS(PcpLayerStack);
 
 class PcpNodeRef;
 
@@ -124,7 +112,30 @@ struct PcpDependency {
     }
 };
 
-typedef std::vector<PcpDependency> PcpDependencyVector;
+using PcpDependencyVector = std::vector<PcpDependency>;
+
+/// Description of a dependency that has been culled from the corresponding
+/// prim index. Since this dependency does not have a node in the prim index,
+/// this struct stores additional information needed to represent the
+/// dependency.
+struct PcpCulledDependency
+{
+    /// Flag representing the type of dependency.
+    PcpDependencyFlags flags = PcpDependencyTypeNone;
+    /// Arc type for this dependency.
+    PcpArcType arcType = PcpArcTypeRoot;
+    /// Layer stack containing the specs the prim index depends on.
+    PcpLayerStackRefPtr layerStack;
+    /// Path of the dependency specs in the layer stack.
+    SdfPath sitePath;
+    /// If relocations applied to the dependency node, this is the
+    /// unrelocated site path. Otherwise, this is empty.
+    SdfPath unrelocatedSitePath;
+    /// The map function that applies to values from the site.
+    PcpMapFunction mapToRoot;
+};
+
+using PcpCulledDependencyVector = std::vector<PcpCulledDependency>;
 
 /// Returns true if this node introduces a dependency in its
 /// PcpPrimIndex, false otherwise.  This is equivalent to

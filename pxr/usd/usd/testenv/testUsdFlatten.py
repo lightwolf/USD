@@ -2,25 +2,10 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
+
+# pylint: disable=range-builtin-not-iterating
 
 from __future__ import print_function
 import os, shutil, sys, unittest
@@ -340,6 +325,125 @@ class TestUsdFlatten(unittest.TestCase):
                   for p in metadataDict["assetPathArray"]]),
             [os.path.abspath("assetPaths/asset.usda")])
 
+    def test_FlattenStageMetadata(self):
+        testFile = "stage_metadata/root.usda"
+        sublayerFile = "stage_metadata/sub.usda"
+        resultFile = "stage_metadata/result.usda"
+
+        stage = Usd.Stage.Open(testFile)
+
+        # Sanity check that the stage we opened has a sublayer with layer
+        # metadata that we don't expect to show up in the flattened layer and 
+        # that it has a TCPS of 48
+        sublayer = Sdf.Layer.Find(sublayerFile)
+        self.assertTrue(sublayer)
+        self.assertIn(sublayer, stage.GetUsedLayers())
+        self.assertEqual(sorted(sublayer.GetPrimAtPath('/').ListInfoKeys()),
+            ['defaultPrim', 'endTimeCode', 'startTimeCode', 'timeCodesPerSecond'])
+        self.assertEqual(sublayer.timeCodesPerSecond, 48)
+
+        # Flatten the layer.
+        resultLayer = stage.Flatten()
+
+        # Verify that the flattened layer only contains layer metadata from
+        # the root layer (and documentation written by the flatten operation
+        # itself)
+        resultPseudoRoot = resultLayer.GetPrimAtPath('/')
+        print(str(resultPseudoRoot.ListInfoKeys()))
+        self.assertEqual(sorted(resultPseudoRoot.ListInfoKeys()),
+                         ['documentation', 'endTimeCode', 'startTimeCode'])
+        self.assertEqual(resultPseudoRoot.GetInfo('startTimeCode'), 0)
+        self.assertEqual(resultPseudoRoot.GetInfo('endTimeCode'), 24)
+
+        # In particular verify that the timeCodesPerSecond from the sublayer
+        # was not transferred over to the flattened layer.
+        self.assertFalse(resultPseudoRoot.HasInfo('timeCodesPerSecond'))
+        self.assertEqual(resultLayer.timeCodesPerSecond, 24)
+
+        # Verify the time samples from the root layer were transferred to 
+        # the flattened layer as is, no time mapping.
+        resultRootAttrSpec = \
+            resultLayer.GetAttributeAtPath("/TimeSamples.rootAttr")
+        self.assertEqual(
+            resultLayer.ListTimeSamplesForPath(resultRootAttrSpec.path), [0.0, 24.0])
+        self.assertEqual(
+            resultLayer.QueryTimeSample(resultRootAttrSpec.path, 0.0), 100.0)
+        self.assertEqual(
+            resultLayer.QueryTimeSample(resultRootAttrSpec.path, 24.0), 101.0)
+
+        # Verify the time samples from the sublayer were transferred to the 
+        # flattened layer and were mapped from the sublayer's 48 TCPS to the
+        # root's 24 TCPS
+        resultSubAttrSpec = \
+            resultLayer.GetAttributeAtPath("/TimeSamples.subAttr")
+        self.assertEqual(
+            resultLayer.ListTimeSamplesForPath(resultSubAttrSpec.path), [12.0, 24.0])
+        self.assertEqual(
+            resultLayer.QueryTimeSample(resultSubAttrSpec.path, 12.0), 200.0)
+        self.assertEqual(
+            resultLayer.QueryTimeSample(resultSubAttrSpec.path, 24.0), 201.0)
+        
+    def test_FlattenPathsWithMissungUriResolvers(self):
+        """Tests that when flattening, asset paths that contain URI schemes
+        for which there is no registered resolver are left unmodified
+        """
+
+        rootLayer = Sdf.Layer.CreateAnonymous(".usda")
+        rootLayer.ImportFromString("""
+        #usda 1.0
+
+        def "TestPrim"(
+            assetInfo = {
+                asset identifier = @test123://1.2.3.4/file3.txt@
+                asset[] assetRefArr = [@test123://1.2.3.4/file6.txt@]
+            }
+        )
+        {
+            asset uriAssetRef = @test123://1.2.3.4/file1.txt@
+            asset[] uriAssetRefArray = [@test123://1.2.3.4/file2.txt@]
+
+            asset uriAssetRef.timeSamples = {
+                0: @test123://1.2.3.4/file4.txt@,
+                1: @test123://1.2.3.4/file5.txt@,
+            }
+                                   
+            asset[] uriAssetRefArray.timeSamples = {
+                0: [@test123://1.2.3.4/file6.txt@],
+                1: [@test123://1.2.3.4/file7.txt@],               
+            }
+        }
+        """.strip())
+        
+        stage = Usd.Stage.Open(rootLayer)
+        flatStage = Usd.Stage.Open(stage.Flatten())
+
+        propPath = "/TestPrim.uriAssetRef"
+        stageProp = stage.GetPropertyAtPath(propPath)
+        flatStageProp = flatStage.GetPropertyAtPath(propPath)
+        self.assertEqual(stageProp.Get(), flatStageProp.Get())
+        
+        self.assertEqual(stageProp.GetTimeSamples(), flatStageProp.GetTimeSamples())
+        for timeSample in stageProp.GetTimeSamples():
+            self.assertEqual(stageProp.Get(timeSample), flatStageProp.Get(timeSample))
+
+        arrayPath = "/TestPrim.uriAssetRefArray"
+        arrayProp = stage.GetPropertyAtPath(arrayPath)
+        flatArrayProp = flatStage.GetPropertyAtPath(arrayPath)
+        self.assertEqual(arrayProp.Get(), flatArrayProp.Get())
+            
+        self.assertEqual(arrayProp.GetTimeSamples(), flatArrayProp.GetTimeSamples())
+    
+        for timeSample in arrayProp.GetTimeSamples():
+            self.assertEqual(arrayProp.Get(timeSample), flatArrayProp.Get(timeSample))
+
+        primPath = "/TestPrim"
+        self.assertEqual(
+            stage.GetPrimAtPath(primPath).GetMetadata("assetInfo").get("identifier"), 
+            flatStage.GetPrimAtPath(primPath).GetMetadata("assetInfo").get("identifier"))
+        
+        self.assertEqual(
+            stage.GetPrimAtPath(primPath).GetMetadata("assetInfo").get("assetRefArr"), 
+            flatStage.GetPrimAtPath(primPath).GetMetadata("assetInfo").get("assetRefArr"))
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,25 +1,8 @@
 //
 // Copyright 2017 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/pathTable.h"
@@ -129,7 +112,39 @@ static void DoUnitTest()
     TF_AXIOM(table.size() == 4);
     TF_AXIOM(!table.empty());
 
+    // Test NodeHandle interface.
+    Table::NodeHandle node;
+    TF_AXIOM(!node);
+    node = Table::NodeHandle::New(SdfPath("/foo/node"), "/foo/node");
+    TF_AXIOM(node);
+    SdfPath const *stablePathAddr = &node.GetKey();
+    std::string const *stableMappedAddr = &node.GetMapped();
+    TF_AXIOM(stablePathAddr);
+    TF_AXIOM(stableMappedAddr);
+    result = table.insert(std::move(node));
+    TF_AXIOM(result.second);
+    TF_AXIOM(result.first->first == SdfPath("/foo/node"));
+    TF_AXIOM(result.first->second == "/foo/node");
+    TF_AXIOM(&result.first->first == stablePathAddr);
+    TF_AXIOM(&result.first->second == stableMappedAddr);
+    
+    TF_AXIOM(table.size() == 5);
 
+    TF_AXIOM(!node);
+    node = Table::NodeHandle::New(SdfPath("/foo/node"), "dupe");
+    TF_AXIOM(node);
+    result = table.insert(std::move(node));
+    TF_AXIOM(!result.second);
+    TF_AXIOM(result.first->first == SdfPath("/foo/node"));
+    TF_AXIOM(result.first->second == "/foo/node");
+    TF_AXIOM(node.GetKey() == SdfPath("/foo/node"));
+    TF_AXIOM(node.GetMapped() == "dupe");
+    TF_AXIOM(table.size() == 5);
+
+    table.erase(result.first);
+    TF_AXIOM(table.size() == 4);
+
+    // Test implicit ancestor insertion.
     result = table.
         insert(make_pair(SdfPath("/foo/anim/chars/MeridaGroup/Merida"),
                          "Merida"));
@@ -242,6 +257,34 @@ static void DoUnitTest()
     table.ClearInParallel();
     TF_AXIOM(table.empty());
     TF_AXIOM(table.size() == 0);
+
+    // build a table and then parallel-iterate over it
+    for (char ch='a'; ch<='z'; ++ch) {
+        std::string value(1, ch);
+        for (char n='0'; n<='9'; ++n) {
+            char p[] = { '/', ch, n, '/', ch, n, '/', ch, n, '/', ch, n, '\0' };
+            table.insert({SdfPath(p), value});
+        }
+    }
+    // const parallel for each...
+    std::atomic_int z_count(0);
+    const Table& ctable = table;
+    ctable.ParallelForEach([&z_count](const SdfPath &p, const string &v) {
+        if (v == "z") { ++z_count; }
+    });
+    TF_AXIOM(z_count.load() == 10);
+    // non-const parallel for each...
+    table.ParallelForEach([](const SdfPath &p, string &v) {
+        if (p.GetName() == "a2") {
+            v = "found";
+        }
+    });
+    TF_AXIOM(table.find(SdfPath("/a2/a2/a2/a2"))->second == "found");
+    TF_AXIOM(table.find(SdfPath("/a3/a3/a3/a3"))->second == "a");
+
+    // Test iterator.HasChild()
+    TF_AXIOM(table.find(SdfPath("/a2/a2/a2")).HasChild() == true);
+    TF_AXIOM(table.find(SdfPath("/a2/a2/a2/a2")).HasChild() == false);
 }
 
 

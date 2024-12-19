@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdSkel/cache.h"
 
@@ -36,14 +19,12 @@
 
 #include "pxr/base/arch/hints.h"
 
-
 PXR_NAMESPACE_OPEN_SCOPE
 
 
 UsdSkelCache::UsdSkelCache()
     : _impl(new UsdSkel_CacheImpl)
 {}
-
 
 void
 UsdSkelCache::Clear()
@@ -81,9 +62,10 @@ UsdSkelCache::GetSkelQuery(const UsdSkelSkeleton& skel) const
 
 
 bool
-UsdSkelCache::Populate(const UsdSkelRoot& root)
+UsdSkelCache::Populate(const UsdSkelRoot& root,
+                       Usd_PrimFlagsPredicate predicate) const
 {
-    return UsdSkel_CacheImpl::ReadScope(_impl.get()).Populate(root);
+    return UsdSkel_CacheImpl::ReadScope(_impl.get()).Populate(root, predicate);
 }
 
 
@@ -108,7 +90,8 @@ struct _CompareSkels
 
 bool
 UsdSkelCache::ComputeSkelBindings(const UsdSkelRoot& skelRoot,
-                                  std::vector<UsdSkelBinding>* bindings) const
+                                  std::vector<UsdSkelBinding>* bindings,
+                                  Usd_PrimFlagsPredicate predicate) const
 {
     TRACE_FUNCTION();
 
@@ -139,10 +122,8 @@ UsdSkelCache::ComputeSkelBindings(const UsdSkelRoot& skelRoot,
 
     std::vector<UsdSkelSkeleton> skelStack(1);
     
-    // TODO: Consider traversing instance proxies at this point.
-    // But when doing so, must ensure that UsdSkelBakeSkinning, et.al.,
-    // take instancing into account.
-    const auto range = UsdPrimRange::PreAndPostVisit(skelRoot.GetPrim());
+    const auto range = UsdPrimRange::PreAndPostVisit(
+        skelRoot.GetPrim(), predicate);
     for (auto it = range.begin(); it != range.end(); ++it) {
 
         if (ARCH_UNLIKELY(!it->IsA<UsdGeomImageable>())) {
@@ -169,7 +150,7 @@ UsdSkelCache::ComputeSkelBindings(const UsdSkelRoot& skelRoot,
         const UsdSkelBindingAPI binding(*it);
 
         UsdSkelSkeleton skel;
-        if (!binding.GetSkeleton(&skel)) {
+        if (!(it->HasAPI<UsdSkelBindingAPI>() && binding.GetSkeleton(&skel))) {
             skel = skelStack.back();
         } else  {
             TF_DEBUG(USDSKEL_CACHE).Msg(
@@ -206,7 +187,8 @@ UsdSkelCache::ComputeSkelBindings(const UsdSkelRoot& skelRoot,
 bool
 UsdSkelCache::ComputeSkelBinding(const UsdSkelRoot& skelRoot,
                                  const UsdSkelSkeleton& skel,
-                                 UsdSkelBinding* binding) const
+                                 UsdSkelBinding* binding,
+                                 Usd_PrimFlagsPredicate predicate) const
 {
     TRACE_FUNCTION();
 
@@ -225,19 +207,16 @@ UsdSkelCache::ComputeSkelBinding(const UsdSkelRoot& skelRoot,
         return false;
     }
 
-
     // Traverse over the prims beneath the skelRoot.
     // While traversing, we maintain a stack of 'bound' skeletons,
     // and map the last item on the stack to descendant prims.
-    // This is done to handle inherited skel:skeleton bindings.
+    // This is done to handle inherited skel bindings.
 
     std::vector<UsdSkelSkeleton> skelStack(1);
     VtArray<UsdSkelSkinningQuery> skinningQueries;
-    
-    // TODO: Consider traversing instance proxies at this point.
-    // But when doing so, must ensure that UsdSkelBakeSkinning, et.al.,
-    // take instancing into account.
-    const auto range = UsdPrimRange::PreAndPostVisit(skelRoot.GetPrim());
+
+    const auto range = UsdPrimRange::PreAndPostVisit(
+        skelRoot.GetPrim(), predicate);
     for (auto it = range.begin(); it != range.end(); ++it) {
 
         if (ARCH_UNLIKELY(!it->IsA<UsdGeomImageable>())) {
@@ -264,7 +243,7 @@ UsdSkelCache::ComputeSkelBinding(const UsdSkelRoot& skelRoot,
         const UsdSkelBindingAPI binding(*it);
 
         UsdSkelSkeleton boundSkel;
-        if (!binding.GetSkeleton(&boundSkel)) {
+        if (!(it->HasAPI<UsdSkelBindingAPI>() && binding.GetSkeleton(&boundSkel))) {
             boundSkel = skelStack.back();
         } else  {
             TF_DEBUG(USDSKEL_CACHE).Msg(

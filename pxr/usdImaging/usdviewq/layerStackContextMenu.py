@@ -1,30 +1,16 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+from __future__ import print_function
+
 from .qt import QtCore, QtGui, QtWidgets
 from .usdviewContextMenuItem import UsdviewContextMenuItem
 import os, subprocess, sys
 from pxr import Ar
+from pxr.UsdUtils.toolPaths import FindUsdBinary
 
 #
 # Specialized context menu for running commands in the layer stack view.
@@ -50,7 +36,8 @@ def _GetContextMenuItems(item):
             UsdviewLayerMenuItem(item),
             CopyLayerPathMenuItem(item),
             CopyLayerIdentifierMenuItem(item),
-            CopyPathMenuItem(item)]
+            CopyPathMenuItem(item),
+            MuteOrUnmuteLayerMenuItem(item)]
 
 #
 # The base class for layer stack context menu items.
@@ -73,24 +60,6 @@ class LayerStackContextMenuItem(UsdviewContextMenuItem):
 # Opens the layer using usdedit.
 #
 class OpenLayerMenuItem(LayerStackContextMenuItem):
-    # XXX: Note that this logic is duplicated from usddiff
-    # see bug 150247 for centralizing this API.
-    def _FindUsdEdit(self):
-        import platform
-        from distutils.spawn import find_executable
-        usdedit = find_executable('usdedit')
-        if not usdedit:
-            usdedit = find_executable('usdedit', path=os.path.abspath(os.path.dirname(sys.argv[0])))
-
-        if not usdedit and (platform.system() == 'Windows'):
-            for path in os.environ['PATH'].split(os.pathsep):
-                base = os.path.join(path, 'usdedit')
-                for ext in ['.cmd', '']:
-                    if os.access(base + ext, os.X_OK):
-                        usdedit = base + ext
-
-        return usdedit
-
     def GetText(self):
         from .common import PrettyFormatSize
         fileSize = 0
@@ -123,7 +92,7 @@ class OpenLayerMenuItem(LayerStackContextMenuItem):
         
         layerName += ".tmp"
 
-        usdeditExe = self._FindUsdEdit()
+        usdeditExe = FindUsdBinary('usdedit')
         if not usdeditExe:
             print("Warning: Could not find 'usdedit', expected it to be in PATH.")
             return
@@ -217,3 +186,32 @@ class CopyPathMenuItem(LayerStackContextMenuItem):
 
     def IsEnabled(self):
         return hasattr(self._item, "path")
+
+#
+# Mute/Unmute the layer represented by this menu item
+#
+class MuteOrUnmuteLayerMenuItem(LayerStackContextMenuItem):
+    def GetText(self):
+        stage = getattr(self._item, "stage")
+        identifier = getattr(self._item, "identifier")
+        return 'Unmute Layer' \
+                 if stage.IsLayerMuted(identifier) \
+                    else 'Mute Layer'
+
+    def RunCommand(self):
+        if not self._item:
+            return
+
+        identifier = getattr(self._item, "identifier")
+        if not identifier:
+            return
+
+        stage = getattr(self._item, "stage")
+        
+        if not stage.IsLayerMuted(identifier):
+            stage.MuteLayer(identifier)
+        else:
+            stage.UnmuteLayer(identifier)
+        
+    def IsEnabled(self):
+        return True

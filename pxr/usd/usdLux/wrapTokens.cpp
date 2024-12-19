@@ -1,116 +1,103 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 // GENERATED FILE.  DO NOT EDIT.
-#include <boost/python/class.hpp>
+#include "pxr/external/boost/python/class.hpp"
 #include "pxr/usd/usdLux/tokens.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-namespace {
-
-// Helper to return a static token as a string.  We wrap tokens as Python
-// strings and for some reason simply wrapping the token using def_readonly
-// bypasses to-Python conversion, leading to the error that there's no
-// Python type for the C++ TfToken type.  So we wrap this functor instead.
-class _WrapStaticToken {
-public:
-    _WrapStaticToken(const TfToken* token) : _token(token) { }
-
-    std::string operator()() const
-    {
-        return _token->GetString();
-    }
-
-private:
-    const TfToken* _token;
-};
-
-template <typename T>
-void
-_AddToken(T& cls, const char* name, const TfToken& token)
-{
-    cls.add_static_property(name,
-                            boost::python::make_function(
-                                _WrapStaticToken(&token),
-                                boost::python::return_value_policy<
-                                    boost::python::return_by_value>(),
-                                boost::mpl::vector1<std::string>()));
-}
-
-} // anonymous
+#define _ADD_TOKEN(cls, name) \
+    cls.add_static_property(#name, +[]() { return UsdLuxTokens->name.GetString(); });
 
 void wrapUsdLuxTokens()
 {
-    boost::python::class_<UsdLuxTokensType, boost::noncopyable>
-        cls("Tokens", boost::python::no_init);
-    _AddToken(cls, "angle", UsdLuxTokens->angle);
-    _AddToken(cls, "angular", UsdLuxTokens->angular);
-    _AddToken(cls, "automatic", UsdLuxTokens->automatic);
-    _AddToken(cls, "collectionFilterLinkIncludeRoot", UsdLuxTokens->collectionFilterLinkIncludeRoot);
-    _AddToken(cls, "collectionLightLinkIncludeRoot", UsdLuxTokens->collectionLightLinkIncludeRoot);
-    _AddToken(cls, "collectionShadowLinkIncludeRoot", UsdLuxTokens->collectionShadowLinkIncludeRoot);
-    _AddToken(cls, "color", UsdLuxTokens->color);
-    _AddToken(cls, "colorTemperature", UsdLuxTokens->colorTemperature);
-    _AddToken(cls, "consumeAndContinue", UsdLuxTokens->consumeAndContinue);
-    _AddToken(cls, "consumeAndHalt", UsdLuxTokens->consumeAndHalt);
-    _AddToken(cls, "cubeMapVerticalCross", UsdLuxTokens->cubeMapVerticalCross);
-    _AddToken(cls, "diffuse", UsdLuxTokens->diffuse);
-    _AddToken(cls, "enableColorTemperature", UsdLuxTokens->enableColorTemperature);
-    _AddToken(cls, "exposure", UsdLuxTokens->exposure);
-    _AddToken(cls, "filterLink", UsdLuxTokens->filterLink);
-    _AddToken(cls, "filters", UsdLuxTokens->filters);
-    _AddToken(cls, "geometry", UsdLuxTokens->geometry);
-    _AddToken(cls, "height", UsdLuxTokens->height);
-    _AddToken(cls, "ignore", UsdLuxTokens->ignore);
-    _AddToken(cls, "intensity", UsdLuxTokens->intensity);
-    _AddToken(cls, "latlong", UsdLuxTokens->latlong);
-    _AddToken(cls, "length", UsdLuxTokens->length);
-    _AddToken(cls, "lightLink", UsdLuxTokens->lightLink);
-    _AddToken(cls, "lightList", UsdLuxTokens->lightList);
-    _AddToken(cls, "lightListCacheBehavior", UsdLuxTokens->lightListCacheBehavior);
-    _AddToken(cls, "mirroredBall", UsdLuxTokens->mirroredBall);
-    _AddToken(cls, "normalize", UsdLuxTokens->normalize);
-    _AddToken(cls, "orientToStageUpAxis", UsdLuxTokens->orientToStageUpAxis);
-    _AddToken(cls, "portals", UsdLuxTokens->portals);
-    _AddToken(cls, "radius", UsdLuxTokens->radius);
-    _AddToken(cls, "shadowColor", UsdLuxTokens->shadowColor);
-    _AddToken(cls, "shadowDistance", UsdLuxTokens->shadowDistance);
-    _AddToken(cls, "shadowEnable", UsdLuxTokens->shadowEnable);
-    _AddToken(cls, "shadowFalloff", UsdLuxTokens->shadowFalloff);
-    _AddToken(cls, "shadowFalloffGamma", UsdLuxTokens->shadowFalloffGamma);
-    _AddToken(cls, "shadowLink", UsdLuxTokens->shadowLink);
-    _AddToken(cls, "shapingConeAngle", UsdLuxTokens->shapingConeAngle);
-    _AddToken(cls, "shapingConeSoftness", UsdLuxTokens->shapingConeSoftness);
-    _AddToken(cls, "shapingFocus", UsdLuxTokens->shapingFocus);
-    _AddToken(cls, "shapingFocusTint", UsdLuxTokens->shapingFocusTint);
-    _AddToken(cls, "shapingIesAngleScale", UsdLuxTokens->shapingIesAngleScale);
-    _AddToken(cls, "shapingIesFile", UsdLuxTokens->shapingIesFile);
-    _AddToken(cls, "shapingIesNormalize", UsdLuxTokens->shapingIesNormalize);
-    _AddToken(cls, "specular", UsdLuxTokens->specular);
-    _AddToken(cls, "textureFile", UsdLuxTokens->textureFile);
-    _AddToken(cls, "textureFormat", UsdLuxTokens->textureFormat);
-    _AddToken(cls, "treatAsLine", UsdLuxTokens->treatAsLine);
-    _AddToken(cls, "treatAsPoint", UsdLuxTokens->treatAsPoint);
-    _AddToken(cls, "width", UsdLuxTokens->width);
+    pxr_boost::python::class_<UsdLuxTokensType, pxr_boost::python::noncopyable>
+        cls("Tokens", pxr_boost::python::no_init);
+    _ADD_TOKEN(cls, angular);
+    _ADD_TOKEN(cls, automatic);
+    _ADD_TOKEN(cls, collectionFilterLinkIncludeRoot);
+    _ADD_TOKEN(cls, collectionLightLinkIncludeRoot);
+    _ADD_TOKEN(cls, collectionShadowLinkIncludeRoot);
+    _ADD_TOKEN(cls, consumeAndContinue);
+    _ADD_TOKEN(cls, consumeAndHalt);
+    _ADD_TOKEN(cls, cubeMapVerticalCross);
+    _ADD_TOKEN(cls, filterLink);
+    _ADD_TOKEN(cls, geometry);
+    _ADD_TOKEN(cls, guideRadius);
+    _ADD_TOKEN(cls, ignore);
+    _ADD_TOKEN(cls, independent);
+    _ADD_TOKEN(cls, inputsAngle);
+    _ADD_TOKEN(cls, inputsColor);
+    _ADD_TOKEN(cls, inputsColorTemperature);
+    _ADD_TOKEN(cls, inputsDiffuse);
+    _ADD_TOKEN(cls, inputsEnableColorTemperature);
+    _ADD_TOKEN(cls, inputsExposure);
+    _ADD_TOKEN(cls, inputsHeight);
+    _ADD_TOKEN(cls, inputsIntensity);
+    _ADD_TOKEN(cls, inputsLength);
+    _ADD_TOKEN(cls, inputsNormalize);
+    _ADD_TOKEN(cls, inputsRadius);
+    _ADD_TOKEN(cls, inputsShadowColor);
+    _ADD_TOKEN(cls, inputsShadowDistance);
+    _ADD_TOKEN(cls, inputsShadowEnable);
+    _ADD_TOKEN(cls, inputsShadowFalloff);
+    _ADD_TOKEN(cls, inputsShadowFalloffGamma);
+    _ADD_TOKEN(cls, inputsShapingConeAngle);
+    _ADD_TOKEN(cls, inputsShapingConeSoftness);
+    _ADD_TOKEN(cls, inputsShapingFocus);
+    _ADD_TOKEN(cls, inputsShapingFocusTint);
+    _ADD_TOKEN(cls, inputsShapingIesAngleScale);
+    _ADD_TOKEN(cls, inputsShapingIesFile);
+    _ADD_TOKEN(cls, inputsShapingIesNormalize);
+    _ADD_TOKEN(cls, inputsSpecular);
+    _ADD_TOKEN(cls, inputsTextureFile);
+    _ADD_TOKEN(cls, inputsTextureFormat);
+    _ADD_TOKEN(cls, inputsWidth);
+    _ADD_TOKEN(cls, latlong);
+    _ADD_TOKEN(cls, lightFilters);
+    _ADD_TOKEN(cls, lightFilterShaderId);
+    _ADD_TOKEN(cls, lightLink);
+    _ADD_TOKEN(cls, lightList);
+    _ADD_TOKEN(cls, lightListCacheBehavior);
+    _ADD_TOKEN(cls, lightMaterialSyncMode);
+    _ADD_TOKEN(cls, lightShaderId);
+    _ADD_TOKEN(cls, materialGlowTintsLight);
+    _ADD_TOKEN(cls, MeshLight);
+    _ADD_TOKEN(cls, mirroredBall);
+    _ADD_TOKEN(cls, noMaterialResponse);
+    _ADD_TOKEN(cls, orientToStageUpAxis);
+    _ADD_TOKEN(cls, poleAxis);
+    _ADD_TOKEN(cls, portals);
+    _ADD_TOKEN(cls, scene);
+    _ADD_TOKEN(cls, shadowLink);
+    _ADD_TOKEN(cls, treatAsLine);
+    _ADD_TOKEN(cls, treatAsPoint);
+    _ADD_TOKEN(cls, VolumeLight);
+    _ADD_TOKEN(cls, Y);
+    _ADD_TOKEN(cls, Z);
+    _ADD_TOKEN(cls, BoundableLightBase);
+    _ADD_TOKEN(cls, CylinderLight);
+    _ADD_TOKEN(cls, DiskLight);
+    _ADD_TOKEN(cls, DistantLight);
+    _ADD_TOKEN(cls, DomeLight);
+    _ADD_TOKEN(cls, DomeLight_1);
+    _ADD_TOKEN(cls, GeometryLight);
+    _ADD_TOKEN(cls, LightAPI);
+    _ADD_TOKEN(cls, LightFilter);
+    _ADD_TOKEN(cls, LightListAPI);
+    _ADD_TOKEN(cls, ListAPI);
+    _ADD_TOKEN(cls, MeshLightAPI);
+    _ADD_TOKEN(cls, NonboundableLightBase);
+    _ADD_TOKEN(cls, PluginLight);
+    _ADD_TOKEN(cls, PluginLightFilter);
+    _ADD_TOKEN(cls, PortalLight);
+    _ADD_TOKEN(cls, RectLight);
+    _ADD_TOKEN(cls, ShadowAPI);
+    _ADD_TOKEN(cls, ShapingAPI);
+    _ADD_TOKEN(cls, SphereLight);
+    _ADD_TOKEN(cls, VolumeLightAPI);
 }

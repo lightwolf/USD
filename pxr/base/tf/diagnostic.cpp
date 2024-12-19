@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -27,6 +10,7 @@
 #include "pxr/base/tf/diagnosticMgr.h"
 #include "pxr/base/tf/getenv.h"
 #include "pxr/base/tf/enum.h"
+#include "pxr/base/tf/exception.h"
 #include "pxr/base/tf/scopeDescriptionPrivate.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/arch/demangle.h"
@@ -117,8 +101,11 @@ _BadThrowHandler()
 void
 Tf_TerminateHandler()
 {
-    string reason;
-    string type;
+    string reason("<unknown reason>");
+    string type("<unknown type>");
+
+    std::vector<uintptr_t> throwStack;
+    TfCallContext throwContext;
 
     try {
         /*
@@ -127,15 +114,25 @@ Tf_TerminateHandler()
         std::set_terminate(_BadThrowHandler);
         throw;
     }
-    catch (std::bad_alloc&) {
+    catch (std::bad_alloc const &exc) {
         std::set_terminate(Tf_TerminateHandler);
         reason = "allocation failed (you've run out of memory)";
-        type = "bad_alloc";
+        type = ArchGetDemangled(typeid(exc));
     }
-    catch (std::exception& exc) {
+    catch (TfBaseException &exc) {
         std::set_terminate(Tf_TerminateHandler);
         reason = exc.what();
-        type = typeid(exc).name();
+        type = ArchGetDemangled(typeid(exc));
+        if (type.empty()) {
+            type = "<unknown TfBaseException subclass>";
+        }
+        throwContext = exc.GetThrowContext();
+        exc.MoveThrowStackTo(throwStack);
+    }
+    catch (std::exception const &exc) {
+        std::set_terminate(Tf_TerminateHandler);
+        reason = exc.what();
+        type = ArchGetDemangled(typeid(exc));
     }
     catch (...) {
         std::set_terminate(Tf_TerminateHandler);
@@ -145,13 +142,34 @@ Tf_TerminateHandler()
          * of the exception.  Add this to arch at some point, and then make
          * use of it here.
          */
-        reason = "reason unknown";
-        type = "";
     }
 
-    TF_FATAL_ERROR("%s : uncaught exception! : '%s'", 
-        reason.empty() ? "<empty>" : reason.c_str(),
-        type.empty() ? "<empty>" : type.c_str() ) ;
+    // This needs to live through the TF_FATAL_ERROR below, since
+    // ArchSetExtraLogInfoForErrors() holds a _pointer_ to this object.
+    std::vector<std::string> throwStackMsg;
+    if (!throwStack.empty()) {
+        std::stringstream throwStackText;
+        ArchPrintStackFrames(throwStackText, throwStack);
+        throwStackMsg = TfStringSplit(throwStackText.str(), "\n");
+        std::string throwContextMsg = throwContext ?
+            TfStringPrintf("at %s (%s:%zu) ",
+                           throwContext.GetFunction(),
+                           throwContext.GetFile(),
+                           throwContext.GetLine()) : std::string();
+        ArchSetExtraLogInfoForErrors(
+            TfStringPrintf("Unhandled %s exception: %s; "
+                           "thrown %sfrom ",
+                           type.c_str(), reason.c_str(),
+                           throwContextMsg.empty() ? 
+                           "" : throwContextMsg.c_str()),
+            &throwStackMsg);
+    }
+
+    TF_FATAL_ERROR(
+        throwStack.empty() ?
+        "Unhandled exception %s - '%s'" :
+        "Unhandled exception %s - '%s' (throw stack in crash report)", 
+        reason.c_str(), type.c_str());
 }
 
 void TfSetProgramNameForErrors(string const& programName)
@@ -192,6 +210,10 @@ _fatalSignalHandler(int signo)
         msg = "received SIGABRT";
         break;
 
+    case SIGILL:
+        msg = "received SIGILL";
+        break;
+
 #if defined(_GNU_SOURCE)
     default:
         msg = strsignal(signo);
@@ -201,7 +223,7 @@ _fatalSignalHandler(int signo)
 
     {
         Tf_ScopeDescriptionStackReportLock descStackReport;
-        ArchLogPostMortem(
+        ArchLogFatalProcessState(
             msg, /*message=*/nullptr, descStackReport.GetMessage());
     }
 
@@ -227,6 +249,7 @@ TfInstallTerminateAndCrashHandlers()
     signal(SIGSEGV, &_fatalSignalHandler);
     signal(SIGFPE,  &_fatalSignalHandler);
     signal(SIGABRT, &_fatalSignalHandler);
+    signal(SIGILL,  &_fatalSignalHandler);
 #else
     // Catch segvs and bus violations
     struct sigaction act;
@@ -247,11 +270,13 @@ TfInstallTerminateAndCrashHandlers()
     sigaddset(&act.sa_mask, SIGSEGV);
     sigaddset(&act.sa_mask, SIGBUS);
     sigaddset(&act.sa_mask, SIGFPE);
+    sigaddset(&act.sa_mask, SIGILL);
 
     sigaction(SIGSEGV, &act, NULL);
     sigaction(SIGBUS,  &act, NULL);
     sigaction(SIGFPE,  &act, NULL);
     sigaction(SIGABRT, &act, NULL);
+    sigaction(SIGILL,  &act, NULL);
 #endif
 }
 

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_GLF_BINDING_MAP_H
 #define PXR_IMAGING_GLF_BINDING_MAP_H
@@ -28,7 +11,7 @@
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/glf/api.h"
-#include "pxr/imaging/garch/gl.h"
+#include "pxr/imaging/garch/glApi.h"
 #include "pxr/base/tf/refBase.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/token.h"
@@ -42,6 +25,11 @@ PXR_NAMESPACE_OPEN_SCOPE
 class GlfBindingMap : public TfRefBase, public TfWeakBase {
 public:
     typedef TfHashMap<TfToken, int, TfToken::HashFunctor> BindingMap;
+
+    GlfBindingMap()
+      : _samplerBindingBaseIndex(0)
+      , _uniformBindingBaseIndex(0)
+      { }
 
     GLF_API
     int GetSamplerUnit(std::string const &name);
@@ -73,6 +61,28 @@ public:
         _attribBindings.clear();
     }
 
+    /// \name Sampler and UBO Bindings
+    ///
+    /// Sampler units and uniform block bindings are reset and will be
+    /// assigned sequentially starting from the specified baseIndex.
+    /// This allows other subsystems to claim sampler units and uniform
+    /// block bindings before additional indices are assigned by this
+    /// binding map.
+    ///
+    /// @{
+
+    void ResetSamplerBindings(int baseIndex) {
+        _samplerBindings.clear();
+        _samplerBindingBaseIndex = baseIndex;
+    }
+
+    void ResetUniformBindings(int baseIndex) {
+        _uniformBindings.clear();
+        _uniformBindingBaseIndex = baseIndex;
+    }
+
+    /// @}
+
     void AddAttribBinding(TfToken const &name, int location) {
         _attribBindings[name] = location;
     }
@@ -101,6 +111,9 @@ private:
     BindingMap _attribBindings;
     BindingMap _samplerBindings;
     BindingMap _uniformBindings;
+
+    int _samplerBindingBaseIndex;
+    int _uniformBindingBaseIndex;
 };
 
 

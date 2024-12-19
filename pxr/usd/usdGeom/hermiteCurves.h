@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDGEOM_GENERATED_HERMITECURVES_H
 #define USDGEOM_GENERATED_HERMITECURVES_H
@@ -52,21 +35,21 @@ class SdfAssetPath;
 
 /// \class UsdGeomHermiteCurves
 ///
-/// This schema specifies a cubically hermite interpolated curve as
+/// This schema specifies a cubic hermite interpolated curve batch as
 /// sometimes used for defining guides for animation. While hermite curves can
-/// be useful because they interpolate their points, they are not well supported
-/// by high-end renderers for imaging. Therefore, while we include this schema
-/// for interchange, we strongly recommend the use of UsdGeomBasisCurves as
-/// the representation of curves intended to be rendered (ie. hair or grass).
-/// Hermite curves can be converted to a Bezier representation (though not
-/// losslessly).
+/// be useful because they interpolate through their control points, they are
+/// not well supported by high-end renderers for imaging. Therefore, while we
+/// include this schema for interchange, we strongly recommend the use of
+/// UsdGeomBasisCurves as the representation of curves intended to be rendered
+/// (ie. hair or grass). Hermite curves can be converted to a Bezier
+/// representation (though not from Bezier back to Hermite in general).
 /// 
 /// \section UsdGeomHermiteCurves_Interpolation Point Interpolation
 /// 
 /// The initial cubic curve segment is defined by the first two points and
 /// first two tangents. Additional segments are defined by additional 
-/// point / tangent pairs.  The number of segments for non-batched hermite
-/// curve would be len(hermite.points) - 1.  The total number of segments
+/// point / tangent pairs.  The number of segments for each non-batched hermite
+/// curve would be len(curve.points) - 1.  The total number of segments
 /// for the batched UsdGeomHermiteCurves representation is
 /// len(points) - len(curveVertexCounts).
 /// 
@@ -74,7 +57,7 @@ class SdfAssetPath;
 /// 
 /// Primvar interpolation is not well specified for this type as it is not
 /// intended as a rendering representation. We suggest that per point
-/// primvars would be linearly interpolated across the point and should 
+/// primvars would be linearly interpolated across each segment and should 
 /// be tagged as 'varying'.
 /// 
 /// It is not immediately clear how to specify cubic or 'vertex' interpolation
@@ -88,8 +71,8 @@ class UsdGeomHermiteCurves : public UsdGeomCurves
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::ConcreteTyped;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::ConcreteTyped;
 
     /// Construct a UsdGeomHermiteCurves on UsdPrim \p prim .
     /// Equivalent to UsdGeomHermiteCurves::Get(prim.GetStage(), prim.GetPath())
@@ -159,11 +142,11 @@ public:
     Define(const UsdStagePtr &stage, const SdfPath &path);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -211,6 +194,74 @@ public:
     //  - Close the include guard with #endif
     // ===================================================================== //
     // --(BEGIN CUSTOM CODE)--
+
+    /// Represents points and tangents of the same size. 
+    /// 
+    /// Utility to interleave point and tangent data. This class is immutable.
+    class PointAndTangentArrays {
+        VtArray<GfVec3f> _points;
+        VtArray<GfVec3f> _tangents;
+
+        explicit PointAndTangentArrays(const VtVec3fArray& interleaved);
+
+    public:
+
+        /// Construct empty points and tangents arrays
+        PointAndTangentArrays() = default;
+        PointAndTangentArrays(const PointAndTangentArrays&) = default;
+        PointAndTangentArrays(PointAndTangentArrays&&) = default;
+        PointAndTangentArrays& operator=(const PointAndTangentArrays&) =
+            default;
+        PointAndTangentArrays& operator=(PointAndTangentArrays&&) = default;
+
+        /// Initializes \p points and \p tangents if they are the same size.
+        ///
+        /// If points and tangents are not the same size, an empty container
+        /// is created.
+        PointAndTangentArrays(const VtVec3fArray& points,
+                              const VtVec3fArray& tangents)
+            : _points(points), _tangents(tangents) {
+            if (_points.size() != _tangents.size()) {
+                TF_RUNTIME_ERROR("Points and tangents must be the same size.");
+                _points.clear();
+                _tangents.clear();
+            }
+        }
+
+        /// Given an \p interleaved points and tangents arrays (P0, T0, ..., Pn,
+        /// Tn), separates them into two arrays (P0, ..., PN) and (T0, ..., Tn).
+        USDGEOM_API static PointAndTangentArrays Separate(const VtVec3fArray& interleaved) {
+            return PointAndTangentArrays(interleaved);
+        }
+
+        /// Interleaves points (P0, ..., Pn) and tangents (T0, ..., Tn)  into
+        /// one array (P0, T0, ..., Pn, Tn).
+        USDGEOM_API VtVec3fArray Interleave() const;
+
+        /// Returns true if the containers are empty
+        bool IsEmpty() const {
+            // we only need to check the points, as we've verified on
+            // construction that _points and _tangents have the same size
+            return _points.empty();
+        }
+
+        /// Returns true if there are values
+        explicit operator bool() const { return !IsEmpty(); }
+
+        /// Get separated points array
+        const VtVec3fArray& GetPoints() const { return _points; }
+
+        /// Get separated tangents array
+        const VtVec3fArray& GetTangents() const { return _tangents; }
+
+        bool operator==(const PointAndTangentArrays& other) {
+            return (GetPoints() == other.GetPoints()) &&
+                   (GetTangents() == other.GetTangents());
+        }
+        bool operator!=(const PointAndTangentArrays& other) {
+            return !((*this) == other);
+        }
+    };
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

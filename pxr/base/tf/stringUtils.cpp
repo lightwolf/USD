@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -31,16 +14,18 @@
 #include "pxr/base/tf/token.h"
 #include "pxr/base/tf/staticData.h"
 #include "pxr/base/arch/inttypes.h"
+#include "pxr/base/arch/math.h"
 #include "pxr/base/arch/vsnprintf.h"
 
-#include <boost/type_traits/is_signed.hpp>
-#include <boost/utility/enable_if.hpp>
-
+#include <algorithm>
 #include <climits>
 #include <cstdarg>
 #include <ctype.h>
 #include <limits>
+#include <string>
 #include <utility>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 #include <memory>
 
@@ -82,8 +67,8 @@ TfStringPrintf(const char *fmt, ...)
     return s;
 }
 
-double
-TfStringToDouble(const char *ptr)
+static inline double
+_StringToDoubleImpl(const char *ptr, int len)
 {
     pxr_double_conversion::StringToDoubleConverter
         strToDouble(pxr_double_conversion::DoubleToStringConverter::NO_FLAGS,
@@ -92,7 +77,19 @@ TfStringToDouble(const char *ptr)
                     /* infinity symbol */ "inf",
                     /* nan symbol */ "nan");
     int numDigits_unused;
-    return strToDouble.StringToDouble(ptr, static_cast<int>(strlen(ptr)), &numDigits_unused);
+    return strToDouble.StringToDouble(ptr, len, &numDigits_unused);
+}
+
+double
+TfStringToDouble(const char *ptr, int len)
+{
+    return _StringToDoubleImpl(ptr, len);
+}    
+
+double
+TfStringToDouble(const char *ptr)
+{
+    return _StringToDoubleImpl(ptr, static_cast<int>(strlen(ptr)));
 }
 
 double
@@ -109,7 +106,7 @@ TfStringToDouble(const string& s)
 // return that minimum representable value and set *outOfRange to true (if
 // outOfRange is not NULL).
 template <class Int>
-static typename boost::enable_if<boost::is_signed<Int>, Int>::type
+static std::enable_if_t<std::is_signed<Int>::value, Int>
 _StringToNegative(const char *p, bool *outOfRange)
 {
     const Int M = std::numeric_limits<Int>::min();
@@ -213,18 +210,6 @@ TfStringToUInt64(const std::string &txt, bool *outOfRange)
 }
 
 bool
-TfStringStartsWith(const std::string &s, const TfToken& prefix)
-{
-    return TfStringStartsWith(s, prefix.GetString());
-}
-
-bool
-TfStringEndsWith(const std::string &s, const TfToken& suffix)
-{
-    return TfStringEndsWith(s, suffix.GetString());
-}
-
-bool
 TfStringContains(const string &s, const char *substring)
 {
     return s.find(substring) != string::npos;
@@ -321,21 +306,22 @@ TfGetBaseName(const string& fileName)
     if (i == fileName.size() - 1)    // ends in directory delimiter
         return TfGetBaseName(fileName.substr(0, i));
 #if defined(ARCH_OS_WINDOWS)
-    PTSTR result = PathFindFileName(fileName.c_str());
+    const std::wstring wfileName{ ArchWindowsUtf8ToUtf16(fileName) };
+    LPWSTR result = PathFindFileNameW(wfileName.c_str());
 
     // If PathFindFilename returns the same string back, that means it didn't
     // do anything.  That could mean that the patch has no basename, in which
     // case we want to return the empty string, or it could mean that the
     // fileName was already basename, in which case we want to return the
     // string back.
-    if (result == fileName.c_str()) {
+    if (result == wfileName.c_str()) {
         const bool hasDriveLetter = fileName.find(":") != string::npos;
         const bool hasPathSeparator  = i != string::npos;
         if (hasDriveLetter || hasPathSeparator) {
             return std::string();
         }
     }
-    return result;
+    return ArchWindowsUtf16ToUtf8(result);
 
 #else
     if (i == string::npos)                      // no / in name
@@ -375,9 +361,11 @@ TfStringTrimLeft(const string &s, const char* trimChars)
 string
 TfStringTrim(const string &s, const char* trimChars)
 {
-    string::size_type i = s.find_first_not_of(trimChars);
-    string tmp = (i == string::npos) ? string() : s.substr(i);
-    return tmp.substr( 0, tmp.find_last_not_of(trimChars) + 1);
+    string::size_type b = s.find_first_not_of(trimChars);
+    if (b == string::npos) {
+        return string();
+    }
+    return s.substr(b, s.find_last_not_of(trimChars) - b + 1);
 }
 
 string
@@ -709,68 +697,207 @@ TfMatchedStringTokenize(const string& source,
     return resultVec;
 }
 
-namespace { // helpers for DictionaryLess
-
-inline bool IsDigit(char ch) { return '0' <= ch && ch <= '9'; }
-inline char Lower(char ch) { return ('A' <= ch && ch <= 'Z') ? ch | 32 : ch; }
-
-inline long
-AtoL(char const * &s)
-{
-    long value = 0;
-    do {
-        value = value * 10 + (*s++ - '0');
-    } while (IsDigit(*s));
-    return value;
+// Return true if ch is one of the characters '0'..'9', otherwise false.
+static inline bool
+IsDigit(unsigned ch) {
+    return (ch - (unsigned)'0') < 10u;
 }
 
-} // anon
+static inline bool
+IsAlpha(unsigned ch) {
+    return ((ch & ~0x20) - (unsigned)'A') < 26u;
+}
 
-static bool
-DictionaryLess(char const *l, char const *r)
+// Like std::mismatch, return a pair of pointers to the first different chars
+// starting from b1 and b2.  If there is no difference, return e1 and b2 +
+// distance(b1, e1).
+static std::pair<char const *, char const *>
+Mismatch(const char *b1, const char *e1, const char *b2)
 {
-    int caseCmp = 0;
-    int leadingZerosCmp = 0;
-
-    while (*l && *r) {
-        if (ARCH_UNLIKELY(IsDigit(*l) && IsDigit(*r))) {
-            char const *oldL = l, *oldR = r;
-            long lval = AtoL(l), rval = AtoL(r);
-            if (lval != rval)
-                return lval < rval;
-            // Leading zeros difference only, record for later use.
-            if (!leadingZerosCmp)
-                leadingZerosCmp = static_cast<int>((l-oldL) - (r-oldR));
-            continue;
-        }
-
-        if (*l != *r) {
-            int lowL = Lower(*l), lowR = Lower(*r);
-            if (lowL != lowR)
-                return lowL < lowR;
-
-            // Case difference only, record that for later use.
-            if (!caseCmp)
-                caseCmp = (lowL != *l) ? -1 : 1;
-        }
-
-        ++l, ++r;
+    // By far, the most frequent case is that the inputs immediately mismatch.
+    if (*b1 != *b2) {
+        return { b1, b2 };
     }
-
-    // We are at the end of either one or both strings.  If not both, the
-    // shorter is considered less.
-    if (*l || *r)
-        return !*l;
-
-    // Otherwise we look to differences in case or leading zeros, preferring
-    // leading zeros.
-    return (leadingZerosCmp < 0) || (caseCmp < 0);
+    
+    // We examine 8 bytes at a time until we find a difference, then scan for
+    // where that difference occurs.
+    //
+    // The code may look ridiculous at first glance -- memcpy!?  But it turns
+    // out that modern compilers optimize this to single 64-bit memory to
+    // register move instructions.  So this is a nice way to get a simd-esque
+    // approach without resorting to compiler/cpu specific intrinsics or inline
+    // asm.
+    constexpr size_t WordSz = sizeof(uint64_t);
+    size_t numWords = (e1 - b1) / WordSz;
+    int tail = (e1 - b1) % WordSz;
+    // Check word-size chunks at a time.
+    for (; numWords--; b1 += WordSz, b2 += WordSz) {
+        uint64_t a, b, x;
+        memcpy(&a, b1, WordSz);
+        memcpy(&b, b2, WordSz);
+        x = a ^ b;
+        if (x) {
+            int idx = ArchCountTrailingZeros(x) / WordSz;
+            b1 += idx, b2 += idx;
+            return { b1, b2 };
+        }
+    }
+    // There will be a tail remainder if the string length is not a multiple of
+    // 8, just scan it.
+    switch (tail) {
+    case 7: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 6: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 5: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 4: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 3: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 2: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    case 1: if (*b1 != *b2) { break; } else { ++b1, ++b2; }
+    };
+    return { b1, b2 };
 }
 
 bool
-TfDictionaryLessThan::operator()(const string& lhs, const string& rhs) const
+TfDictionaryLessThan::_LessImpl(const string& lstr, const string& rstr) const
 {
-    return DictionaryLess(lhs.c_str(), rhs.c_str());
+    // Note that this code is fairly performance sensitive for certain
+    // use-cases, so be careful making changes here.
+    auto lcur = lstr.c_str(), rcur = rstr.c_str();
+
+    // General case.
+    size_t lsize = lstr.size(), rsize = rstr.size();
+    auto lend = lcur + lsize, rend = rcur + rsize;
+
+    auto curEnd = lcur + std::min(lsize, rsize);
+    
+    // Find the next differing byte in the strings.
+    std::tie(lcur, rcur) = Mismatch(lcur, curEnd, rcur);
+    // If the strings are identical, we're done.
+    if (lcur == curEnd && lsize == rsize) {
+        return false;
+    }
+
+    unsigned char l, r;
+
+    while (true) {
+        if (lcur == curEnd) {
+            // If we have hit the end we're done.
+            break;
+        }
+        l = *lcur, r = *rcur;
+        // If they are letters that differ disregarding case, we're done.
+        // but only if they are ASCII (i.e., the high bit is not set)
+        const bool bothAscii = l < 0x80 && r < 0x80;
+        const bool differsIgnoringCase = (l & ~0x20) != (r & ~0x20);
+        const bool inLetterZone = (l >= 0x40) && (r >= 0x40);
+        if (bothAscii && differsIgnoringCase && inLetterZone) {
+            // Add 5 mod 32 makes '_' sort before all letters.
+            return ((l + 5) & 31) < ((r + 5) & 31);
+        }
+        else if (IsDigit(l) | IsDigit(r)) {
+            if (IsDigit(l) & IsDigit(r)) {
+                // We backtrack to find the start of each digit string, then we
+                // scan each digit string, ignoring leading zeros to put the two
+                // strings into alignment with their most significant digits.
+                // Then we scan further and ignore digits while the digits
+                // match.  At the first difference, we record the initial digit
+                // of each, then count the remaining digits of each string.  The
+                // lesser value is the one with the fewest digits, or the one
+                // with the smaller initital digit if they have the same number
+                // of digits.
+
+                // Backtrack to start of digit sequence.
+                char const *lDigStart = lcur, *rDigStart = rcur;
+                char const *lDigEnd = lcur, *rDigEnd = rcur;
+                char const *lBegin = lstr.c_str(), *rBegin = rstr.c_str();
+
+                while (lDigStart != lBegin && IsDigit(lDigStart[-1])) {
+                    --lDigStart;
+                }
+                while (rDigStart != rBegin && IsDigit(rDigStart[-1])) {
+                    --rDigStart;
+                }
+                while (IsDigit(*lDigEnd) && lDigEnd != lend) {
+                    ++lDigEnd;
+                }
+                while (IsDigit(*rDigEnd) && rDigEnd != rend) {
+                    ++rDigEnd;
+                }
+
+                // Scan forward to find first significant digit (skip 0s).
+                while (lDigStart != lDigEnd && *lDigStart == '0') {
+                    ++lDigStart;
+                }
+                while (rDigStart != rDigEnd && *rDigStart == '0') {
+                    ++rDigStart;
+                }
+
+                // Scan both digit strings while they have matching digits.
+                while (lDigStart != lDigEnd && rDigStart != rDigEnd &&
+                       IsDigit(*lDigStart) && *lDigStart == *rDigStart) {
+                    ++lDigStart, ++rDigStart;
+                }
+
+                // If either but not both are at the end, then we can return.
+                if ((lDigStart == lDigEnd) ^ (rDigStart == rDigEnd)) {
+                    return lDigStart == lDigEnd && rDigStart != rDigEnd;
+                }
+                if (lDigStart != lDigEnd && rDigStart != rDigEnd) {
+                    // Now we can record the most significant digits.
+                    int lMSD = *lDigStart, rMSD = *rDigStart;
+                    // Now l is less if l has fewer digits, or if it has the
+                    // same number of digits and a smaller leading digit.
+                    size_t digitsL = std::distance(lDigStart, lDigEnd);
+                    size_t digitsR = std::distance(rDigStart, rDigEnd);
+                    return std::tie(digitsL, lMSD) < std::tie(digitsR, rMSD);
+                }
+                // Otherwise values are equal and we continue.  Reset curEnd to
+                // account for leading-zero count differences.
+                lcur = lDigEnd, rcur = rDigEnd;
+                curEnd = lcur + std::min(std::distance(lcur, lend),
+                                         std::distance(rcur, rend));
+            }
+            else if (IsDigit(l) | IsDigit(r)) {
+                if (lcur == lstr.c_str()) {
+                    return l < r;
+                }
+                // If one is a digit (but not both), then we have to check the
+                // preceding character to determine the outcome.  If the
+                // preceding character is a digit, then lhs is less if rhs has
+                // the digit.  If not, then lhs is less if it has the digit.
+                auto prevChar = lcur[-1];
+
+                return IsDigit(prevChar) ? IsDigit(r) : IsDigit(l);
+            }
+        }
+        else if (!IsAlpha(l) || !IsAlpha(r)) {
+            // At least one isn't a letter.
+            return l < r;
+        }
+        else {
+            // Both letters, differ by case, continue.
+            ++lcur, ++rcur;
+        }
+        // Find the next differing byte in the strings.
+        std::tie(lcur, rcur) = Mismatch(lcur, curEnd, rcur);
+    }
+
+    // We are at the end of one or both, with at most 
+    // only case/leading zero differences.  If only one at end, shorter
+    // is less.
+    if ((lcur != lend) || (rcur != rend)) {
+        return lcur == lend;
+    }
+
+    // End of both -- use the first mismatch to discriminate.  It must be that
+    // there's no difference, or it is either both numerals (one of them zero)
+    // or different-case letters.
+    std::tie(lcur, rcur) = Mismatch(
+        lstr.c_str(), lstr.c_str() + std::min(lstr.size(), rstr.size()),
+        rstr.c_str());
+    
+    l = *lcur, r = *rcur;
+    return (r == '0') | ((l != '0') & (l < r));
+
 }
 
 std::string
@@ -926,13 +1053,13 @@ _IsOctalDigit(const char c)
     return (('0' <= c) && (c <= '7'));
 }
 
-static char
+static unsigned char
 _OctalToDecimal(const char c)
 {
     return (c - '0');
 }
 
-static char
+static unsigned char
 _HexToDecimal(const char c)
 {
          if (('a' <= c) && (c <= 'f')) return ((c - 'a') + 10);
@@ -957,10 +1084,11 @@ TfEscapeStringReplaceChar(const char** c, char** out)
         case 'v': *(*out)++ = '\v'; break; // vt
         case 'x':
         {
-            char n(0);
-            size_t nd(0);
-            for (nd = 0; isxdigit(*++(*c)); ++nd)
-                n = ((n * 16) + _HexToDecimal(**c));
+            // Allow only up to 2 hex digits.
+            unsigned char n = 0;
+            for (int nd = 0; isxdigit(*++(*c)) && nd != 2; ++nd) {
+                n = (n * 16) + _HexToDecimal(**c);
+            }
             --(*c);
             *(*out)++ = n;
             break;
@@ -968,10 +1096,12 @@ TfEscapeStringReplaceChar(const char** c, char** out)
         case '0': case '1': case '2': case '3':
         case '4': case '5': case '6': case '7':
         {
-            char n(0);
-            size_t nd(0);
-            for (nd = 0; ((nd < 3) && _IsOctalDigit(**c)); ++nd)
-                n = ((n * 8) + _OctalToDecimal(*(*c)++));
+            // Allow only up to 3 octal digits.
+            --(*c);
+            unsigned char n = 0;
+            for (int nd = 0; _IsOctalDigit(*++(*c)) && nd != 3; ++nd) {
+                n = (n * 8) + _OctalToDecimal(**c);
+            }
             --(*c);
             *(*out)++ = n;
             break;
@@ -1056,6 +1186,18 @@ TfGetXmlEscapedString(const std::string &in)
     result = TfStringReplace(result, "'",  "&apos;");
 
     return result;
+}
+
+std::string
+TfStringToLowerAscii(const std::string& source)
+{
+    std::string folded;
+    folded.resize(source.size());
+    std::transform(source.begin(), source.end(), folded.begin(),
+                   [](char ch) {
+                       return ('A' <= ch && ch <= 'Z') ? ch - 'A' + 'a' : ch;
+                   });
+    return folded;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

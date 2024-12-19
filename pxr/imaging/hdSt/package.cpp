@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hdSt/package.h"
 
@@ -43,6 +26,17 @@ _GetShaderPath(char const * shader)
     return TfToken(path);
 }
 
+static TfToken
+_GetTexturePath(char const * texture)
+{
+    static PlugPluginPtr plugin = PLUG_THIS_PLUGIN;
+    const std::string path =
+        PlugFindPluginResource(plugin, TfStringCatPaths("textures", texture));
+    TF_VERIFY(!path.empty(), "Could not find texture: %s\n", texture);
+
+    return TfToken(path);
+}
+
 TfToken
 HdStPackageComputeShader()
 {
@@ -55,6 +49,13 @@ HdStPackageDomeLightShader()
 {
     static TfToken s = _GetShaderPath("domeLight.glslfx");
     return s;
+}
+
+TfToken
+HdStPackageFallbackDomeLightTexture()
+{
+    static TfToken t = _GetTexturePath("fallbackBlackDomeLight.png");
+    return t;
 }
 
 TfToken
@@ -79,9 +80,16 @@ HdStPackageFallbackLightingShader()
 }
 
 TfToken
-HdStPackageFallbackSurfaceShader()
+HdStPackageFallbackMaterialNetworkShader()
 {
-    static TfToken s = _GetShaderPath("fallbackSurface.glslfx");
+    static TfToken s = _GetShaderPath("fallbackMaterialNetwork.glslfx");
+    return s;
+}
+
+TfToken
+HdStPackageInvalidMaterialNetworkShader()
+{
+    static TfToken s = _GetShaderPath("invalidMaterialNetwork.glslfx");
     return s;
 }
 
@@ -89,13 +97,6 @@ TfToken
 HdStPackageFallbackVolumeShader()
 {
     static TfToken s = _GetShaderPath("fallbackVolume.glslfx");
-    return s;
-}
-
-TfToken
-HdStPackageLightingIntegrationShader()
-{
-    static TfToken s = _GetShaderPath("lightingIntegrationShader.glslfx");
     return s;
 }
 
@@ -109,9 +110,15 @@ HdStPackageImageShader()
 TfToken
 HdStPackageSimpleLightingShader()
 {
-    static TfToken simpleLightingShader = 
-        _GetShaderPath("simpleLightingShader.glslfx");
-    return simpleLightingShader;
+    static TfToken s = _GetShaderPath("simpleLightingShader.glslfx");
+    return s;
+}
+
+TfToken
+HdStPackageWidgetShader()
+{
+    static TfToken s = _GetShaderPath("widgetShader.glslfx");
+    return s;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

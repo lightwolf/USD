@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -27,15 +10,15 @@
 #include "pxr/base/tf/pyContainerConversions.h"
 #include "pxr/base/tf/pyUtils.h"
 
-#include <boost/python.hpp>
-#include <boost/function.hpp>
+#include "pxr/external/boost/python.hpp"
 
 #include <string>
 
-using namespace boost::python;
 using std::string;
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -73,11 +56,16 @@ _Repr(const SdfReference &self)
     return TF_PY_REPR_PREFIX + "Reference(" + args + ")";
 }
 
+static size_t __hash__(const SdfReference &self)
+{
+    return TfHash()(self);
+}
+
 } // anonymous namespace 
 
 void wrapReference()
 {    
-    typedef SdfReference This;
+    using This = SdfReference;
 
     // Register conversion for python list <-> vector<SdfReference>
     to_python_converter<
@@ -89,7 +77,7 @@ void wrapReference()
 
     // Note: Since we have no proxy for Sdf.Reference we wrap it as an
     //       immutable type to avoid confusion about code like this
-    //       prim.referenceList.explicitItems[0].assetPath = '//menv30/test.menva'
+    //       prim.referenceList.explicitItems[0].assetPath = '//pixar/test.sdf'
     //       This looks like it's updating the assetPath for the prim's
     //       first explicit reference, but would instead modify a temporary
     //       Sdf.Reference object.
@@ -118,6 +106,8 @@ void wrapReference()
             make_function(
                 &This::GetCustomData, return_value_policy<return_by_value>()))
 
+        .def("IsInternal", &This::IsInternal)
+
         .def(self == self)
         .def(self != self)
         .def(self < self)
@@ -126,7 +116,7 @@ void wrapReference()
         .def(self >= self)
 
         .def("__repr__", _Repr)
-
+        .def("__hash__", __hash__)
         ;
 
 }

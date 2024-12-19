@@ -2,25 +2,8 @@
 #
 # Copyright 2018 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 """
 Common utilities that shader-based parser plugins can use in their tests.
@@ -50,7 +33,7 @@ def GetType(property):
     Given a property (SdrShaderProperty), return the SdfValueTypeName type.
     """
     sdfTypeIndicator = property.GetTypeAsSdfType()
-    sdfValueTypeName = sdfTypeIndicator[0]
+    sdfValueTypeName = sdfTypeIndicator.GetSdfType()
     tfType = sdfValueTypeName.type
 
     return tfType
@@ -207,29 +190,39 @@ def TestShadingProperties(node):
     # --------------------------------------------------------------------------
     # Check clean and unclean mappings to Sdf types
     # --------------------------------------------------------------------------
-    assert properties["inputB"].GetTypeAsSdfType() == (SdfTypes.Int, "")
-    assert properties["inputF2"].GetTypeAsSdfType() == (SdfTypes.Float2, "")
-    assert properties["inputF3"].GetTypeAsSdfType() == (SdfTypes.Float3, "")
-    assert properties["inputF4"].GetTypeAsSdfType() == (SdfTypes.Float4, "")
-    assert properties["inputF5"].GetTypeAsSdfType() == (SdfTypes.FloatArray, "")
-    assert properties["inputStruct"].GetTypeAsSdfType() == \
-           (SdfTypes.Token, Sdr.PropertyTypes.Struct)
+    expected_mappings = {"inputB": (SdfTypes.Int, "int"),
+                         "inputF2": (SdfTypes.Float2,
+                                     Sdr.PropertyTypes.Float),
+                         "inputF3": (SdfTypes.Float3,
+                                     Sdr.PropertyTypes.Float),
+                         "inputF4": (SdfTypes.Float4,
+                                     Sdr.PropertyTypes.Float),
+                         "inputF5": (SdfTypes.FloatArray,
+                                     Sdr.PropertyTypes.Float),
+                         "inputStruct": (SdfTypes.Token,
+                                         Sdr.PropertyTypes.Struct)}
+    
+    for prop, expected in expected_mappings.items():
+        indicator = properties[prop].GetTypeAsSdfType()
+        assert indicator.GetSdfType() == expected[0]
+        assert indicator.GetNdrType() == expected[1]
 
     # --------------------------------------------------------------------------
     # Ensure asset identifiers are detected correctly
     # --------------------------------------------------------------------------
     assert properties["inputAssetIdentifier"].IsAssetIdentifier()
     assert not properties["inputOptions"].IsAssetIdentifier()
-    assert properties["inputAssetIdentifier"].GetTypeAsSdfType() == \
-           (SdfTypes.Asset, "")
+    indicator = properties["inputAssetIdentifier"].GetTypeAsSdfType()
+    assert indicator.GetSdfType() == SdfTypes.Asset
+    assert indicator.GetNdrType() == Sdr.PropertyTypes.String
 
     # Nested pages and VStructs are only possible in args files
     if not isOSL:
         # ----------------------------------------------------------------------
         # Check nested page correctness
         # ----------------------------------------------------------------------
-        assert properties["vstruct1"].GetPage() == "VStructs.Nested"
-        assert properties["vstruct1_bump"].GetPage() == "VStructs.Nested.More"
+        assert properties["vstruct1"].GetPage() == "VStructs:Nested"
+        assert properties["vstruct1_bump"].GetPage() == "VStructs:Nested:More"
 
         # ----------------------------------------------------------------------
         # Check VStruct correctness
@@ -245,7 +238,7 @@ def TestShadingProperties(node):
         assert properties["vstruct1_bump"].IsVStructMember()
 
 
-def TestBasicNode(node, nodeSourceType, nodeURI, resolvedNodeURI):
+def TestBasicNode(node, nodeSourceType, nodeDefinitionURI, nodeImplementationURI):
     """
     Test basic, non-shader-specific correctness on the specified node.
     """
@@ -277,9 +270,6 @@ def TestBasicNode(node, nodeSourceType, nodeURI, resolvedNodeURI):
                     "$invalidPrimvarNamingProperty",
         "uncategorizedMetadata": "uncategorized"
     }
-    info = "TestNode%s (context: '%s', version: '<invalid version>', family: ''); URI: '%s'" % (
-        "OSL" if isOSL else "ARGS", nodeContext, nodeURI
-    )
 
     if not isOSL:
         metadata.pop("category")
@@ -300,10 +290,9 @@ def TestBasicNode(node, nodeSourceType, nodeURI, resolvedNodeURI):
     assert node.GetContext() == nodeContext
     assert node.GetSourceType() == nodeSourceType
     assert node.GetFamily() == ""
-    assert node.GetSourceURI() == nodeURI
-    assert node.GetResolvedSourceURI() == resolvedNodeURI
+    assert node.GetResolvedDefinitionURI() == nodeDefinitionURI
+    assert node.GetResolvedImplementationURI() == nodeImplementationURI
     assert node.IsValid()
-    assert node.GetInfoString().startswith(info)
     assert len(nodeInputs) == 17
     assert len(nodeOutputs) == numOutputs
     assert nodeInputs["inputA"] is not None
@@ -359,8 +348,8 @@ def TestShaderSpecificNode(node):
     category = "testing" if isOSL else ""
     vstructNames = [] if isOSL else ["vstruct1"]
     pages = {"", "inputs1", "inputs2", "results"} if isOSL else \
-            {"", "inputs1", "inputs2", "results", "VStructs.Nested",
-             "VStructs.Nested.More"}
+            {"", "inputs1", "inputs2", "results", "VStructs:Nested",
+                "VStructs:Nested:More"}
     # --------------------------------------------------------------------------
 
 
@@ -612,4 +601,25 @@ def TestShaderPropertiesNode(node):
     property = nodeInputs["normal"]
     assert property.GetImplementationName() == "aliasedNormalInput"
     assert Ndr._ValidateProperty(node, property)
+
+    if node.GetName() != "TestShaderPropertiesNodeOSL" and \
+        node.GetName() != "TestShaderPropertiesNodeARGS" :
+        # We will parse color4 in MaterialX and UsdShade. Not currently
+        # supported in OSL. rman Args also do not support / require color4 type.
+        property = nodeInputs["inputColor4"]
+        assert property.GetType() == Sdr.PropertyTypes.Color4
+        assert GetType(property) == Tf.Type.FindByName("GfVec4f")
+        assert Ndr._ValidateProperty(node, property)
+
+        # oslc v1.11.14 does not allow arrays of structs as parameter.
+        property = nodeInputs["inputColor4Array"]
+        assert property.GetType() == Sdr.PropertyTypes.Color4
+        assert GetType(property) ==  Tf.Type.FindByName("VtArray<GfVec4f>")
+        assert Ndr._ValidateProperty(node, property)
+
+        property = nodeInputs["inputColor4RoleNone"]
+        assert property.GetType() == Sdr.PropertyTypes.Float
+        assert GetType(property) == Tf.Type.FindByName("GfVec4f")
+        assert Ndr._ValidateProperty(node, property)
+
 

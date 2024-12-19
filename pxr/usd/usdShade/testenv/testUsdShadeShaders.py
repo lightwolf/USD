@@ -2,25 +2,8 @@
 #                                                                                   
 # Copyright 2017 Pixar                                                              
 #                                                                                   
-# Licensed under the Apache License, Version 2.0 (the "Apache License")             
-# with the following modification; you may not use this file except in              
-# compliance with the Apache License and the following modification to it:          
-# Section 6. Trademarks. is deleted and replaced with:                              
-#                                                                                   
-# 6. Trademarks. This License does not grant permission to use the trade            
-#    names, trademarks, service marks, or product names of the Licensor             
-#    and its affiliates, except as required to comply with Section 4(c) of          
-#    the License and to reproduce the content of the NOTICE file.                   
-#                                                                                   
-# You may obtain a copy of the Apache License at                                    
-#                                                                                   
-#     http://www.apache.org/licenses/LICENSE-2.0                                    
-#                                                                                   
-# Unless required by applicable law or agreed to in writing, software               
-# distributed under the Apache License with the above modification is               
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY          
-# KIND, either express or implied. See the Apache License for the specific          
-# language governing permissions and limitations under the Apache License. 
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from __future__ import print_function
 
@@ -30,6 +13,9 @@ import unittest
 palePath = Sdf.Path("/Model/Materials/MaterialSharp/Pale")
 whiterPalePath = Sdf.Path("/Model/Materials/MaterialSharp/WhiterPale")
 classPalePath = Sdf.Path("/classPale")
+
+Input = UsdShade.AttributeType.Input
+Output = UsdShade.AttributeType.Output
 
 class TestUsdShadeShaders(unittest.TestCase):
     def _ConnectionsEqual(self, a, b):
@@ -102,36 +88,39 @@ class TestUsdShadeShaders(unittest.TestCase):
         usdShadeInput.Set(1.0)
         self.assertTrue(not usdShadeInput.HasConnectedSource())
         
-        usdShadeInput.ConnectToSource(whiterPale, 'Fout')
+        usdShadeInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(),
+            'Fout', Output))
         self.assertTrue(usdShadeInput.HasConnectedSource())
 
-        self.assertEqual(usdShadeInput.GetRawConnectedSourcePaths(),
+        self.assertEqual(usdShadeInput.GetAttr().GetConnections(),
                 [whiterPale.GetPath().AppendProperty("outputs:Fout")])
 
-        self.assertTrue(self._ConnectionsEqual(
-                usdShadeInput.GetConnectedSource(),
-                (whiterPale, 'Fout', UsdShade.AttributeType.Output)))
-        usdShadeInput.ClearSource()
+        self.assertEqual(usdShadeInput.GetConnectedSources()[0],
+                [UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(),
+                'Fout', Output)])
+        usdShadeInput.ClearSources()
         self.assertTrue(not usdShadeInput.HasConnectedSource())
-        self.assertEqual(usdShadeInput.GetConnectedSource(), None)
+        self.assertEqual(usdShadeInput.GetConnectedSources()[0], [])
 
         # Now make the connection in the class
         inheritedInput = shaderClass.CreateInput('myFloatInput', 
                                                  Sdf.ValueTypeNames.Float)
-        inheritedInput.ConnectToSource(whiterPale, 'Fout')
+        inheritedInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), 'Fout', Output))
         # note we're now testing the inheritING prim's parameter
         self.assertTrue(usdShadeInput.HasConnectedSource())
-        self.assertTrue(self._ConnectionsEqual(usdShadeInput.GetConnectedSource(),
-                                      (whiterPale, 'Fout', UsdShade.AttributeType.Output)))
+        self.assertTrue(usdShadeInput.GetConnectedSources()[0],
+            [UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), 'Fout', Output)])
         # clearing no longer changes anything
-        usdShadeInput.ClearSource()
+        usdShadeInput.ClearSources()
         self.assertTrue(usdShadeInput.HasConnectedSource())
-        self.assertTrue(self._ConnectionsEqual(usdShadeInput.GetConnectedSource(),
-                                      (whiterPale, 'Fout', UsdShade.AttributeType.Output)))
+        self.assertTrue(usdShadeInput.GetConnectedSources()[0],
+            [UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), 'Fout', Output)])
         # but disconnecting should
         usdShadeInput.DisconnectSource()
         self.assertTrue(not usdShadeInput.HasConnectedSource())
-        self.assertEqual(usdShadeInput.GetConnectedSource(), None)
+        self.assertEqual(usdShadeInput.GetConnectedSources()[0], [])
 
 
         ################################
@@ -155,18 +144,21 @@ class TestUsdShadeShaders(unittest.TestCase):
 
         colInput = pale.CreateInput("col1", Sdf.ValueTypeNames.Color3f)
         self.assertTrue(colInput)
-        self.assertTrue(colInput.ConnectToSource(whiterPale, "colorOut"))
+        self.assertTrue(colInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), 'colorOut', Output)))
         outputAttr = whiterPale.GetPrim().GetAttribute("outputs:colorOut")
         self.assertTrue(outputAttr)
         self.assertEqual(outputAttr.GetTypeName(), Sdf.ValueTypeNames.Color3f)
 
         v3fInput = pale.CreateInput("v3f1", Sdf.ValueTypeNames.Float3)
         self.assertTrue(v3fInput)
-        self.assertTrue(v3fInput.ConnectToSource(whiterPale, "colorOut"))
+        self.assertTrue(v3fInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), "colorOut", Output)))
 
         pointInput = pale.CreateInput("point1", Sdf.ValueTypeNames.Point3f)
         self.assertTrue(pointInput)
-        self.assertTrue(pointInput.ConnectToSource(whiterPale, "colorOut"))
+        self.assertTrue(pointInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), "colorOut", Output)))
 
         floatInput = pale.CreateInput("float1", Sdf.ValueTypeNames.Float)
         self.assertTrue(floatInput)
@@ -174,10 +166,11 @@ class TestUsdShadeShaders(unittest.TestCase):
         # type-checking for input / output connections.  See bug/113600
         # can't connect float to color!
         #with RequiredException(Tf.ErrorException):
-        #    floatInput.ConnectToSource(whiterPale, "colorOut")
+        #    floatInput.ConnectToSource(
+        #        UsdShade.ConnectionSourceInfo(whiterPale, "colorOut", Output))
 
-        self.assertTrue(floatInput.ConnectToSource(whiterPale, "floatInput",
-            sourceType=UsdShade.AttributeType.Input))
+        self.assertTrue(floatInput.ConnectToSource(
+            UsdShade.ConnectionSourceInfo(whiterPale.ConnectableAPI(), "floatInput", Input)))
         outputAttr = whiterPale.GetPrim().GetAttribute("outputs:floatInput")
         self.assertFalse(outputAttr)
         outputAttr = whiterPale.GetPrim().GetAttribute("inputs:floatInput")
@@ -369,6 +362,48 @@ class TestUsdShadeShaders(unittest.TestCase):
                 sourceType=sourceType))
             self.assertEqual(whiterPale.GetSourceAssetSubIdentifier(sourceType),
                              subId)
+
+    def testGetSourceTypes(self):
+        stage = self._SetupStage()
+
+        ################################
+        print ('Testing Get Source Types API')
+        ################################
+
+        pale = UsdShade.Shader.Get(stage, palePath)
+        self.assertTrue(pale)
+
+        self.assertEqual(pale.GetImplementationSource(), UsdShade.Tokens.id)
+
+        self.assertTrue(pale.SetShaderId('SharedFloat_1'))
+        self.assertEqual(pale.GetShaderId(), 'SharedFloat_1')
+
+        pale.GetImplementationSourceAttr().Set(UsdShade.Tokens.sourceCode)
+        self.assertTrue(pale.GetShaderId() is None)
+
+        self.assertEqual(pale.GetSourceTypes(), [])
+
+        # Set sourceType for a sourceCode implementation.
+        oslSource = "This is the shader source"
+        self.assertTrue(pale.SetSourceCode(sourceCode=oslSource, 
+                                           sourceType="osl"))
+        self.assertEqual(pale.GetSourceTypes(), ["osl"])
+
+        # Check if we can detect multiple sourceTypes per implementation
+        glslfxSource = "This is the shader source"
+        self.assertTrue(pale.SetSourceCode(sourceCode=glslfxSource,
+                                           sourceType="glslfx"))
+        self.assertEqual(sorted(pale.GetSourceTypes()),
+                         ["glslfx", "osl"])
+
+        # Set sourceType for sourceAsset implmentation.
+        pale.GetImplementationSourceAttr().Set(UsdShade.Tokens.sourceAsset)
+        glslfxAssetPath = Sdf.AssetPath("/source/asset.glslfx")
+        self.assertTrue(pale.SetSourceAsset(
+                sourceAsset=glslfxAssetPath, 
+                sourceType="glslfx"))
+        
+        self.assertEqual(pale.GetSourceTypes(), ["glslfx"])
 
 
 if __name__ == '__main__':

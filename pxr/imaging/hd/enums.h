@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ENUMS_H
 #define PXR_IMAGING_HD_ENUMS_H
@@ -167,67 +150,6 @@ enum HdPointsGeomStyle {
     HdPointsGeomStylePoints
 };
 
-/// \enum HdWrap
-///
-/// Enumerates wrapping attributes type values.
-///
-/// <ul>
-///     <li>\b HdWrapClamp               Clamp coordinate to range [1/(2N),1-1/(2N)] where N is the size of the texture in the direction of clamping</li>
-///     <li>\b HdWrapRepeat              Creates a repeating pattern</li>
-///     <li>\b HdWrapBlack               Clamp coordinate to range [-1/(2N),1+1/(2N)] where N is the size of the texture in the direction of clamping</li>
-///     <li>\b HdWrapMirror              Creates a mirrored repeating pattern.</li>
-///     <li>\b HdWrapUseMetadata         Data Texture can define its own wrap mode, if not defined by the texture it will use HdWrapBlack</li>
-///     <li>\b HdWrapLegacy              (deprecated) Texture can define its own wrap mode, if not defined by the texture it will use HdWrapRepeat</li>
-/// </ul>
-///
-enum HdWrap 
-{
-    HdWrapClamp,
-    HdWrapRepeat,
-    HdWrapBlack,
-    HdWrapMirror,
-    HdWrapUseMetadata,
-    HdWrapLegacy,
-};
-
-/// \enum HdMinFilter
-///
-/// Enumerates minFilter attribute type values.
-///
-/// <ul>
-///     <li>\b HdMinFilterNearest                Nearest to center of the pixel</li>
-///     <li>\b HdMinFilterLinear                 Weighted average od the four texture elements closest to the pixel</li>
-///     <li>\b HdMinFilterNearestMipmapNearest   Nearest to center of the pixel from the nearest mipmaps</li>
-///     <li>\b HdMinFilterLinearMipmapNeares     Weighted average using texture elements from the nearest mipmaps</li>
-///     <li>\b HdMinFilterNearestMipmapLinear    Weighted average of the nearest pixels from the two nearest mipmaps</li>
-///     <li>\b HdMinFilterLinearMipmapLinear     WeightedAverage of the weighted averages from the nearest mipmaps</li>
-/// </ul>
-///
-enum HdMinFilter 
-{
-    HdMinFilterNearest,
-    HdMinFilterLinear,
-    HdMinFilterNearestMipmapNearest,
-    HdMinFilterLinearMipmapNearest,
-    HdMinFilterNearestMipmapLinear,
-    HdMinFilterLinearMipmapLinear,
-};
-
-/// \enum HdMagFilter
-///
-/// Enumerates magFilter attribute type values.
-///
-/// <ul>
-///     <li>HdFilterNearest       Nearest to center of the pixel</li>
-///     <li>HdFilterLinear        Weighted average of the four texture elements closest to the pixel</li>
-/// </ul>
-///
-enum HdMagFilter 
-{
-    HdMagFilterNearest,
-    HdMagFilterLinear,
-};
-
 ///
 /// \enum HdInterpolation
 ///
@@ -262,28 +184,6 @@ enum HdInterpolation
     HdInterpolationInstance,
 
     HdInterpolationCount
-};
-
-///
-/// \enum HdTextureType
-/// Enumerates Hydra's supported texture types.
-///
-/// Uv:   Sample the uv coordinates and accesses a single 2d texture.
-///
-/// Uvw:  Sample the uvw coordinates and accesses a single 3d texture.
-///
-/// Ptex: Use the ptex connectivity information to sample a ptex texture.
-///
-/// Udim: Remap the uv coordinates into udim coordinates using a maximum
-///       tile width of 10 and sample all the udim tiles found in the
-///       file system.
-///
-enum class HdTextureType
-{
-    Uv,
-    Uvw,
-    Ptex,
-    Udim
 };
 
 /// \enum HdDepthPriority

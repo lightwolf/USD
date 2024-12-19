@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_RPRIM_H
 #define PXR_IMAGING_HD_RPRIM_H
@@ -27,8 +10,6 @@
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/api.h"
 #include "pxr/imaging/hd/version.h"
-#include "pxr/imaging/hd/changeTracker.h"
-#include "pxr/imaging/hd/drawItem.h"
 #include "pxr/imaging/hd/rprimSharedData.h"
 #include "pxr/imaging/hd/repr.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
@@ -42,34 +23,23 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
-class HdBufferSource;
-class HdDrawItem;
-class HdMaterial;
+class HdChangeTracker;
 class HdRenderIndex;
 class HdRenderParam;
 
 using HdReprSharedPtr = std::shared_ptr<HdRepr>;
-
-using HdBufferSourceSharedPtr = std::shared_ptr<HdBufferSource>;
-using HdBufferSourceSharedPtrVector = std::vector<HdBufferSourceSharedPtr>;
-
-using HdBufferSpecVector = std::vector<struct HdBufferSpec>;
-using HdBufferArrayRangeSharedPtr = std::shared_ptr<HdBufferArrayRange>;
-
-using HdComputationSharedPtr = std::shared_ptr<class HdComputation>;
-using HdComputationSharedPtrVector = std::vector<HdComputationSharedPtr>;
 
 /// \class HdRprim
 ///
 /// The render engine state for a given rprim from the scene graph. All data
 /// access (aside from local caches) is delegated to the HdSceneDelegate.
 ///
-class HdRprim {
+class HdRprim
+{
 public:
     HD_API
-    HdRprim(SdfPath const& id,
-            SdfPath const& instancerId);
+    HdRprim(SdfPath const& id);
+
     HD_API
     virtual ~HdRprim();
 
@@ -153,9 +123,8 @@ public:
     /// These draw items should be constructed and cached beforehand by Sync().
     /// If no draw items exist, or reprToken cannot be found, nullptr will be
     /// returned.
-    using HdDrawItemPtrVector = std::vector<HdDrawItem*>;
     HD_API
-    const HdDrawItemPtrVector*
+    const HdRepr::DrawItemUniquePtrVector &
     GetDrawItems(TfToken const& reprToken) const;
 
     // ---------------------------------------------------------------------- //
@@ -192,14 +161,16 @@ public:
     /// this identifier.
     SdfPath const& GetMaterialId() const { return _materialId; }
 
-    /// The MaterialTag allows rprims to be organized into different
-    /// collections based on properties of the prim's material.
-    /// E.g. A renderer may wish to organize opaque and translucent prims 
-    /// into different collections so they can be rendered seperately.
-    TfToken const& GetMaterialTag() const { return _sharedData.materialTag; }
+    /// Sets a new material binding to be used by this rprim
+    HD_API
+    void SetMaterialId(SdfPath const& materialId);
 
     HdReprSelector const& GetReprSelector() const {
         return _authoredReprSelector;
+    }
+
+    TfToken const& GetRenderTag() const {
+        return _renderTag;
     }
 
     /// Returns the render tag associated to this rprim
@@ -221,6 +192,10 @@ public:
     inline VtValue
     GetPrimvar(HdSceneDelegate* delegate, const TfToken &name) const;
 
+    inline VtValue
+    GetIndexedPrimvar(HdSceneDelegate* delegate, const TfToken &name, 
+                      VtIntArray *indices) const;
+
     HD_API
     VtMatrix4dArray GetInstancerTransforms(HdSceneDelegate* delegate);
 
@@ -234,6 +209,10 @@ public:
     HD_API
     void UpdateReprSelector(HdSceneDelegate* delegate,
                             HdDirtyBits *dirtyBits);
+
+    HD_API
+    virtual void UpdateRenderTag(HdSceneDelegate *delegate,
+                                 HdRenderParam *renderParam);
 
 protected:
     // ---------------------------------------------------------------------- //
@@ -264,8 +243,8 @@ protected:
     /// repr is synced.  InitRepr occurs before dirty bit propagation.
     ///
     /// See HdRprim::InitRepr()
-       virtual void _InitRepr(TfToken const &reprToken,
-                              HdDirtyBits *dirtyBits) = 0;
+    virtual void _InitRepr(TfToken const &reprToken,
+                           HdDirtyBits *dirtyBits) = 0;
 
     // ---------------------------------------------------------------------- //
     /// \name Rprim Shared API
@@ -277,20 +256,9 @@ protected:
     void _UpdateVisibility(HdSceneDelegate *sceneDelegate,
                            HdDirtyBits *dirtyBits);
 
-    /// Sets a new material binding to be used by this rprim
     HD_API
-    void _SetMaterialId(HdChangeTracker &changeTracker,
-                        SdfPath const& materialId);
-
-    // methods to assist allocating and migrating shared primvar ranges
-    HD_API
-    static bool _IsEnabledSharedVertexPrimvar();
-
-    HD_API
-    uint64_t
-    _ComputeSharedPrimvarId(uint64_t baseId,
-                      HdBufferSourceSharedPtrVector const &sources,
-                      HdComputationSharedPtrVector const &computations) const;
+    void _UpdateInstancer(HdSceneDelegate *sceneDelegate,
+                          HdDirtyBits *dirtyBits);
 
 private:
     SdfPath _instancerId;
@@ -306,13 +274,16 @@ protected:
     // authored repr selector
     HdReprSelector _authoredReprSelector;
 
+    // authored render tag
+    TfToken _renderTag;
+
     // total number of reprs is relatively small (less than 5 or so
     // in most case), we use linear container for efficiency.
-    typedef std::vector<std::pair<TfToken, HdReprSharedPtr> >
-        _ReprVector;
+    using _ReprVector = std::vector<std::pair<TfToken, HdReprSharedPtr>>;
     _ReprVector _reprs;
 
-     struct _ReprComparator {
+     struct _ReprComparator
+     {
         _ReprComparator(TfToken const &name) : _name(name) {}
         bool operator() (const std::pair<TfToken, HdReprSharedPtr> &e) const {
             return _name == e.first;
@@ -328,8 +299,9 @@ protected:
     // N : # of descriptors for the repr.
     //
     template<typename DESC_TYPE, int N=1>
-    struct _ReprDescConfigs {
-        typedef std::array<DESC_TYPE, N> DescArray;
+    struct _ReprDescConfigs
+    {
+        using DescArray = std::array<DESC_TYPE, N>;
         static const int MAX_DESCS = N;
 
         DescArray Find(TfToken const &reprToken) const {
@@ -382,6 +354,13 @@ inline VtValue
 HdRprim::GetPrimvar(HdSceneDelegate* delegate, const TfToken &name) const
 {
     return delegate->Get(GetId(), name);
+}
+
+inline VtValue
+HdRprim::GetIndexedPrimvar(HdSceneDelegate* delegate, const TfToken &name, 
+                           VtIntArray *indices) const
+{
+    return delegate->GetIndexedPrimvar(GetId(), name, indices);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

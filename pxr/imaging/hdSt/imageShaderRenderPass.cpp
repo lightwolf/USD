@@ -1,29 +1,10 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
-//
-#include "pxr/imaging/glf/glew.h"
 
-#include "pxr/imaging/hdSt/glUtils.h"
 #include "pxr/imaging/hdSt/imageShaderRenderPass.h"
 #include "pxr/imaging/hdSt/imageShaderShaderKey.h"
 #include "pxr/imaging/hdSt/resourceRegistry.h"
@@ -31,33 +12,42 @@
 #include "pxr/imaging/hdSt/renderPassState.h"
 #include "pxr/imaging/hdSt/renderPassShader.h"
 #include "pxr/imaging/hdSt/geometricShader.h"
-#include "pxr/imaging/hdSt/surfaceShader.h"
-#include "pxr/imaging/hdSt/glslfxShader.h"
-#include "pxr/imaging/hdSt/immediateDrawBatch.h"
-#include "pxr/imaging/hdSt/package.h"
+#include "pxr/imaging/hdSt/indirectDrawBatch.h"
+#include "pxr/imaging/hdSt/pipelineDrawBatch.h"
 #include "pxr/imaging/hd/drawingCoord.h"
 #include "pxr/imaging/hd/vtBufferSource.h"
-#include "pxr/imaging/hgi/graphicsEncoder.h"
-#include "pxr/imaging/hgi/graphicsEncoderDesc.h"
+#include "pxr/imaging/hgi/capabilities.h"
+#include "pxr/imaging/hgi/graphicsCmds.h"
+#include "pxr/imaging/hgi/graphicsCmdsDesc.h"
 #include "pxr/imaging/hgi/hgi.h"
-#include "pxr/imaging/hgi/tokens.h"
-#include "pxr/imaging/glf/diagnostic.h"
 
-
-// XXX We do not want to include specific HgiXX backends, but we need to do
-// this temporarily until Storm has transitioned fully to Hgi.
-#include "pxr/imaging/hgiGL/graphicsEncoder.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-void
-_ExecuteDraw(
-    HdSt_DrawBatchSharedPtr const& drawBatch,
-    HdStRenderPassStateSharedPtr const& stRenderPassState,
-    HdStResourceRegistrySharedPtr const& resourceRegistry)
+
+static
+HdSt_DrawBatchSharedPtr
+_NewDrawBatch(HdStDrawItemInstance *drawItemInstance,
+              HdRenderIndex const *index)
 {
-    drawBatch->PrepareDraw(stRenderPassState, resourceRegistry);
-    drawBatch->ExecuteDraw(stRenderPassState, resourceRegistry);
+    HdStResourceRegistrySharedPtr const &resourceRegistry =
+        std::static_pointer_cast<HdStResourceRegistry>(
+            index->GetResourceRegistry());
+
+    // Since we're just drawing a single full-screen triangle
+    // we don't want frustum culling or indirect command encoding.
+    bool const allowGpuFrustumCulling = false;
+    bool const allowIndirectCommandEncoding = false;
+    if (HdSt_PipelineDrawBatch::IsEnabled(resourceRegistry->GetHgi())) {
+        return std::make_shared<HdSt_PipelineDrawBatch>(
+                drawItemInstance,
+                allowGpuFrustumCulling,
+                allowIndirectCommandEncoding);
+    } else {
+        return std::make_shared<HdSt_IndirectDrawBatch>(
+                drawItemInstance,
+                allowGpuFrustumCulling);
+    }
 }
 
 HdSt_ImageShaderRenderPass::HdSt_ImageShaderRenderPass(
@@ -71,41 +61,37 @@ HdSt_ImageShaderRenderPass::HdSt_ImageShaderRenderPass(
 {
     _sharedData.instancerLevels = 0;
     _sharedData.rprimID = SdfPath("/imageShaderRenderPass");
-    _immediateBatch = HdSt_DrawBatchSharedPtr(
-        new HdSt_ImmediateDrawBatch(&_drawItemInstance));
+    _drawBatch = _NewDrawBatch(&_drawItemInstance, index);
 
     HdStRenderDelegate* renderDelegate =
         static_cast<HdStRenderDelegate*>(index->GetRenderDelegate());
     _hgi = renderDelegate->GetHgi();
 }
 
-HdSt_ImageShaderRenderPass::~HdSt_ImageShaderRenderPass()
-{
-}
+HdSt_ImageShaderRenderPass::~HdSt_ImageShaderRenderPass() = default;
 
 void
 HdSt_ImageShaderRenderPass::_SetupVertexPrimvarBAR(
     HdStResourceRegistrySharedPtr const& registry)
 {
-    // The current logic in HdSt_ImmediateDrawBatch::ExecuteDraw will use
+    // The current logic in HdSt_PipelineDrawBatch::ExecuteDraw will use
     // glDrawArraysInstanced if it finds a VertexPrimvar buffer but no
     // index buffer, We setup the BAR to meet this requirement to draw our
     // full-screen triangle for post-process shaders.
 
-    HdBufferSourceSharedPtrVector sources;
+    HdBufferSourceSharedPtrVector sources = {
+        std::make_shared<HdVtBufferSource>(
+            HdTokens->points, VtValue(VtVec3fArray(3))) };
+
     HdBufferSpecVector bufferSpecs;
-
-    HdBufferSourceSharedPtr pointsSource(
-        new HdVtBufferSource(HdTokens->points, VtValue(VtVec3fArray(3))));
-
-    sources.push_back(pointsSource);
-    pointsSource->GetBufferSpecs(&bufferSpecs);
+    HdBufferSpec::GetBufferSpecs(sources, &bufferSpecs);
 
     HdBufferArrayRangeSharedPtr vertexPrimvarRange =
         registry->AllocateNonUniformBufferArrayRange(
-            HdTokens->primvar, bufferSpecs, HdBufferArrayUsageHint());
+            HdTokens->primvar, bufferSpecs,
+            HdBufferArrayUsageHintBitsVertex);
 
-    registry->AddSources(vertexPrimvarRange, sources);
+    registry->AddSources(vertexPrimvarRange, std::move(sources));
 
     HdDrawingCoord* drawingCoord = _drawItem.GetDrawingCoord();
     _sharedData.barContainer.Set(
@@ -114,11 +100,10 @@ HdSt_ImageShaderRenderPass::_SetupVertexPrimvarBAR(
 }
 
 void
-HdSt_ImageShaderRenderPass::_Prepare(TfTokenVector const &renderTags)
+HdSt_ImageShaderRenderPass::SetupFullscreenTriangleDrawItem()
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
-    GLF_GROUP_FUNCTION();
 
     HdStResourceRegistrySharedPtr const& resourceRegistry = 
         std::dynamic_pointer_cast<HdStResourceRegistry>(
@@ -159,62 +144,29 @@ HdSt_ImageShaderRenderPass::_Execute(
         GetRenderIndex()->GetResourceRegistry());
     TF_VERIFY(resourceRegistry);
 
-    // XXX Non-Hgi tasks expect default FB. Remove once all tasks use Hgi.
-    GLint fb;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+    _drawBatch->PrepareDraw(nullptr, stRenderPassState, resourceRegistry);
 
-    // Create graphics encoder to render into Aovs.
-    HgiGraphicsEncoderDesc desc = stRenderPassState->MakeGraphicsEncoderDesc();
-    HgiGraphicsEncoderUniquePtr gfxEncoder = _hgi->CreateGraphicsEncoder(desc);
-
-    GfVec4i vp;
-
-    // XXX When there are no aovBindings we get a null encoder.
-    // This would ideally never happen, but currently happens for some
-    // custom prims that spawn an imagingGLengine  with a task controller that
-    // has no aovBindings.
-
-    if (gfxEncoder) {
-        gfxEncoder->PushDebugGroup(__ARCH_PRETTY_FUNCTION__);
-
-        // XXX The application may have directly called into glViewport.
-        // We need to remove the offset to avoid double offset when we composite
-        // the Aov back into the client framebuffer.
-        // E.g. UsdView CameraMask.
-        glGetIntegerv(GL_VIEWPORT, vp.data());
-        GfVec4i aovViewport(0, 0, vp[2]+vp[0], vp[3]+vp[1]);
-        gfxEncoder->SetViewport(aovViewport);
+    // Create graphics work to render into aovs.
+    const HgiGraphicsCmdsDesc desc =
+        stRenderPassState->MakeGraphicsCmdsDesc(GetRenderIndex());
+    HgiGraphicsCmdsUniquePtr gfxCmds = _hgi->CreateGraphicsCmds(desc);
+    if (!TF_VERIFY(gfxCmds)) {
+        return;
     }
+    
+    gfxCmds->PushDebugGroup(__ARCH_PRETTY_FUNCTION__);
 
-    // Draw
-    HdSt_DrawBatchSharedPtr const& batch = _immediateBatch;
-    HgiGLGraphicsEncoder* glGfxEncoder = 
-        dynamic_cast<HgiGLGraphicsEncoder*>(gfxEncoder.get());
+    const GfVec4i viewport = stRenderPassState->ComputeViewport();
+    gfxCmds->SetViewport(viewport);
 
-    if (gfxEncoder && glGfxEncoder) {
-        // XXX Tmp code path to allow non-hgi code to insert functions into
-        // HgiGL ops-stack. Will be removed once Storms uses Hgi everywhere
-        auto executeDrawOp = [batch, stRenderPassState, resourceRegistry] {
-            _ExecuteDraw(batch, stRenderPassState, resourceRegistry);
-        };
-        glGfxEncoder->InsertFunctionOp(executeDrawOp);
-    } else {
-        _ExecuteDraw(batch, stRenderPassState, resourceRegistry);
-    }
+    // Camera state needs to be updated once per pass (not per batch).
+    stRenderPassState->ApplyStateFromCamera();
 
-    if (gfxEncoder) {
-        gfxEncoder->SetViewport(vp);
-        gfxEncoder->PopDebugGroup();
-        gfxEncoder->Commit();
+    _drawBatch->ExecuteDraw(gfxCmds.get(), stRenderPassState, resourceRegistry,
+        /*firstDrawBatch*/true);
 
-        // XXX Non-Hgi tasks expect default FB. Remove once all tasks use Hgi.
-        glBindFramebuffer(GL_FRAMEBUFFER, fb);
-    }
-}
-
-void
-HdSt_ImageShaderRenderPass::_MarkCollectionDirty()
-{
+    gfxCmds->PopDebugGroup();
+    _hgi->SubmitCmds(gfxCmds.get());
 }
 
 

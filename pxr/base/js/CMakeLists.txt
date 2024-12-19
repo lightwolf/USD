@@ -5,9 +5,6 @@ pxr_library(js
     LIBRARIES
         tf
 
-    INCLUDE_DIRS
-        ${Boost_INCLUDE_DIRS}
-
     PUBLIC_CLASSES
         json
         utils
@@ -54,6 +51,9 @@ pxr_library(js
         rapidjson/stream.h
         rapidjson/stringbuffer.h
         rapidjson/writer.h
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 pxr_build_test(testJsIO

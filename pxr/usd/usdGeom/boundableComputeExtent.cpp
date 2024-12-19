@@ -1,25 +1,8 @@
 //
 // Copyright 2017 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 
@@ -94,9 +77,8 @@ public:
     {
         _WaitUntilInitialized();
 
-        static const TfType schemaBaseType = TfType::Find<UsdSchemaBase>();
-        const TfType primSchemaType = schemaBaseType.FindDerivedByName(
-            prim.GetTypeName().GetString());
+        // Get the actual schema type from the prim definition.
+        const TfType &primSchemaType = prim.GetPrimTypeInfo().GetSchemaType();
         if (!primSchemaType) {
             TF_CODING_ERROR(
                 "Could not find prim type '%s' for prim %s",
@@ -193,11 +175,23 @@ private:
 
     void _DidRegisterPlugins(const PlugNotice::DidRegisterPlugins& n)
     {
-        // Invalidate the registry, since newly-registered plugins may
-        // provide functions that we did not see previously. This is
-        // a heavy hammer but we expect this situation to be uncommon.
+        // Erase the entries in _registry which have a null
+        // ComputeExtentFunction registered, since newly-registered plugins may 
+        // provide a valid computeExtentFunction for these type entries.
+        // Note that we retain entries which have valid ComputeExtentFunction
+        // defined.
+        //
         _RWMutex::scoped_lock lock(_mutex, /* write = */ true);
-        _registry.clear();
+        _Registry::iterator itr = _registry.begin(),
+            end = _registry.end();
+        while (itr != end) {
+            if (!itr->second) {
+                itr = _registry.erase(itr);
+                end = _registry.end();
+                continue;
+            }
+            itr++;
+        }
     }
 
     bool _FindFunctionForType(
@@ -238,7 +232,20 @@ _ComputeExtentFromPlugins(
 
     const UsdGeomComputeExtentFunction fn = _FunctionRegistry::GetInstance()
         .GetComputeFunction(boundable.GetPrim());
-    return fn && (*fn)(boundable, time, transform, extent);
+    VtVec3fArray tmpExt;
+    if (fn && (*fn)(boundable, time, transform, &tmpExt)) {
+        if (tmpExt.size() == 2) {
+            *extent = std::move(tmpExt);
+            return true;
+        }
+        else {
+            TF_CODING_ERROR("Plugin compute extent function produced an extent "
+                            "with %zu elements instead of 2 for %s",
+                            tmpExt.size(),
+                            UsdDescribe(boundable.GetPrim()).c_str());
+        }
+    }
+    return false;
 }
 
 bool

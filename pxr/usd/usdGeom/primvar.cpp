@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usdGeom/primvar.h"
@@ -43,13 +26,39 @@ TF_DEFINE_PRIVATE_TOKENS(
 
 UsdGeomPrimvar::UsdGeomPrimvar(const UsdAttribute &attr)
     : _attr(attr)
+    , _idTargetStatus(IdTargetUninitialized)
 {
-    _SetIdTargetRelName();
 }
 
-static
+UsdGeomPrimvar::UsdGeomPrimvar(const UsdGeomPrimvar &other)
+    : _attr(other._attr)
+    , _idTargetStatus(IdTargetUninitialized)
+{
+}
+
+UsdGeomPrimvar &
+UsdGeomPrimvar::operator=(const UsdGeomPrimvar &other)
+{
+    if (this != &other) {
+        _idTargetStatus = IdTargetUninitialized;
+        _attr = other._attr;
+    }
+    return *this;
+}
+
+/* static */
+bool 
+UsdGeomPrimvar::IsPrimvar(const UsdAttribute &attr)
+{
+    if (!attr)
+        return false;
+    
+    return IsValidPrimvarName(attr.GetName());
+}
+
+/* static */
 bool
-_IsValidPrimvarName(std::string const& name)
+UsdGeomPrimvar::IsValidPrimvarName(const TfToken& name)
 {
     // All properly namespaced attributes are legal primvars, *except*
     // the "sidecar" attributes we create as part of the schema, like
@@ -59,15 +68,16 @@ _IsValidPrimvarName(std::string const& name)
             !TfStringEndsWith(name, _tokens->indicesSuffix));
 }
 
-
 /* static */
-bool 
-UsdGeomPrimvar::IsPrimvar(const UsdAttribute &attr)
+TfToken
+UsdGeomPrimvar::StripPrimvarsName(const TfToken& name)
 {
-    if (!attr)
-        return false;
-    
-    return _IsValidPrimvarName(attr.GetName());
+    std::string const & fullName = name.GetString();
+
+    std::pair<std::string, bool> res =
+        SdfPath::StripPrefixNamespace(fullName, _tokens->primvarsPrefix);
+
+    return res.second ? TfToken(res.first) : name;
 }
 
 /* static */
@@ -89,7 +99,7 @@ UsdGeomPrimvar::_MakeNamespaced(const TfToken& name, bool quiet)
         result = TfToken(_tokens->primvarsPrefix.GetString() + name.GetString());
     }
 
-    if (!_IsValidPrimvarName(result)){
+    if (!IsValidPrimvarName(result)){
         result = TfToken();
         if (!quiet){
             // XXX if we add more reserved keywords we'll need to extract
@@ -293,6 +303,7 @@ template <typename ArrayType>
 bool 
 UsdGeomPrimvar::_ComputeFlattenedArray(const VtValue &attrVal,
                        const VtIntArray &indices,
+                       int elementSize,
                        VtValue *value, 
                        std::string *errorString)
 {
@@ -301,7 +312,7 @@ UsdGeomPrimvar::_ComputeFlattenedArray(const VtValue &attrVal,
 
     ArrayType result;
     if (_ComputeFlattenedHelper(attrVal.UncheckedGet<ArrayType>(), indices, 
-                                &result, errorString)) {
+                                elementSize, &result, errorString)) {
         *value = VtValue::Take(result);
     }
 
@@ -331,7 +342,7 @@ UsdGeomPrimvar::ComputeFlattened(VtValue *value, UsdTimeCode time) const
     }
 
     std::string errStr;
-    bool res = ComputeFlattened(value, attrVal, indices, &errStr);
+    bool res = ComputeFlattened(value, attrVal, indices, GetElementSize(), &errStr);
     if (!errStr.empty()) {
         TF_WARN("For primvar %s: %s", 
                 UsdDescribe(_attr).c_str(), errStr.c_str());
@@ -346,6 +357,17 @@ UsdGeomPrimvar::ComputeFlattened(
     const VtIntArray &indices,
     std::string *errStr)
 {
+    return ComputeFlattened(value, attrVal, indices, 1, errStr);
+}
+
+bool 
+UsdGeomPrimvar::ComputeFlattened(
+    VtValue *value, 
+    const VtValue &attrVal,
+    const VtIntArray &indices,
+    int elementSize,
+    std::string *errStr)
+{
     // If the primvar attr value is not an array simply return the 
     // attribute value.
     if (!attrVal.IsArrayValued()) {
@@ -355,28 +377,28 @@ UsdGeomPrimvar::ComputeFlattened(
 
     // Handle all known supported array value types.
     bool foundSupportedType =
-        _ComputeFlattenedArray<VtVec2fArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec2dArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec2iArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec2hArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec3fArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec3dArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec3iArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec3hArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec4fArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec4dArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec4iArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtVec4hArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtMatrix3dArray>(attrVal, indices, value, 
+        _ComputeFlattenedArray<VtVec2fArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec2dArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec2iArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec2hArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec3fArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec3dArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec3iArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec3hArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec4fArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec4dArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec4iArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtVec4hArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtMatrix3dArray>(attrVal, indices, elementSize, value, 
                 errStr)    ||
-        _ComputeFlattenedArray<VtMatrix4dArray>(attrVal, indices, value, 
+        _ComputeFlattenedArray<VtMatrix4dArray>(attrVal, indices, elementSize, value, 
                 errStr)    ||
-        _ComputeFlattenedArray<VtStringArray>(attrVal, indices, value, errStr)||
-        _ComputeFlattenedArray<VtDoubleArray>(attrVal, indices, value, errStr)||
-        _ComputeFlattenedArray<VtIntArray>(attrVal, indices, value, errStr)   ||
-        _ComputeFlattenedArray<VtUIntArray>(attrVal, indices, value, errStr)  ||
-        _ComputeFlattenedArray<VtFloatArray>(attrVal, indices, value, errStr) ||
-        _ComputeFlattenedArray<VtHalfArray>(attrVal, indices, value, errStr);
+        _ComputeFlattenedArray<VtStringArray>(attrVal, indices, elementSize, value, errStr)||
+        _ComputeFlattenedArray<VtDoubleArray>(attrVal, indices, elementSize, value, errStr)||
+        _ComputeFlattenedArray<VtIntArray>(attrVal, indices, elementSize, value, errStr)   ||
+        _ComputeFlattenedArray<VtUIntArray>(attrVal, indices, elementSize, value, errStr)  ||
+        _ComputeFlattenedArray<VtFloatArray>(attrVal, indices, elementSize, value, errStr) ||
+        _ComputeFlattenedArray<VtHalfArray>(attrVal, indices, elementSize, value, errStr);
 
     if (!foundSupportedType && errStr) {
         std::string thisErr = TfStringPrintf(
@@ -391,6 +413,7 @@ UsdGeomPrimvar::ComputeFlattened(
 UsdGeomPrimvar::UsdGeomPrimvar(const UsdPrim& prim, 
                                const TfToken& primvarName,
                                const SdfValueTypeName &typeName)
+    : _idTargetStatus(IdTargetUninitialized)
 {
     TF_VERIFY(prim);
 
@@ -401,25 +424,10 @@ UsdGeomPrimvar::UsdGeomPrimvar(const UsdPrim& prim,
     }
     // If a problem occurred, an error should already have been issued,
     // and _attr will be invalid, which is what we want
-
-    _SetIdTargetRelName();
 }
 
-void
-UsdGeomPrimvar::_SetIdTargetRelName()
-{
-    if (!_attr) {
-        return;
-    }
-
-    const SdfValueTypeName& typeName = _attr.GetTypeName();
-    if (typeName == SdfValueTypeNames->String ||
-            typeName == SdfValueTypeNames->StringArray) {
-        std::string name(_attr.GetName().GetString());
-        _idTargetRelName = TfToken(name.append(_tokens->idFrom.GetText()));
-    }
-}
-
+// Note! caller must ensure that _idTargetStatus == IdTargetPossible before
+// calling.
 UsdRelationship
 UsdGeomPrimvar::_GetIdTargetRel(bool create) const
 {
@@ -434,14 +442,16 @@ UsdGeomPrimvar::_GetIdTargetRel(bool create) const
 bool
 UsdGeomPrimvar::IsIdTarget() const
 {
-    return !_idTargetRelName.IsEmpty() && _GetIdTargetRel(false);
+    return _ComputeIdTargetPossibility() &&
+        !_idTargetRelName.IsEmpty() &&
+        _GetIdTargetRel(false);
 }
 
 bool
 UsdGeomPrimvar::SetIdTarget(
         const SdfPath& path) const
 {
-    if (_idTargetRelName.IsEmpty()) {
+    if (!_ComputeIdTargetPossibility()) {
         TF_CODING_ERROR("Can only set ID Target for string or string[] typed"
                         " primvars (primvar type is '%s')",
                         _attr.GetTypeName().GetAsToken().GetText());
@@ -450,8 +460,7 @@ UsdGeomPrimvar::SetIdTarget(
 
     if (UsdRelationship rel = _GetIdTargetRel(true)) {
         SdfPathVector targets;
-        targets.push_back(path.IsEmpty() ? _attr.GetPrimPath() : 
-                path);
+        targets.push_back(path.IsEmpty() ? _attr.GetPrimPath() : path);
         return rel.SetTargets(targets);
     }
     return false;
@@ -465,7 +474,7 @@ UsdGeomPrimvar::Get(
 {
     // check if there is a relationship and if so use the target path string to
     // get the string value.
-    if (!_idTargetRelName.IsEmpty()) {
+    if (_ComputeIdTargetPossibility()) {
         if (UsdRelationship rel = _GetIdTargetRel(false)) {
             SdfPathVector targets;
             if (rel.GetForwardedTargets(&targets) && 
@@ -493,7 +502,7 @@ UsdGeomPrimvar::Get(
 {
     // check if there is a relationship and if so use the target path string to
     // get the string value... Just take the first target, for now.
-    if (!_idTargetRelName.IsEmpty()) {
+    if (_ComputeIdTargetPossibility()) {
         if (UsdRelationship rel = _GetIdTargetRel(false)) {
             value->clear();
             SdfPathVector targets;
@@ -515,7 +524,7 @@ UsdGeomPrimvar::Get(
         VtValue* value,
         UsdTimeCode time) const
 {
-    if (!_idTargetRelName.IsEmpty()) {
+    if (_ComputeIdTargetPossibility()) {
         const SdfValueTypeName& typeName = _attr.GetTypeName();
         if (typeName == SdfValueTypeNames->String) {
             std::string s;
@@ -592,6 +601,42 @@ UsdGeomPrimvar::NameContainsNamespaces() const
             != std::string::npos);
 }
 
+bool
+UsdGeomPrimvar::_ComputeIdTargetPossibility() const
+{
+    // Read the current value.
+    _IdTargetStatus status = _idTargetStatus.load();
+
+    if (status == IdTargetUninitialized) {
+        // Attempt to take it to Initializing.
+        if (_idTargetStatus.compare_exchange_strong(
+                status, IdTargetInitializing)) {
+            // We get to do the initialization.
+            if (!_attr) {
+                _idTargetStatus = IdTargetImpossible;
+            }
+            else {
+                // Set the rel target name.
+                const SdfValueTypeName& typeName = _attr.GetTypeName();
+                if (typeName == SdfValueTypeNames->String ||
+                    typeName == SdfValueTypeNames->StringArray) {
+                    std::string name(_attr.GetName().GetString());
+                    _idTargetRelName = TfToken(
+                        name.append(_tokens->idFrom.GetText()));
+                    _idTargetStatus = status = IdTargetPossible;
+                }
+                else {
+                    _idTargetStatus = status = IdTargetImpossible;
+                }
+            }
+        }
+    }
+    while (status == IdTargetInitializing) {
+        std::this_thread::yield();
+        status = _idTargetStatus.load();
+    }
+    return status == IdTargetPossible;
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

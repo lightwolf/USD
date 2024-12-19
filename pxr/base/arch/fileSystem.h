@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_ARCH_FILE_SYSTEM_H
 #define PXR_BASE_ARCH_FILE_SYSTEM_H
@@ -51,6 +34,8 @@
 #include <glob.h>
 #elif defined(ARCH_OS_WINDOWS)
 #include <io.h>
+#include <windows.h>
+#include <stringapiset.h>
 #endif
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -185,7 +170,10 @@ ArchOpenFile(char const* fileName, char const* mode);
 ARCH_API int64_t ArchGetFileLength(const char* fileName);
 ARCH_API int64_t ArchGetFileLength(FILE *file);
 
-/// Return a filename for this file, if one can be obtained.
+/// Return a filename for this file, if one can be obtained.  Note that there
+/// are many reasons why it may be impossible to obtain a filename, even for an
+/// opened FILE *.  Whenever possible avoid using this function and instead
+/// store the filename for future use.
 ARCH_API std::string ArchGetFileName(FILE *file);
 
 /// Returns true if the data in \c stat struct \p st indicates that the target
@@ -420,6 +408,42 @@ enum ArchFileAdvice {
 ARCH_API
 void ArchFileAdvise(FILE *file, int64_t offset, size_t count,
                     ArchFileAdvice adv);
+
+#if defined(ARCH_OS_WINDOWS)
+
+/// Converts UTF-16 windows string to regular std::string - Windows-only
+inline std::string ArchWindowsUtf16ToUtf8(const std::wstring &wstr)
+{
+    if (wstr.empty()) return std::string();
+    // first call is only to get required size for string
+    int size = WideCharToMultiByte(
+        CP_UTF8, 0, wstr.data(), (int)wstr.size(), NULL, 0, NULL, NULL);
+    if (size == 0) return std::string();
+    std::string str(size, 0);
+    if (WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(),
+                            &str[0], size, NULL, NULL) == 0) {
+        return std::string();
+    }
+    return str;
+}
+
+/// Converts regular std::string to UTF-16 windows string - Windows-only
+inline std::wstring ArchWindowsUtf8ToUtf16(const std::string &str)
+{
+    if (str.empty()) return std::wstring();
+    // first call is only to get required size for wstring
+    int size = MultiByteToWideChar(
+        CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
+    if (size == 0) return std::wstring();
+    std::wstring wstr(size, 0);
+    if(MultiByteToWideChar(
+           CP_UTF8, 0, str.data(), (int)str.size(), &wstr[0], size) == 0) {
+        return std::wstring();
+    }
+    return wstr;
+}
+
+#endif
 
 ///@}
 

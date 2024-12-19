@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/path.h"
@@ -30,10 +13,11 @@
 
 #include "pxr/base/arch/hints.h"
 #include "pxr/base/tf/iterator.h"
-#include "pxr/base/tf/staticData.h"
-#include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/mallocTag.h"
+#include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/stl.h"
+#include "pxr/base/tf/stringUtils.h"
+#include "pxr/base/tf/unicodeUtils.h"
 #include "pxr/base/tf/type.h"
 
 #include "pxr/base/trace/trace.h"
@@ -47,13 +31,78 @@ using std::vector;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-static inline bool _IsValidIdentifier(TfToken const &name);
+namespace {
 
-static VtValue
-_CastFromSdfPathToTfToken(const VtValue &val)
+// This is a simple helper class that records but defers issuing diagnostics
+// until its destructor runs.  It's used in the 'isValid' callbacks below to
+// ensure that we do not issue diagnostics while the path internal locks are
+// held, since that invokes unknown code (via diagnostic delegates) which could
+// reenter here.
+class _DeferredDiagnostics
 {
-    return VtValue(val.Get<SdfPath>().GetToken());
-}
+public:
+    template <class ... Types>
+    void Warn(Types&& ... args) {
+        _Get().emplace_back(TF_DIAGNOSTIC_WARNING_TYPE,
+                            _FormatString(std::forward<Types>(args)...));
+    }
+
+    template <class ... Types>
+    void CodingError(Types&& ... args) {
+        _Get().emplace_back(TF_DIAGNOSTIC_CODING_ERROR_TYPE,
+                            _FormatString(std::forward<Types>(args)...));
+    }
+
+    ~_DeferredDiagnostics() {
+        if (!_diagnostics) {
+            return;
+        }
+        for (auto const &pr: *_diagnostics) {
+            if (pr.first == TF_DIAGNOSTIC_WARNING_TYPE) {
+                TF_WARN(pr.second);
+            }
+            else if (pr.first == TF_DIAGNOSTIC_CODING_ERROR_TYPE) {
+                TF_CODING_ERROR(pr.second);
+            }
+        }
+    }    
+    
+private:
+    template <class ... Types>
+    static std::string _FormatString(Types&& ... args) {
+        return TfStringPrintf(std::forward<Types>(args)...);
+    }
+
+    // Single-argument overload to avoid calling TfStringPrintf with
+    // just a format string, which causes warnings at build time.
+    static std::string _FormatString(char const *str) {
+        // printf converts "%%" to "%" even when no arguments are supplied,
+        // so for consistency we do the same here.
+        return TfStringReplace(std::string(str), "%%", "%");
+    }
+
+    std::vector<std::pair<TfDiagnosticType, std::string>> &_Get() {
+        if (!_diagnostics) {
+            _diagnostics = std::make_unique<
+                std::vector<std::pair<TfDiagnosticType, std::string>>
+                >();
+        }
+        return *_diagnostics;
+    }
+    
+    std::unique_ptr<
+        std::vector<
+            std::pair<
+                TfDiagnosticType, std::string
+                >
+            >
+        > _diagnostics;
+};
+
+} // anon
+
+static inline bool _IsValidIdentifier(const std::string_view& name);
+static inline bool _IsValidIdentifier(TfToken const &name);
 
 // XXX: Enable this define to make bad path strings
 // cause runtime errors.  This can be useful when trying to track down cases
@@ -67,42 +116,17 @@ TF_REGISTRY_FUNCTION(TfType)
         .Alias(TfType::GetRoot(), "vector<SdfPath>");    
 }
 
-// Register with VtValue that SdfPaths can be cast to TfTokens.  The only
-// reason we need this is because we need to cast AnimSplines that contain
-// SdfPaths to ones that contain TfTokens, and we need that to succeed.  The
-// only reason we need that, is in execution we can't use SdfPaths directly
-// due to performance and threadsafety reasons.
-TF_REGISTRY_FUNCTION(VtValue)
-{
-    VtValue::RegisterCast<SdfPath, TfToken>(&_CastFromSdfPathToTfToken);
-}
-
 SdfPath::SdfPath(const std::string &path) {
     TfAutoMallocTag2 tag("Sdf", "SdfPath::SdfPath(string)");
     TRACE_FUNCTION();
-
-    Sdf_PathParserContext context;
-
-    // Initialize the scanner, allowing it to be reentrant.
-    pathYylex_init(&context.scanner);
-
-    yy_buffer_state *b = pathYy_scan_bytes(path.c_str(), path.size(),
-                                           context.scanner);
-    if( pathYyparse(&context) != 0 ) {
+    std::string errMsg;
+    if (!Sdf_ParsePath(path, this, &errMsg)) {
 #ifdef PARSE_ERRORS_ARE_ERRORS
-        TF_RUNTIME_ERROR("Ill-formed SdfPath <%s>: %s",
-                         path.c_str(), context.errStr.c_str());
+        TF_RUNTIME_ERROR(errMsg);
 #else
-        TF_WARN("Ill-formed SdfPath <%s>: %s",
-                path.c_str(), context.errStr.c_str());
+        TF_WARN(errMsg);
 #endif
-    } else {
-        *this = std::move(context.path);
     }
-
-    // Clean up.
-    pathYy_delete_buffer(b, context.scanner);
-    pathYylex_destroy(context.scanner);
 }
 
 const SdfPath &
@@ -293,6 +317,21 @@ SdfPath::IsExpressionPath() const {
     return false;
 }
 
+TfToken
+SdfPath::GetAsToken() const
+{
+    if (_primPart) {
+        return Sdf_PathNode::GetPathAsToken(_primPart.get(), _propPart.get());
+    }
+    return TfToken();
+}
+
+std::string
+SdfPath::GetAsString() const
+{
+    return GetAsToken().GetString();
+}
+
 TfToken const &
 SdfPath::GetToken() const
 {
@@ -321,24 +360,54 @@ SdfPath::GetPrefixes() const {
     return result;
 }
 
+SdfPathVector
+SdfPath::GetPrefixes(size_t numPrefixes) const {
+    SdfPathVector result;
+    GetPrefixes(&result, numPrefixes);
+    return result;
+}
+
 void
 SdfPath::GetPrefixes(SdfPathVector *prefixes) const
 {
-    Sdf_PathNode const *prop = _propPart.get();
-    Sdf_PathNode const *prim = _primPart.get();
+    GetPrefixes(prefixes, 0);
+}
 
-    size_t elemCount = GetPathElementCount();
-    prefixes->resize(elemCount);
+void
+SdfPath::GetPrefixes(SdfPathVector *prefixes, size_t numPrefixes) const
+{
+    const size_t elemCount = GetPathElementCount();
+    if (numPrefixes == 0 || numPrefixes > elemCount) {
+        numPrefixes = elemCount;
+    }
+    prefixes->resize(numPrefixes);
+    GetPrefixes(TfSpan<SdfPath>(*prefixes));
+}
+
+TfSpan<SdfPath>
+SdfPath::GetPrefixes(TfSpan<SdfPath> prefixes) const
+{
+    // We can fill up to prefixes.size() elements.
+    size_t numPrefixes = std::min(prefixes.size(), GetPathElementCount());
+    // If we are not filling the whole span, cut it to the subspan we will fill.
+    if (numPrefixes < prefixes.size()) {
+        prefixes = prefixes.first(numPrefixes);
+    }
     
-    SdfPathVector::reverse_iterator iter = prefixes->rbegin();
-    while (prop && elemCount--) {
+    Sdf_PathNode const *prim = _primPart.get();
+    Sdf_PathNode const *prop = _propPart.get();
+
+    TfSpan<SdfPath>::reverse_iterator iter = prefixes.rbegin();
+    for (; prop && numPrefixes; --numPrefixes) {
         *iter++ = SdfPath(prim, prop);
         prop = prop->GetParentNode();
     }
-    while (prim && elemCount--) {
-        *iter++ = SdfPath(prim, prop);
+    // no need to check 'prim' in the loop since we range-checked above.
+    for (; numPrefixes; --numPrefixes) {
+        *iter++ = SdfPath(prim, nullptr);
         prim = prim->GetParentNode();
     }
+    return prefixes;
 }
 
 SdfPathAncestorsRange
@@ -518,9 +587,11 @@ SdfPath::GetParentPath() const {
              primNode->GetName() != SdfPathTokens->parentPathElement))) {
         return SdfPath(primNode->GetParentNode(), nullptr);
     }
+    auto isValid = []() { return true; };
     // Is relative root, or ends with '..'.
     return SdfPath(Sdf_PathNode::FindOrCreatePrim(
-                       primNode, SdfPathTokens->parentPathElement),
+                       primNode, SdfPathTokens->parentPathElement,
+                       isValid),
                    Sdf_PathPropNodeHandle());
 }
 
@@ -620,12 +691,12 @@ SdfPath::AppendPath(const SdfPath &newSuffix) const {
     }
     if (newSuffix == EmptyPath()) {
         TF_CODING_ERROR("Cannot append invalid path to <%s>",
-                        GetString().c_str());
+                        GetAsString().c_str());
         return EmptyPath();
     }
     if (newSuffix.IsAbsolutePath()) {
         TF_WARN("Cannot append absolute path <%s> to another path <%s>.",
-                newSuffix.GetString().c_str(), GetString().c_str());
+                newSuffix.GetAsString().c_str(), GetAsString().c_str());
         return EmptyPath();
     }
     if (newSuffix == ReflexiveRelativePath()) {
@@ -696,7 +767,7 @@ struct _PerThreadPrimPathCache
         size_t h = childName.Hash();
         uint32_t parentAsInt;
         memcpy(&parentAsInt, &parent, sizeof(uint32_t));
-        boost::hash_combine(h, parentAsInt >> 8);
+        h = TfHash::Combine(h, parentAsInt >> 8);
         unsigned index = (h & (Size-1));
 
         for (unsigned probe = 0; probe != Probes; ++probe) {
@@ -756,31 +827,39 @@ SdfPath::AppendChild(TfToken const &childName) const {
     }
     auto &cache = _primPathCache.Get();
     int storeIndex = 0;
-    Sdf_PathPrimNodeHandle primPart =
-        cache.Find(_primPart, childName, &storeIndex);
-    SdfPath ret { primPart, {} };
-    if (primPart) {
-        return ret;
+    SdfPath ret { cache.Find(_primPart, childName, &storeIndex), {} };
+    if (ret._primPart) {
+       return ret;
     }
-    if (!IsAbsoluteRootOrPrimPath()
-        && !IsPrimVariantSelectionPath()
-        && (*this != ReflexiveRelativePath())) {
-        TF_WARN("Cannot append child '%s' to path '%s'.",
-                childName.GetText(), GetText());
-        return EmptyPath();
-    }
-    if (ARCH_UNLIKELY(childName == SdfPathTokens->parentPathElement)) {
-        return GetParentPath();
-    } else {
-        if (ARCH_UNLIKELY(!_IsValidIdentifier(childName))) {
-            TF_WARN("Invalid prim name '%s'", childName.GetText());
-            return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &childName, &dd]() {
+        if (!IsAbsoluteRootOrPrimPath()
+            && !IsPrimVariantSelectionPath()
+            && (*this != ReflexiveRelativePath())) {
+            dd.Warn("Cannot append child '%s' to path '%s'.",
+                    childName.GetText(), GetText());
+            return false;
         }
-        ret._primPart =
-            Sdf_PathNode::FindOrCreatePrim(_primPart.get(), childName);
-        cache.Store(_primPart, childName, ret._primPart, storeIndex);
-        return ret;
+        if (ARCH_UNLIKELY(childName == SdfPathTokens->parentPathElement)) {
+            return false;
+        }
+        else if (ARCH_UNLIKELY(!_IsValidIdentifier(childName))) {
+            dd.Warn("Invalid prim name '%s'", childName.GetText());
+            return false;
+        }
+        return true;
+    };
+    Sdf_PathPrimNodeHandle childNode = 
+        Sdf_PathNode::FindOrCreatePrim(_primPart.get(), childName, isValid);
+
+    if (ARCH_UNLIKELY(!childNode)) {
+        if (childName == SdfPathTokens->parentPathElement) {
+            return GetParentPath();
+        }
     }
+
+    return { std::move(childNode), {} };
+    
 }
 
 
@@ -837,31 +916,45 @@ static _PropPathCache _propPathCache;
 
 SdfPath
 SdfPath::AppendProperty(TfToken const &propName) const {
+    SdfPath ret;
     if (ARCH_UNLIKELY(_propPart)) {
         TF_WARN("Can only append a property '%s' to a prim path (%s)",
                 propName.GetText(), GetText());
-        return EmptyPath();
+        return ret;
     }
+
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &propName, &dd]() {
+        if (!IsValidNamespacedIdentifier(propName.GetString())) {
+            //TF_WARN("Invalid property name.");
+            return false;
+        }
+        if (!IsPrimVariantSelectionPath() && 
+            !IsPrimPath() && (*this != ReflexiveRelativePath())) {
+            dd.Warn("Can only append a property '%s' to a prim path (%s)",
+                    propName.GetText(), GetText());
+            return false;
+        }
+        return true;
+    };
+
     auto &cache = _propPathCache.Get();
     int storeIndex = 0;
     Sdf_PathPropNodeHandle propPart = cache.Find(propName, &storeIndex);
-    SdfPath ret { _primPart, propPart };
+
+    if (!propPart) {
+        propPart = Sdf_PathNode::FindOrCreatePrimProperty(
+            _primPart.get(), propName, isValid);
+        if (propPart) {
+            cache.Store(propName, propPart, storeIndex);
+        }
+    }
+
     if (propPart) {
-        return ret;
+        ret._primPart = _primPart;
+        ret._propPart = std::move(propPart);
     }
-    if (!IsValidNamespacedIdentifier(propName.GetString())) {
-        //TF_WARN("Invalid property name.");
-        return EmptyPath();
-    }
-    if (!IsPrimVariantSelectionPath() && 
-        !IsPrimPath() && (*this != ReflexiveRelativePath())) {
-        TF_WARN("Can only append a property '%s' to a prim path (%s)",
-                propName.GetText(), GetText());
-        return EmptyPath();
-    }
-    ret._propPart =
-        Sdf_PathNode::FindOrCreatePrimProperty(_primPart.get(), propName);
-    cache.Store(propName, ret._propPart, storeIndex);
+
     return ret;
 }
 
@@ -869,87 +962,128 @@ SdfPath
 SdfPath::AppendVariantSelection(const string &variantSet,
                                 const string &variant) const
 {
-    if (!IsPrimOrPrimVariantSelectionPath()) {
-        TF_CODING_ERROR("Cannot append variant selection %s = %s to <%s>; "
-                        "can only append a variant selection to a prim or "
-                        "prim variant selection path.",
-                        variantSet.c_str(), variant.c_str(),
-                        GetText());
-        return EmptyPath();
-    }
-    return SdfPath(Sdf_PathNode::
-                   FindOrCreatePrimVariantSelection(_primPart.get(),
-                                                    TfToken(variantSet),
-                                                    TfToken(variant)));
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &variantSet, &variant, &dd]() {
+        if (!IsPrimOrPrimVariantSelectionPath()) {
+            dd.CodingError("Cannot append variant selection %s = %s to <%s>; "
+                           "can only append a variant selection to a prim or "
+                           "prim variant selection path.",
+                           variantSet.c_str(), variant.c_str(),
+                           GetText());
+            return false;
+        }
+        return true;
+    };
+    return SdfPath(Sdf_PathNode::FindOrCreatePrimVariantSelection(
+                       _primPart.get(),
+                       TfToken(variantSet),
+                       TfToken(variant),
+                       isValid));
 }
 
 SdfPath
 SdfPath::AppendTarget(const SdfPath &targetPath) const {
-    if (!IsPropertyPath()) {
-        TF_WARN("Can only append a target to a property path.");
-        return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &targetPath, &dd]() {
+        if (!IsPropertyPath()) {
+            dd.Warn("Can only append a target to a property path.");
+            return false;
+        }
+        if (targetPath == EmptyPath()) {
+            dd.Warn("Target path cannot be invalid.");
+            return false;
+        }
+        return true;
+    };
+    if (Sdf_PathPropNodeHandle tgtNode = Sdf_PathNode::FindOrCreateTarget(
+            _propPart.get(), targetPath, isValid)) {
+        return SdfPath(_primPart, tgtNode);
     }
-    if (targetPath == EmptyPath()) {
-        TF_WARN("Target path cannot be invalid.");
-        return EmptyPath();
-    }
-    return SdfPath(_primPart, Sdf_PathNode::
-                   FindOrCreateTarget(_propPart.get(), targetPath));
+    return SdfPath();
 }
 
 SdfPath
 SdfPath::AppendRelationalAttribute(TfToken const &attrName) const {
-    if (!IsValidNamespacedIdentifier(attrName)) {
-        TF_WARN("Invalid property name.");
-        return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &attrName, &dd]() {
+        if (!IsValidNamespacedIdentifier(attrName)) {
+            dd.Warn("Invalid property name.");
+            return false;
+        }
+        if (!IsTargetPath()) {
+            dd.Warn("Can only append a relational attribute to a target path.");
+            return false;
+        }
+        return true;
+    };
+
+    if (Sdf_PathPropNodeHandle propNode =
+        Sdf_PathNode::FindOrCreateRelationalAttribute(
+            _propPart.get(), attrName, isValid)) {
+        return SdfPath(_primPart, std::move(propNode));
     }
-    if (!IsTargetPath()) {
-        TF_WARN("Can only append a relational attribute to a target path.");
-        return EmptyPath();
-    }
-    return SdfPath(_primPart,
-                   Sdf_PathNode::FindOrCreateRelationalAttribute(
-                       _propPart.get(), attrName));
+    return SdfPath();
 }
 
 SdfPath
 SdfPath::AppendMapper(const SdfPath &targetPath) const {
-    if (!IsPropertyPath()) {
-        TF_WARN("Cannnot append mapper '%s' to non-property path <%s>.",
-                targetPath.GetString().c_str(), GetString().c_str());
-        return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &targetPath, &dd]() {
+        if (!IsPropertyPath()) {
+            dd.Warn("Cannnot append mapper '%s' to non-property path <%s>.",
+                    targetPath.GetAsString().c_str(), GetAsString().c_str());
+            return false;
+        }
+        if (targetPath == EmptyPath()) {
+            dd.Warn("Cannot append an empty mapper target path to <%s>",
+                    GetAsString().c_str());
+            return false;
+        }
+        return true;
+    };
+    if (Sdf_PathPropNodeHandle propPart = Sdf_PathNode::FindOrCreateMapper(
+            _propPart.get(), targetPath, isValid)) {
+        return SdfPath { _primPart, std::move(propPart) };
     }
-    if (targetPath == EmptyPath()) {
-        TF_WARN("Cannot append an empty mapper target path to <%s>",
-                GetString().c_str());
-        return EmptyPath();
-    }
-    return SdfPath { _primPart, 
-            Sdf_PathNode::FindOrCreateMapper(_propPart.get(), targetPath) };
+    return SdfPath();
 }
 
 SdfPath
 SdfPath::AppendMapperArg(TfToken const &argName) const {
-    if (!_IsValidIdentifier(argName)) {
-        TF_WARN("Invalid arg name.");
-        return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &argName, &dd]() {
+        if (!_IsValidIdentifier(argName)) {
+            dd.Warn("Invalid arg name.");
+            return false;
+        }
+        if (!IsMapperPath()) {
+            dd.Warn("Can only append a mapper arg to a mapper path.");
+            return false;
+        }
+        return true;
+    };
+    if (Sdf_PathPropNodeHandle propNode = Sdf_PathNode::FindOrCreateMapperArg(
+            _propPart.get(), argName, isValid)) {
+        return SdfPath { _primPart, std::move(propNode) };
     }
-    if (!IsMapperPath()) {
-        TF_WARN("Can only append a mapper arg to a mapper path.");
-        return EmptyPath();
-    }
-    return SdfPath { _primPart,
-            Sdf_PathNode::FindOrCreateMapperArg(_propPart.get(), argName) };
+    return SdfPath();
 }
 
 SdfPath
 SdfPath::AppendExpression() const {
-    if (!IsPropertyPath()) {
-        TF_WARN("Can only append an expression to a property path.");
-        return EmptyPath();
+    _DeferredDiagnostics dd;
+    auto isValid = [this, &dd]() {
+        if (!IsPropertyPath()) {
+            dd.Warn("Can only append an expression to a property path.");
+            return false;
+        }
+        return true;
+    };
+    if (Sdf_PathPropNodeHandle propNode =
+        Sdf_PathNode::FindOrCreateExpression(_propPart.get(), isValid)) {
+        return SdfPath { _primPart, std::move(propNode) };
     }
-    return SdfPath { _primPart,
-            Sdf_PathNode::FindOrCreateExpression(_propPart.get()) };
+    return SdfPath();
 }
 
 SdfPath
@@ -963,14 +1097,9 @@ SdfPath::AppendElementToken(const TfToken &elementTok) const
 {
     std::string const &element = elementTok.GetString();
 
-    if (ARCH_UNLIKELY(IsEmpty() || element.empty())) {
-        if (IsEmpty()) {
-            TF_CODING_ERROR("Cannot append element \'%s\' to the EmptyPath.",
-                            element.c_str());
-        }
-        else {
-            TF_CODING_ERROR("Cannot append EmptyPath as a path element.");
-        }
+    if (ARCH_UNLIKELY(IsEmpty())) {
+        TF_CODING_ERROR("Cannot append element \'%s\' to the EmptyPath.",
+                        element.c_str());
         return EmptyPath();
     }
     /* This is a somewhat unfortunate replication of a subset of the
@@ -980,7 +1109,7 @@ SdfPath::AppendElementToken(const TfToken &elementTok) const
      * a more elegant way to do this.  1/13 */
     char const *txt = element.c_str();
     // No static tokens for variant chars...
-    if (txt[0] == '{') {
+    if (ARCH_UNLIKELY(txt[0] == '{')) {
         
         vector<string> tokens = TfStringTokenize(element, "{=}");
         TfToken variantSel;
@@ -990,49 +1119,49 @@ SdfPath::AppendElementToken(const TfToken &elementTok) const
         else if (tokens.size() != 1){
             return EmptyPath();
         }
-        return AppendVariantSelection(TfToken(tokens[0]),
-                                      variantSel);
+        return AppendVariantSelection(TfToken(tokens[0]), variantSel);
         
-    } 
-    else if (txt[0] == SdfPathTokens->relationshipTargetStart.GetString()[0]) {
+    }
+    else if (txt[0] == SDF_PATH_RELATIONSHIP_TARGET_START_CHAR) {
         SdfPath  target(element.substr(1, element.length()-2));
         return AppendTarget(target);
     } 
-    else if (txt[0] == SdfPathTokens->propertyDelimiter.GetString()[0]) {
+    else if (txt[0] == SDF_PATH_PROPERTY_DELIMITER_CHAR) {
         // This is the ambiguous one.  First check for the special symbols,
         // and if it looks like a "plain old property", consult parent type
         // to determine what the property sub-type should be.
-        static string mapperStr = SdfPathTokens->propertyDelimiter.GetString() +
-            SdfPathTokens->mapperIndicator.GetString() +
-            SdfPathTokens->relationshipTargetStart.GetString();
-        static string expressionStr =
-            SdfPathTokens->propertyDelimiter.GetString()
-            + SdfPathTokens->expressionIndicator.GetString();
+
+        if (IsPropertyPath()) {
+            static string mapperStr =
+                SdfPathTokens->propertyDelimiter.GetString() +
+                SdfPathTokens->mapperIndicator.GetString() +
+                SdfPathTokens->relationshipTargetStart.GetString();
+            static string expressionStr =
+                SdfPathTokens->propertyDelimiter.GetString() +
+                SdfPathTokens->expressionIndicator.GetString();
         
-        if ( element == expressionStr ){
-            return IsPropertyPath() ? AppendExpression() : 
-                AppendProperty(SdfPathTokens->expressionIndicator);
-        } 
-        else if (TfStringStartsWith(element, mapperStr)){
-            const size_t prefixSz(mapperStr.length());
-            SdfPath  target(element.substr(prefixSz, 
-                                          element.length()-(prefixSz+1)));
-            return AppendMapper(target);
+            if (element == expressionStr) {
+                return AppendExpression();
+            }
+            else if (TfStringStartsWith(element, mapperStr)) {
+                const size_t prefixSz(mapperStr.length());
+                SdfPath target(element.substr(prefixSz, 
+                                              element.length()-(prefixSz+1)));
+                return AppendMapper(target);
+            }
+        }
+
+        TfToken property(element.substr(1));
+        if (ARCH_UNLIKELY(IsMapperPath())) {
+            return AppendMapperArg(property);
+        }
+        else if (ARCH_UNLIKELY(IsTargetPath())) {
+            return AppendRelationalAttribute(property);
         }
         else {
-            TfToken  property(element.substr(1));
-            
-            if (IsMapperPath()){
-                return AppendMapperArg(property);
-            }
-            else if (IsTargetPath()){
-                return AppendRelationalAttribute(property);
-            }
-            else {
-                return AppendProperty(property);
-            }
+            return AppendProperty(property);
         }
-    } 
+    }
     else {
         return AppendChild(elementTok);
     }
@@ -1084,12 +1213,13 @@ SdfPath::_ReplacePrimPrefix(SdfPath const &oldPrefix,
     }
 
     // Tack the prim elements onto newPrefix.
+    auto isValid = []() { return true; };
     SdfPath newPath = newPrefix;
     while (i--) {
         switch (tmpNodes[i]->GetNodeType()) {
         case Sdf_PathNode::PrimNode:
             newPath._primPart = Sdf_PathNode::FindOrCreatePrim(
-                newPath._primPart.get(), tmpNodes[i]->GetName());
+                newPath._primPart.get(), tmpNodes[i]->GetName(), isValid);
             break;
         default:
             newPath = _AppendNode(newPath, tmpNodes[i]);
@@ -1132,12 +1262,13 @@ SdfPath::_ReplaceTargetPathPrefixes(SdfPath const &oldPrefix,
     }
     
     // Tack the prop elements onto newPrefix's prop part.
+    auto isValid = []() { return true; };
     SdfPath newPath(_primPart.get(), propNode);
     while (i--) {
         switch (tmpNodes[i]->GetNodeType()) {
         case Sdf_PathNode::PrimPropertyNode:
             newPath._propPart = Sdf_PathNode::FindOrCreatePrimProperty(
-                nullptr, tmpNodes[i]->GetName());
+                nullptr, tmpNodes[i]->GetName(), isValid);
             break;
         case Sdf_PathNode::TargetNode:
             newPath = newPath.AppendTarget(
@@ -1206,12 +1337,13 @@ SdfPath::_ReplacePropPrefix(SdfPath const &oldPrefix,
     }
 
     // Tack the prop elements onto newPrefix's prop part.
+    auto isValid = []() { return true; };
     SdfPath newPath = newPrefix;
     while (i--) {
         switch (tmpNodes[i]->GetNodeType()) {
         case Sdf_PathNode::PrimPropertyNode:
             newPath._propPart = Sdf_PathNode::FindOrCreatePrimProperty(
-                nullptr, tmpNodes[i]->GetName());
+                nullptr, tmpNodes[i]->GetName(), isValid);
             break;
         case Sdf_PathNode::TargetNode:
             if (fixTargetPaths) {
@@ -1574,7 +1706,7 @@ SdfPath::MakeRelativePath(const SdfPath & anchor) const
         !anchor.IsPrimVariantSelectionPath()) {
         TF_WARN("MakeRelativePath() requires a prim, prim variant selection, "
                 "or absolute root path as an anchor (got '%s').",
-                 anchor.GetString().c_str());
+                 anchor.GetAsString().c_str());
         return SdfPath();
     }
 
@@ -1653,48 +1785,96 @@ SdfPath::MakeRelativePath(const SdfPath & anchor) const
     return result;
 }
 
-static inline bool _IsValidIdentifier(TfToken const &name)
+// Valid identifiers require the first character to be an `_` or in the
+// XidStart class.
+static bool
+_IsValidIdentifierStart(const TfUtf8CodePoint codePoint)
 {
-    return TfIsValidIdentifier(name.GetString());
+    return codePoint == TfUtf8CodePointFromAscii('_') ||
+           TfIsUtf8CodePointXidStart(codePoint);
+}
+
+static
+inline bool 
+_IsValidIdentifier(const std::string_view& name)
+{
+    // empty strings are not valid identifiers
+    if (name.empty())
+    {
+        return false;
+    }
+
+    auto it = TfUtf8CodePointIterator{std::cbegin(name), std::cend(name)};
+    if (!_IsValidIdentifierStart(*it))
+    {
+        return false;
+    }
+    // In C++20, this can be replaced with the `std::ranges` version of
+    // `std::all_of`
+    for (++it; it != TfUtf8CodePointIterator::PastTheEndSentinel{}; ++it)
+    {
+        if (!TfIsUtf8CodePointXidContinue(*it))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static
+inline bool 
+_IsValidIdentifier(TfToken const &name)
+{
+    return _IsValidIdentifier(name.GetString());
 }
 
 bool
 SdfPath::IsValidIdentifier(const std::string &name)
 {
-    return TfIsValidIdentifier(name);
-}
-
-// We use our own _IsAlpha and _IsAlnum here for two reasons.  One, we want to
-// ensure that they follow C/Python identifier rules and are not subject to
-// various locale differences.  And two, since we are not consulting a locale,
-// it is faster.
-static constexpr bool _IsAlpha(int x) {
-    return ('a' <= (x|32)) && ((x|32) <= 'z');
-}
-static constexpr bool _IsAlnum(int x) {
-    return _IsAlpha(x) || (('0' <= x) && (x <= '9'));
+    return _IsValidIdentifier(name);
 }
 
 bool
 SdfPath::IsValidNamespacedIdentifier(const std::string &name)
 {
+    // empty strings are not valid identifiers
+    if (name.empty())
+    {
+        return false;
+    }
+
     // A valid C/Python identifier except we also allow the namespace delimiter
     // and if we tokenize on that delimiter then all tokens are valid C/Python
-    // identifiers.  That means following a delimiter there must be an '_' or
-    // alphabetic character.
-    constexpr char delim = SDF_PATH_NS_DELIMITER_CHAR;
-    for (char const *p = name.c_str(); *p; ++p) {
-        if (!_IsAlpha(*p) && *p != '_') {
+    // identifiers.
+    std::string_view remainder {name};
+    while (!remainder.empty()) {
+        const auto index = remainder.find(SDF_PATH_NS_DELIMITER_CHAR);
+        
+        // can't start with ':'
+        if (index == 0) {
             return false;
         }
-        for (++p; _IsAlnum(*p) ||*p == '_'; ++p) {
-            /* consume identifier */
+
+        // can't end with ':'
+        if (index == remainder.size() - 1) {
+            return false;
         }
-        if (*p != delim) {
-            return !*p;
+
+        // substring must be a valid identifier
+        if (!_IsValidIdentifier(remainder.substr(0, index))) {
+            return false;
         }
+
+        // if ':' wasn't found, we are done
+        if (index == std::string_view::npos) {
+            break;
+        }
+
+        // otherwise check the next substring
+        remainder = remainder.substr(index + 1);
     }
-    return false;
+
+    return true;
 }
 
 std::vector<std::string>
@@ -1706,40 +1886,51 @@ SdfPath::TokenizeIdentifier(const std::string &name)
     const char namespaceDelimiter =
         SdfPathTokens->namespaceDelimiter.GetText()[0];
 
-    std::string::const_iterator first = name.begin();
-    std::string::const_iterator last = name.end();
+    // Empty or last character is namespace delimiter
+    if (name.empty() || name.back() == namespaceDelimiter)
+    {
+        return result;
+    }
 
-    // Not empty and first character is alpha or '_'.
-    if (first == last || !(isalpha(*first) || (*first == '_')))
+    TfUtf8CodePointView view {name};
+    TfUtf8CodePointIterator iterator = view.begin();
+    TfUtf8CodePointIterator anchor = iterator;
+    
+    // Check first character is in XidStart or '_'
+    if(!_IsValidIdentifierStart(*iterator))
+    {
         return result;
-    // Last character is not the namespace delimiter.
-    if (*(last - 1) == namespaceDelimiter)
-        return result;
+    }
 
     // Count delimiters and reserve space in result.
-    result.reserve(1 + std::count(first, last, namespaceDelimiter));
+    result.reserve(1 + std::count(name.begin(), name.end(),
+        namespaceDelimiter));
 
-    std::string::const_iterator anchor = first;
-    for (++first; first != last; ++first) {
+    for (++iterator; iterator != view.end(); ++iterator)
+    {
         // Allow a namespace delimiter.
-        if (*first == namespaceDelimiter) {
+        if (*iterator == TfUtf8CodePointFromAscii(SDF_PATH_NS_DELIMITER_CHAR))
+        {
             // Record token.
-            result.push_back(std::string(anchor, first));
+            result.push_back(std::string(anchor.GetBase(), iterator.GetBase()));
 
             // Skip delimiter.  We know we will not go beyond the end of
             // the string because we checked before the loop that the
             // last character was not the delimiter.
-            anchor = ++first;
+            anchor = ++iterator;
 
             // First character.
-            if (!(isalpha(*first) || (*first == '_'))) {
+            if (!_IsValidIdentifierStart(*iterator))
+            {
                 TfReset(result);
                 return result;
             }
         }
-        else {
-            // Next character 
-            if (!(isalnum(*first) || (*first == '_'))) {
+        else
+        {
+            // Next character
+            if (!TfIsUtf8CodePointXidContinue(*iterator))
+            {
                 TfReset(result);
                 return result;
             }
@@ -1747,7 +1938,7 @@ SdfPath::TokenizeIdentifier(const std::string &name)
     }
 
     // Record the last token.
-    result.push_back(std::string(anchor, first));
+    result.push_back(std::string(anchor.GetBase(), iterator.GetBase()));
 
     return result;
 }
@@ -1868,27 +2059,9 @@ SdfPath::StripPrefixNamespace(const std::string &name,
 
 bool
 SdfPath::IsValidPathString(const std::string &pathString,
-                          std::string *errMsg)
+                           std::string *errMsg)
 {
-    Sdf_PathParserContext context;
-
-    // Initialize the scanner, allowing it to be reentrant.
-    pathYylex_init(&context.scanner);
-
-    yy_buffer_state *b =
-        pathYy_scan_bytes(pathString.c_str(), pathString.size(), 
-                          context.scanner);
-
-    bool valid = (pathYyparse(&context) == 0);
-
-    if (!valid && errMsg)
-        *errMsg = context.errStr;
-
-    // Clean up.
-    pathYy_delete_buffer(b, context.scanner);
-    pathYylex_destroy(context.scanner);
-
-    return valid;
+    return Sdf_ParsePath(pathString, /*path=*/nullptr, errMsg);
 }
 
 // Caller ensures both absolute or both relative.  We need to crawl up the
@@ -1897,17 +2070,27 @@ SdfPath::IsValidPathString(const std::string &pathString,
 static inline bool
 _LessThanCompareNodes(Sdf_PathNode const *l, Sdf_PathNode const *r)
 {
-    size_t lCount = l->GetElementCount();
-    size_t rCount = r->GetElementCount();
+    // Internally element counts are 'short', so this cast is safe.
+    int lCount = static_cast<int>(l->GetElementCount());
+    int rCount = static_cast<int>(r->GetElementCount());
     
-    // walk up to the same depth
-    size_t upSteps = lCount > rCount ? lCount - rCount : 0;
-    while (upSteps--) {
-        l = l->GetParentNode();
+    // Since caller ensures both absolute or both relative, then if either has
+    // no elements, it's the root node.  l is less than r if l is the root and r
+    // is not.
+    if (!lCount || !rCount) {
+        return !lCount && rCount;
     }
-    upSteps = rCount > lCount ? rCount - lCount : 0;
-    while (upSteps--) {
+
+    int diff = rCount - lCount;
+
+    // walk up to the same depth
+    while (diff < 0) {
+        l = l->GetParentNode();
+        ++diff;
+    }
+    while (diff > 0) {
         r = r->GetParentNode();
+        --diff;
     }
     
     // Now the cur nodes are at the same depth in the node tree
@@ -1931,17 +2114,15 @@ _LessThanCompareNodes(Sdf_PathNode const *l, Sdf_PathNode const *r)
 bool
 SdfPath::_LessThanInternal(SdfPath const &lhs, SdfPath const &rhs)
 {
-    SdfPath const &absRoot = SdfPath::AbsoluteRootPath();
-
     Sdf_PathNode const *lNode = lhs._primPart.get();
     Sdf_PathNode const *rNode = rhs._primPart.get();
 
-    if (lNode->IsAbsolutePath() != rNode->IsAbsolutePath()) {
-        return lNode->IsAbsolutePath();
-    } else if (lhs == absRoot) {
-        return true;
-    } else if (rhs == absRoot) {
-        return false;
+    bool lIsAbs = lNode->IsAbsolutePath();
+    bool rIsAbs = rNode->IsAbsolutePath();
+
+    // Absolute paths are less than all relative paths.
+    if (lIsAbs != rIsAbs) {
+        return lIsAbs;
     }
 
     // If there is a difference in prim part, it's more significant than the
@@ -2127,5 +2308,15 @@ distance(const SdfPathAncestorsRange::iterator& first,
             static_cast<std::ptrdiff_t>(last->GetPathElementCount()));
 }
 
+char const *
+Sdf_PathGetDebuggerPathText(SdfPath const &path)
+{
+    if (path._primPart) {
+        return Sdf_PathNode::GetDebugText(path._primPart.get(),
+                                          path._propPart.get());
+    }
+
+    return "";
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE

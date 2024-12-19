@@ -1,34 +1,21 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 from __future__ import print_function
 
+from pxr import Tf
+Tf.PreparePythonModule()
+
 import sys, argparse, os
 
-from .qt import QtWidgets
+from .qt import QtWidgets, QtCore
 from .common import Timer
 from .appController import AppController
+from .settings import ConfigManager
 
 from pxr import UsdAppUtils
 
@@ -64,7 +51,7 @@ class Launcher(object):
 
         traceCollector = None
 
-        with Timer() as totalTimer:
+        with Timer('open and close usdview') as totalTimer:
             self.RegisterPositionals(parser)
             self.RegisterOptions(parser)
             arg_parse_result = self.ParseOptions(parser)
@@ -73,20 +60,33 @@ class Launcher(object):
             if arg_parse_result.traceToFile:
                 from pxr import Trace
                 traceCollector = Trace.Collector()
-                traceCollector.pythonTracingEnabled = True
+            
+                if arg_parse_result.tracePython:
+                    traceCollector.pythonTracingEnabled = True
+
                 traceCollector.enabled = True
 
-            self.__LaunchProcess(arg_parse_result)
+            app, appController = self.LaunchPreamble(arg_parse_result)
+            self.LaunchProcess(arg_parse_result, app, appController)
 
         if traceCollector:
             traceCollector.enabled = False
 
         if arg_parse_result.timing and arg_parse_result.quitAfterStartup:
-            totalTimer.PrintTime('open and close usdview')
+            totalTimer.PrintTime()
 
         if traceCollector:
-            Trace.Reporter.globalReporter.ReportChromeTracingToFile(
-                arg_parse_result.traceToFile)
+            if arg_parse_result.traceFormat == 'trace':
+                Trace.Reporter.globalReporter.Report(
+                    arg_parse_result.traceToFile)
+            elif arg_parse_result.traceFormat == 'chrome':
+                Trace.Reporter.globalReporter.ReportChromeTracingToFile(
+                    arg_parse_result.traceToFile)
+            else:
+                Tf.RaiseCodingError("Invalid trace format option provided: %s -"
+                        "trace/chrome are the valid options" %
+                        arg_parse_result.traceFormat)
+
 
     def GetHelpDescription(self):
         '''return the help description'''
@@ -106,14 +106,9 @@ class Launcher(object):
         '''
         from pxr import UsdUtils
 
-        parser.add_argument('--renderer', action='store',
-                            type=str, dest='renderer',
-                            choices=AppController.GetRendererOptionChoices(),
-                            help="Which render backend to use (named as it "
-                            "appears in the menu).  Use '%s' to "
-                            "turn off Hydra renderers." %
-                            AppController.HYDRA_DISABLED_OPTION_STRING,
-                            default='')
+        UsdAppUtils.rendererArgs.AddCmdlineArgs(parser,
+                altHelpText=("Which render backend to use (named as it "
+                            "appears in the menu)."))
         
         parser.add_argument('--select', action='store', default='/',
                             dest='primPath', type=str,
@@ -141,6 +136,18 @@ class Launcher(object):
                             dest='clearSettings',
                             help='Restores usdview settings to default')
 
+        parser.add_argument('--config', action='store',
+                            type=str,
+                            dest='config',
+                            default=ConfigManager.defaultConfig,
+                            choices=ConfigManager(
+                                AppController._outputBaseDirectory()
+                            ).getConfigs()[1:],
+                            help='Load usdview with the state settings found '
+                            'in the specified config. If not provided will '
+                            'use the previously saved application state and '
+                            'automatically persist state on close')
+
         parser.add_argument('--defaultsettings', action='store_true',
                             dest='defaultSettings',
                             help='Launch usdview with default settings')
@@ -157,15 +164,40 @@ class Launcher(object):
                             dest='unloaded',
                             help='Do not load payloads')
 
+        parser.add_argument('--bboxStandin', action='store_true',
+                            dest='bboxstandin',
+                            help='Display unloaded prims with bounding boxes')
+
         parser.add_argument('--timing', action='store_true',
                             dest='timing',
-                            help='Echo timing stats to console. NOTE: timings will be unreliable when the --mallocTagStats option is also in use')
+                            help='Echo timing stats to console. NOTE: timings will be unreliable when the --memstats option is also in use')
+
+        parser.add_argument('--allow-async', action='store_true',
+                            dest='allowAsync',
+                            help='Enable asynchronous hydra scene processing')
 
         parser.add_argument('--traceToFile', action='store',
                             type=str,
                             dest='traceToFile',
                             default=None,
-                            help='Start tracing at application startup and write chrome-compatible output to the specified trace file when the application quits')
+                            help='Start tracing at application startup and '
+                            'write --traceFormat specified format output to the '
+                            'specified trace file when the application quits')
+
+        parser.add_argument('--traceFormat', action='store',
+                            type=str,
+                            dest='traceFormat',
+                            default='chrome',
+                            choices=['chrome', 'trace'],
+                            help='Output format for trace file specified by '
+                            '--traceToFile. \'chrome\' files can be read in '
+                            'chrome, \'trace\' files are simple text reports. '
+                            '(default=%(default)s)')
+
+        parser.add_argument('--tracePython', action='store_true',
+                            dest='tracePython',
+                            help='Enable python trace collection, '
+                            'requires --traceToFile to be set.')
 
         parser.add_argument('--memstats', action='store', default='none',
                             dest='mallocTagStats', type=str,
@@ -206,6 +238,38 @@ class Launcher(object):
                             "will include the opinions in the persistent "
                             "session layer.")
 
+        parser.add_argument('--mute', default=None, type=str,
+                            dest='muteLayersRe', action='append', nargs=1,
+                            help="Layer identifiers searched against this "
+                                 "regular expression will be muted on the "
+                                 "stage prior to, and after loading. Multiple "
+                                 "expressions can be supplied using the | "
+                                 "regex separator operator. Alternatively the "
+                                 "argument may be used multiple times.")
+
+        group = parser.add_argument_group(
+            'Detached Layers',
+            'Specify layers to be detached from their serialized data source '
+            'when loaded. This may increase time to load and memory usage but '
+            'will avoid issues like open file handles preventing other '
+            'processes from safely overwriting a loaded layer.')
+
+        group.add_argument(
+            '--detachLayers', action='store_true', help=("Detach all layers"))
+
+        group.add_argument(
+            '--detachLayersInclude', action='store', 
+            metavar='PATTERN[,PATTERN...]',
+            help=("Detach layers with identifiers containing any of the "
+                  "given patterns."))
+
+        group.add_argument(
+            '--detachLayersExclude', action='store',
+            metavar='PATTERN[,PATTERN,...]',
+            help=("Exclude layers with identifiers containing any of the "
+                  "given patterns from the set of detached layers specified "
+                  "by the --detachLayers or --detachLayerIncludes arguments."))
+
     def ParseOptions(self, parser):
         '''
         runs the parser on the arguments
@@ -222,10 +286,21 @@ class Launcher(object):
         overridden, derived classes should likely first call the base method.
         '''
 
-        # split arg_parse_result.populationMask into paths.
+        # Split arg_parse_result.populationMask into paths.
         if arg_parse_result.populationMask:
             arg_parse_result.populationMask = (
                 arg_parse_result.populationMask.replace(',', ' ').split())
+
+        # Process detached layer arguments.
+        if arg_parse_result.detachLayersInclude:
+            arg_parse_result.detachLayersInclude = [
+                s for s in arg_parse_result.detachLayersInclude.split(',') if s
+            ]
+
+        if arg_parse_result.detachLayersExclude:
+            arg_parse_result.detachLayersExclude = [
+                s for s in arg_parse_result.detachLayersExclude.split(',') if s
+            ]
 
         # Verify that the camera path is either an absolute path, or is just
         # the name of a camera.
@@ -273,15 +348,30 @@ class Launcher(object):
         from pxr import Ar
         
         r = Ar.GetResolver()
-        r.ConfigureResolverForAsset(usdFile)
+
+        # ConfigureResolverForAsset no longer exists under Ar 2.0; this
+        # is here for backwards compatibility with Ar 1.0.
+        if hasattr(r, "ConfigureResolverForAsset"):
+            r.ConfigureResolverForAsset(usdFile)
+
         return r.CreateDefaultContextForAsset(usdFile)
 
+    def OverrideMaxSamples(self):
+        # Return True if HdPrman's default max samples should be overridden,
+        # False otherwise.
+        return True
 
     def LaunchPreamble(self, arg_parse_result):
         # Initialize concurrency limit as early as possible so that it is
         # respected by subsequent imports.
         from pxr import Work
         Work.SetConcurrencyLimitArgument(arg_parse_result.numThreads)
+
+        # XXX Override HdPrman's defaults using the env var.  In the
+        # future we expect there may be more formal ways to represent
+        # per-app settings for particular Hydra plugins.
+        if self.OverrideMaxSamples():
+            os.environ.setdefault('HD_PRMAN_MAX_SAMPLES', '1024')
 
         if arg_parse_result.clearSettings:
             AppController.clearSettings()
@@ -294,21 +384,16 @@ class Launcher(object):
 
         return (app, appController)
 
-    def __LaunchProcess(self, arg_parse_result):
+    def LaunchProcess(self, arg_parse_result, app, appController):
         '''
         after the arguments have been parsed, launch the UI in a forked process
         '''
-        # Initialize concurrency limit as early as possible so that it is
-        # respected by subsequent imports.
-        (app, appController) = self.LaunchPreamble(arg_parse_result)
         
         if arg_parse_result.quitAfterStartup:
-            # Before we quit, process events one more time to make sure the
-            # UI is fully populated (and to capture all the timing information
-            # we'd want).
-            app.processEvents()
-            appController._cleanAndClose()
-            return
+            # Enqueue event to shutdown application. We don't use quit() because
+            # it doesn't trigger the closeEvent() on the main window which is
+            # used to orchestrate the shutdown.
+            QtCore.QTimer.singleShot(0, app.instance().closeAllWindows)
 
         app.exec_()
 

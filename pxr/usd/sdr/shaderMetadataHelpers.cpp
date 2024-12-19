@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/base/tf/staticTokens.h"
@@ -27,6 +10,7 @@
 #include "pxr/usd/sdr/shaderMetadataHelpers.h"
 #include "pxr/usd/sdr/shaderProperty.h"
 
+#include <algorithm>
 #include <iostream>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -48,19 +32,22 @@ TF_DEFINE_PRIVATE_TOKENS(
 namespace ShaderMetadataHelpers
 {
     bool
-    IsTruthy(const TfToken& propName, const NdrTokenMap& metadata)
+    IsTruthy(const TfToken& key, const NdrTokenMap& metadata)
     {
+        const NdrTokenMap::const_iterator search = metadata.find(key);
+
         // Absence of the option implies false
-        if (metadata.count(propName) == 0) {
+        if (search == metadata.end()) {
             return false;
         }
 
-        std::string boolStr = metadata.at(propName);
-
         // Presence of the option without a value implies true
-        if (boolStr.empty()) {
+        if (search->second.empty()) {
             return true;
         }
+
+        // Copy string for modification below
+        std::string boolStr = search->second;
 
         // Turn into a lower case string
         std::transform(boolStr.begin(), boolStr.end(), boolStr.begin(), ::tolower);
@@ -76,18 +63,11 @@ namespace ShaderMetadataHelpers
     // -------------------------------------------------------------------------
 
 
-    const std::string&
-    StringVal(const TfToken& propName, const NdrTokenMap& metadata)
-    {
-        return StringVal(propName, metadata, std::string());
-    }
-
-
-    const std::string&
-    StringVal(const TfToken& propName, const NdrTokenMap& metadata,
+    std::string
+    StringVal(const TfToken& key, const NdrTokenMap& metadata,
               const std::string& defaultValue)
     {
-        const NdrTokenMap::const_iterator search = metadata.find(propName);
+        const NdrTokenMap::const_iterator search = metadata.find(key);
 
         if (search != metadata.end()) {
             return search->second;
@@ -101,10 +81,10 @@ namespace ShaderMetadataHelpers
 
 
     TfToken
-    TokenVal(const TfToken& propName, const NdrTokenMap& metadata,
+    TokenVal(const TfToken& key, const NdrTokenMap& metadata,
              const TfToken& defaultValue)
     {
-        const NdrTokenMap::const_iterator search = metadata.find(propName);
+        const NdrTokenMap::const_iterator search = metadata.find(key);
 
         if (search != metadata.end()) {
             return TfToken(search->second);
@@ -117,10 +97,31 @@ namespace ShaderMetadataHelpers
     // -------------------------------------------------------------------------
 
 
-    NdrStringVec
-    StringVecVal(const TfToken& propName, const NdrTokenMap& metadata)
+    int
+    IntVal(const TfToken& key, const NdrTokenMap& metadata,
+           int defaultValue)
     {
-        const NdrTokenMap::const_iterator search = metadata.find(propName);
+        const NdrTokenMap::const_iterator search = metadata.find(key);
+
+        if (search == metadata.end()) {
+            return defaultValue;
+        }
+
+        try {
+            return std::stoi(search->second);
+        } catch (...) {
+            return defaultValue;
+        }
+    }
+
+
+    // -------------------------------------------------------------------------
+
+
+    NdrStringVec
+    StringVecVal(const TfToken& key, const NdrTokenMap& metadata)
+    {
+        const NdrTokenMap::const_iterator search = metadata.find(key);
 
         if (search != metadata.end()) {
             return TfStringSplit(search->second, "|");
@@ -134,9 +135,9 @@ namespace ShaderMetadataHelpers
 
 
     NdrTokenVec
-    TokenVecVal(const TfToken& propName, const NdrTokenMap& metadata)
+    TokenVecVal(const TfToken& key, const NdrTokenMap& metadata)
     {
-        const NdrStringVec untokenized = StringVecVal(propName, metadata);
+        const NdrStringVec untokenized = StringVecVal(key, metadata);
         NdrTokenVec tokenized;
 
         for (const std::string& item : untokenized) {

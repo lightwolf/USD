@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdSkel/utils.h"
 
@@ -41,13 +24,13 @@
 #include "pxr/usd/usdSkel/topology.h"
 #include "pxr/usd/usdSkel/utils.h"
 
-#include <boost/python.hpp>
-#include <boost/python/extract.hpp>
+#include "pxr/external/boost/python.hpp"
+#include "pxr/external/boost/python/extract.hpp"
 
-
-using namespace boost::python;
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 
 namespace {
@@ -106,7 +89,7 @@ _DecomposeTransform(const Matrix4& mx)
         TF_CODING_ERROR("Failed decomposing transform. "
                         "The transform may be singular.");
     }
-    return boost::python::make_tuple(t, r, s);
+    return pxr_boost::python::make_tuple(t, r, s);
 }
 
 
@@ -121,7 +104,7 @@ _DecomposeTransforms(const TfSpan<Matrix4>& xforms)
         TF_CODING_ERROR("Failed decomposing transforms. "
                         "Some transforms may be singular.");
     }
-    return boost::python::make_tuple(t, r, s);
+    return pxr_boost::python::make_tuple(t, r, s);
 }
 
 
@@ -209,6 +192,39 @@ _NonInterleavedSkinTransformLBS(const Matrix4& geomBindTransform,
 }
 
 
+template <typename Matrix4>
+Matrix4
+_InterleavedSkinTransform(const TfToken& skinningMethod,
+                          const Matrix4& geomBindTransform,
+                          TfSpan<const Matrix4> jointXforms,
+                          TfSpan<const GfVec2f> influences)
+{
+    Matrix4 xform;
+    if (!UsdSkelSkinTransform(skinningMethod, geomBindTransform, jointXforms,
+                              influences, &xform)) {
+        xform = geomBindTransform;
+    }
+    return xform;
+}
+
+
+template <typename Matrix4>
+Matrix4
+_NonInterleavedSkinTransform(const TfToken& skinningMethod,
+                             const Matrix4& geomBindTransform,
+                             TfSpan<const Matrix4> jointXforms,
+                             TfSpan<const int> jointIndices,
+                             TfSpan<const float> jointWeights)
+{
+    Matrix4 xform;
+    if (!UsdSkelSkinTransform(skinningMethod, geomBindTransform, jointXforms,
+                              jointIndices, jointWeights, &xform)) {
+        xform = geomBindTransform;
+    }
+    return xform;
+}
+
+
 template <class Matrix3, class Matrix4>
 void _WrapUtilsT()
 {
@@ -269,6 +285,33 @@ void _WrapUtilsT()
          arg("points"),
          arg("inSerial")=true));
 
+    def("SkinPoints",
+        static_cast<bool (*)(const TfToken&, const Matrix4&, TfSpan<const Matrix4>,
+                             TfSpan<const int>, TfSpan<const float>,
+                             int, TfSpan<GfVec3f>, bool)>(
+                                 &UsdSkelSkinPoints),
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("jointIndices"),
+         arg("jointWeights"),
+         arg("numInfluencesPerPoint"),
+         arg("points"),
+         arg("inSerial")=true));
+
+    def("SkinPoints",
+        static_cast<bool (*)(const TfToken&, const Matrix4&, TfSpan<const Matrix4>,
+                             TfSpan<const GfVec2f>, int,
+                             TfSpan<GfVec3f>, bool)>(
+                                 &UsdSkelSkinPoints),
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("influences"),
+         arg("numInfluencesPerPoint"),
+         arg("points"),
+         arg("inSerial")=true));
+
 
 
     def("SkinNormalsLBS",
@@ -296,6 +339,34 @@ void _WrapUtilsT()
          arg("normals"),
          arg("inSerial")=true));
 
+    def("SkinNormals",
+        static_cast<bool (*)(const TfToken&, const Matrix3&, TfSpan<const Matrix3>,
+                             TfSpan<const int>, TfSpan<const float>,
+                             int, TfSpan<GfVec3f>, bool)>(
+                                 &UsdSkelSkinNormals),
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("jointIndices"),
+         arg("jointWeights"),
+         arg("numInfluencesPerPoint"),
+         arg("normals"),
+         arg("inSerial")=true));
+
+    def("SkinNormals",
+        static_cast<bool (*)(const TfToken&, const Matrix3&, TfSpan<const Matrix3>,
+                             TfSpan<const GfVec2f>, int,
+                             TfSpan<GfVec3f>, bool)>(
+                                 &UsdSkelSkinNormals),
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("influences"),
+         arg("numInfluencesPerPoint"),
+         arg("normals"),
+         arg("inSerial")=true));
+
+
     def("SkinTransformLBS", &_InterleavedSkinTransformLBS<Matrix4>,
         (arg("geomBindTransform"),
          arg("jointXforms"),
@@ -303,6 +374,19 @@ void _WrapUtilsT()
 
     def("SkinTransformLBS", &_NonInterleavedSkinTransformLBS<Matrix4>,
         (arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("jointIndices"),
+         arg("jointWeights")));
+
+    def("SkinTransform", &_InterleavedSkinTransform<Matrix4>,
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
+         arg("jointXforms"),
+         arg("influences")));
+
+    def("SkinTransform", &_NonInterleavedSkinTransform<Matrix4>,
+        (arg("skinningMethod"),
+         arg("geomBindTransform"),
          arg("jointXforms"),
          arg("jointIndices"),
          arg("jointWeights")));
@@ -346,9 +430,10 @@ void wrapUsdSkelUtils()
         (arg("translations"), arg("rotations"), arg("scales")));
 
     def("NormalizeWeights",
-        static_cast<bool (*)(TfSpan<float>,int)>(
+        static_cast<bool (*)(TfSpan<float>,int,float)>(
             &UsdSkelNormalizeWeights),
-        (arg("weights"), arg("numInfluencesPerComponent")));
+        (arg("weights"), arg("numInfluencesPerComponent"),
+         arg("eps")=std::numeric_limits<float>::epsilon()));
 
     def("SortInfluences",
         static_cast<bool (*)(TfSpan<int>, TfSpan<float>,int)>(

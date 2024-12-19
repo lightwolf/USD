@@ -7,17 +7,14 @@ pxr_library(vt
         tf
         gf
         trace
-        ${Boost_PYTHON_LIBRARY}
         ${TBB_tbb_LIBRARY}
 
     INCLUDE_DIRS
-        ${Boost_INCLUDE_DIRS}
         ${TBB_INCLUDE_DIRS}
 
     PUBLIC_CLASSES
         array
         dictionary
-        functions
         hash
         streamOut
         types
@@ -31,13 +28,11 @@ pxr_library(vt
     PUBLIC_HEADERS
         api.h
         traits.h
-        operators.h
+        typeHeaders.h
+        visitValue.h
     
     PYTHON_PUBLIC_HEADERS
         pyOperators.h
-
-    PRIVATE_HEADERS
-        typeHeaders.h
 
     PYTHON_CPPFILES
         moduleDeps.cpp
@@ -45,6 +40,7 @@ pxr_library(vt
     PYMODULE_CPPFILES
         module.cpp
         wrapArrayBase.cpp
+        wrapArrayDualQuaternion.cpp
         wrapArrayFloat.cpp
         wrapArrayIntegral.cpp
         wrapArrayMatrix.cpp
@@ -58,6 +54,9 @@ pxr_library(vt
 
     PYMODULE_FILES
         __init__.py
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 pxr_build_test(testVtCpp
@@ -71,7 +70,6 @@ pxr_build_test(testVtCpp
 pxr_test_scripts(
     testenv/testVtArray.py
     testenv/testVtValue.py
-    testenv/testVtFunctions.py
 )
 pxr_register_test(testVtValue
     PYTHON
@@ -80,10 +78,6 @@ pxr_register_test(testVtValue
 pxr_register_test(testVtArray
     PYTHON
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testVtArray"
-)
-pxr_register_test(testVtFunctions
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testVtFunctions"
 )
 pxr_register_test(testVtCpp
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testVtCpp"

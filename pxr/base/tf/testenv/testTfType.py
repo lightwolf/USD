@@ -2,25 +2,8 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 from pxr import Tf
@@ -95,6 +78,24 @@ class TestTfType(unittest.TestCase):
             self.assertEqual(hash(t),hash(Tf.Type.FindByName(typeName)))
             self.assertNotEqual(hash(t), hash(Tf.Type.GetRoot()))
             self.assertTrue(t)
+
+    def test_BytesOrUnicodeArgs(self):
+        expectedType = Tf.Type.FindByName('int')
+        self.assertTrue(expectedType)
+
+        # test bytes arg
+        typeNameBytes = b'int'
+        t = Tf.Type.FindByName(typeNameBytes)
+        self.assertEqual(expectedType, t)
+        t = Tf.Type(typeNameBytes)
+        self.assertEqual(expectedType, t)
+
+        #test unicode arg
+        typeNameUnicode = u'int'
+        t = Tf.Type.FindByName(typeNameUnicode)
+        self.assertEqual(expectedType, t)
+        t = Tf.Type(typeNameUnicode)
+        self.assertEqual(expectedType, t)
 
     def test_PurePythonHierarchy(self):
         self.assertFalse(self.tBase.isUnknown)
@@ -229,16 +230,31 @@ class TestTfType(unittest.TestCase):
         self.assertEqual(tTestPyDerived, Tf._TestFindType(TestPyDerived()))
 
     def test_TypeAliases(self):
-        class JamesBond(object):
+        class SecretAgent(object):
             pass
+        class JamesBond(SecretAgent):
+            pass
+        tAgent = Tf.Type.Define(SecretAgent)
         tBond = Tf.Type.Define(JamesBond)
         self.assertTrue(Tf.Type.FindByName('007').isUnknown)
         self.assertNotIn('007', Tf.Type.GetRoot().GetAliases(tBond))
+        self.assertTrue(tAgent.FindDerivedByName('007').isUnknown)
         tBond.AddAlias( Tf.Type.GetRoot(), '007' )
         self.assertEqual(tBond, Tf.Type.FindByName('007'))
         self.assertIn('007', Tf.Type.GetRoot().GetAliases(tBond))
+        # The alias was registered under the root; it does not apply to other
+        # bases.
+        self.assertTrue(tAgent.FindDerivedByName('007').isUnknown)
 
-        #Test alias collision -- error expected
+        # Test adding an alias that matches an existing type name. This is 
+        # only allowed if the existing type is not a derived type of the base
+        # the alias is being registered .
+        tBond.AddAlias(tAgent, 'int')
+        self.assertNotEqual(tBond, Tf.Type.FindByName('int'))
+        self.assertEqual(tBond, tAgent.FindDerivedByName('int'))
+
+        # Test alias collision when the existing type is a derived type of the 
+        # base -- error expected
         with self.assertRaises(Tf.ErrorException):
             tBond.AddAlias(Tf.Type.GetRoot(), 'int' )
         self.assertNotEqual(tBond, Tf.Type.FindByName('int'))

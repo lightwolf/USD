@@ -2,25 +2,8 @@
 #
 # Copyright 2018 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 
@@ -33,14 +16,6 @@ from pxr.Usdviewq.qt import QtWidgets
 def _modifySettings(appController):
     appController._dataModel.viewSettings.showBBoxes = False
     appController._dataModel.viewSettings.showHUD = False
-
-# Take a shot of the viewport and save it to a file.
-def _takeShot(appController, fileName):
-
-    QtWidgets.QApplication.processEvents()
-    appController._mainWindow.update()
-    viewportShot = appController.GrabViewportShot()
-    viewportShot.save(fileName, "PNG")
 
 # Select one or more prim paths, then set active state of those prims.
 def _selectAndSetActive(appController, active, paths):
@@ -62,25 +37,25 @@ def _selectAndSetActive(appController, active, paths):
 # Test deactivating then reactivating a single prim with no children.
 def _testSingleDeactivate(appController):
     _selectAndSetActive(appController, False, ["/spheres/a"])
-    _takeShot(appController, "singleDeactivate.png")
+    appController._takeShot("singleDeactivate.png")
     _selectAndSetActive(appController, True, ["/spheres/a"])
 
 # Test deactivating then reactivating a single prim with some children.
 def _testParentDeactivate(appController):
     _selectAndSetActive(appController, False, ["/spheres"])
-    _takeShot(appController, "parentDeactivate.png")
+    appController._takeShot("parentDeactivate.png")
     _selectAndSetActive(appController, True, ["/spheres"])
 
 # Test deactivating then reactivating a parent prim and one of its children.
 def _testParentChildDeactivate(appController):
     _selectAndSetActive(appController, False, ["/spheres", "/spheres/a"])
-    _takeShot(appController, "parentChildDeactivate1.png")
+    appController._takeShot("parentChildDeactivate1.png")
 
     # Reactivation is a two-part process because we must activate the parent
     # before we can even select the child. Take a snapshot in-between to verify
     # this is working.
     _selectAndSetActive(appController, True, ["/spheres"])
-    _takeShot(appController, "parentChildDeactivate2.png")
+    appController._takeShot("parentChildDeactivate2.png")
     _selectAndSetActive(appController, True, ["/spheres/a"])
 
 # In this case, the child prim has a shorter path than the parent due to a

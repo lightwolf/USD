@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_GF_QUATERNION_H
 #define PXR_BASE_GF_QUATERNION_H
@@ -30,8 +13,7 @@
 #include "pxr/pxr.h"
 #include "pxr/base/gf/api.h"
 #include "pxr/base/gf/vec3d.h"
-
-#include <boost/functional/hash.hpp>
+#include "pxr/base/tf/hash.h"
 
 #include <iosfwd>
 
@@ -91,6 +73,12 @@ class GfQuaternion
         return _imaginary;
     }
 
+    /// Returns the zero quaternion, which has a real part of 0 and
+    /// an imaginary part of (0,0,0).
+    static GfQuaternion GetZero() {
+        return GfQuaternion(0.0, GfVec3d(0.0, 0.0, 0.0));
+    }
+
     /// Returns the identity quaternion, which has a real part of 1 and 
     /// an imaginary part of (0,0,0).
     static GfQuaternion GetIdentity() {
@@ -119,10 +107,7 @@ class GfQuaternion
 
     /// Hash.
     friend inline size_t hash_value(const GfQuaternion &q) {
-        size_t h = 0;
-        boost::hash_combine(h, q.GetReal());
-        boost::hash_combine(h, q.GetImaginary());
-        return h;
+        return TfHash::Combine(q.GetReal(), q.GetImaginary());
     }
 
     /// Component-wise quaternion equality test. The real and imaginary parts
@@ -238,6 +223,13 @@ GF_API GfQuaternion GfSlerp(const GfQuaternion& q0, const GfQuaternion& q1, doub
 /// Output a GfQuaternion using the format (r + (x, y, z)).
 /// \ingroup group_gf_DebuggingOutput
 GF_API std::ostream& operator<<(std::ostream& out, const GfQuaternion& q);
+
+
+/// Returns the dot (inner) product of two quaternions.
+inline double
+GfDot(const GfQuaternion &q1, const GfQuaternion &q2) {
+    return  (q1.GetReal() * q2.GetReal()) + GfDot(q1.GetImaginary(), q2.GetImaginary());
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

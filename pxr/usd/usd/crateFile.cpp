@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -31,6 +14,7 @@
 #include "pxr/base/arch/fileSystem.h"
 #include "pxr/base/arch/regex.h"
 #include "pxr/base/arch/systemInfo.h"
+#include "pxr/base/arch/virtualMemory.h"
 #include "pxr/base/gf/half.h"
 #include "pxr/base/gf/matrix2d.h"
 #include "pxr/base/gf/matrix3d.h"
@@ -53,37 +37,46 @@
 #include "pxr/base/gf/vec4i.h"
 #include "pxr/base/tf/envSetting.h"
 #include "pxr/base/tf/errorMark.h"
+#include "pxr/base/tf/exception.h"
 #include "pxr/base/tf/fastCompression.h"
 #include "pxr/base/tf/getenv.h"
+#include "pxr/base/tf/hash.h"
 #include "pxr/base/tf/mallocTag.h"
 #include "pxr/base/tf/ostreamMethods.h"
+#include "pxr/base/tf/pxrTslRobinMap/robin_set.h"
+#include "pxr/base/tf/registryManager.h"
 #include "pxr/base/tf/safeOutputFile.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/token.h"
+#include "pxr/base/tf/type.h"
+#include "pxr/base/ts/binary.h"
+#include "pxr/base/ts/spline.h"
 #include "pxr/base/trace/trace.h"
 #include "pxr/base/vt/dictionary.h"
 #include "pxr/base/vt/value.h"
-#include "pxr/base/work/arenaDispatcher.h"
+#include "pxr/base/work/dispatcher.h"
 #include "pxr/base/work/singularTask.h"
 #include "pxr/base/work/utils.h"
+#include "pxr/base/work/withScopedParallelism.h"
 #include "pxr/usd/ar/asset.h"
+#include "pxr/usd/ar/resolvedPath.h"
 #include "pxr/usd/ar/resolver.h"
 #include "pxr/usd/sdf/assetPath.h"
 #include "pxr/usd/sdf/layerOffset.h"
 #include "pxr/usd/sdf/listOp.h"
 #include "pxr/usd/sdf/path.h"
+#include "pxr/usd/sdf/pathExpression.h"
 #include "pxr/usd/sdf/pathTable.h"
 #include "pxr/usd/sdf/payload.h"
 #include "pxr/usd/sdf/reference.h"
 #include "pxr/usd/sdf/schema.h"
 #include "pxr/usd/sdf/types.h"
-#include "pxr/base/tf/registryManager.h"
-#include "pxr/base/tf/type.h"
 
 #include <tbb/concurrent_queue.h>
 
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <tuple>
 #include <type_traits>
 
@@ -100,15 +93,16 @@ _GetPageShift(unsigned int mask)
     return shift;
 }
 
-static unsigned int PAGESIZE = ArchGetPageSize();
-static uint64_t PAGEMASK = ~(static_cast<uint64_t>(PAGESIZE-1));
-static unsigned int PAGESHIFT = _GetPageShift(PAGEMASK);
+static const unsigned int CRATE_PAGESIZE = ArchGetPageSize();
+static const uint64_t CRATE_PAGEMASK =
+    ~(static_cast<uint64_t>(CRATE_PAGESIZE-1));
+static const unsigned int CRATE_PAGESHIFT = _GetPageShift(CRATE_PAGEMASK);
 
 TF_REGISTRY_FUNCTION(TfType) {
     TfType::Define<Usd_CrateFile::TimeSamples>();
 }
 
-#define DEFAULT_NEW_VERSION "0.7.0"
+#define DEFAULT_NEW_VERSION "0.9.0"
 TF_DEFINE_ENV_SETTING(
     USD_WRITE_NEW_USDC_FILES_AS_VERSION, DEFAULT_NEW_VERSION,
     "When writing new Usd Crate files, write them as this version.  "
@@ -131,11 +125,19 @@ TF_DEFINE_ENV_SETTING(
     "optimization, we create VtArrays that point directly into the memory "
     "mapped region rather than copying the data to heap buffers.");
 
+TF_DEFINE_ENV_SETTING(
+    USDC_USE_ASSET, false,
+    "If set, data for Crate files will be read using ArAsset::Read. Crate "
+    "will not use system I/O functions like mmap or pread directly for Crate "
+    "files on disk, but these functions may be used indirectly by ArAsset "
+    "implementations.");
+
 static int _GetMMapPrefetchKB()
 {
     auto getKB = []() {
         int setting = TfGetEnvSetting(USDC_MMAP_PREFETCH_KB);
-        int kb = ((setting * 1024 + PAGESIZE - 1) & PAGEMASK) / 1024;
+        int kb =
+            ((setting * 1024 + CRATE_PAGESIZE - 1) & CRATE_PAGEMASK) / 1024;
         if (setting != kb) {
             fprintf(stderr, "Rounded USDC_MMAP_PREFETCH_KB value %d to %d",
                     setting, kb);
@@ -146,16 +148,45 @@ static int _GetMMapPrefetchKB()
     return kb;
 }
 
-// Write nbytes bytes to fd at pos.
+// Write nbytes bytes to asset at pos.
 static inline int64_t
-WriteToFd(FILE *file, void const *bytes, int64_t nbytes, int64_t pos) {
-    int64_t nwritten = ArchPWrite(file, bytes, nbytes, pos);
-    if (ARCH_UNLIKELY(nwritten < 0)) {
-        TF_RUNTIME_ERROR("Failed writing usdc data: %s",
-                         ArchStrerror().c_str());
+WriteToAsset(ArWritableAsset* asset,
+             void const *bytes, int64_t nbytes, int64_t pos)
+{
+    TfErrorMark m;
+
+    int64_t nwritten = asset->Write(bytes, nbytes, pos);
+    if (ARCH_UNLIKELY(nwritten != nbytes)) {
+        // Aggregate error messages into a single runtime error for brevity
+        std::string errMsg;
+        if (!m.IsClean()) {
+            std::vector<std::string> errs;
+            for (const TfError& e : m) {
+                errs.push_back(e.GetCommentary());
+            }
+            errMsg = ": ";
+            errMsg += TfStringJoin(errs, "; ");
+        }
+
+        TF_RUNTIME_ERROR("Failed writing usdc data%s", errMsg.c_str());
         nwritten = 0;
     }
     return nwritten;
+}
+
+/// \class UsdReadOutOfBoundsError
+///
+/// Usd throws this exception when code attempts to read
+/// memory outside of the allocated range.
+class UsdReadOutOfBoundsError : public TfBaseException
+{
+public:
+    using TfBaseException::TfBaseException;
+    USD_API virtual ~UsdReadOutOfBoundsError() override;
+};
+
+UsdReadOutOfBoundsError::~UsdReadOutOfBoundsError()
+{
 }
 
 namespace Usd_CrateFile
@@ -199,62 +230,79 @@ constexpr _SectionName _KnownSections[] = {
     _FieldSetsSectionName, _PathsSectionName, _SpecsSectionName
 };
 
-constexpr bool _IsInlinedImpl(string *) { return true; }
-constexpr bool _IsInlinedImpl(TfToken *) { return true; }
-constexpr bool _IsInlinedImpl(SdfPath *) { return true; }
-constexpr bool _IsInlinedImpl(SdfAssetPath *) { return true; }
 template <class T>
-constexpr bool _IsInlinedImpl(T *) {
-    return sizeof(T) <= sizeof(uint32_t) && _IsBitwiseReadWrite<T>::value;
-}
-template <class T>
-constexpr bool _IsInlinedType() {
-    return _IsInlinedImpl(static_cast<T *>(nullptr));
-}
+struct _IsAlwaysInlined : std::integral_constant<
+    bool, sizeof(T) <= sizeof(uint32_t) && _IsBitwiseReadWrite<T>::value> {};
 
-#define xx(ENUMNAME, _unused1, CPPTYPE, _unused2)               \
-    constexpr TypeEnum _TypeEnumForImpl(CPPTYPE *) {            \
-        return TypeEnum::ENUMNAME;                              \
-    }
-#include "crateDataTypes.h"
-#undef xx
-template <class T>
-constexpr Usd_CrateFile::TypeEnum TypeEnumFor() {
-    return _TypeEnumForImpl(static_cast<T *>(nullptr));
-}
+template <> struct _IsAlwaysInlined<string> : std::true_type {};
+template <> struct _IsAlwaysInlined<TfToken> : std::true_type {};
+template <> struct _IsAlwaysInlined<SdfPath> : std::true_type {};
+template <> struct _IsAlwaysInlined<SdfAssetPath> : std::true_type {};
 
-template <class T> struct ValueTypeTraits {};
-// Generate value type traits providing enum value, array support, and whether
-// or not the value may be inlined.
-#define xx(ENUMNAME, _unused, CPPTYPE, SUPPORTSARRAY)                          \
-    template <> struct ValueTypeTraits<CPPTYPE> {                              \
-        static constexpr bool supportsArray = SUPPORTSARRAY;                   \
-        static constexpr bool isInlined = _IsInlinedType<CPPTYPE>();           \
-    };
+template <class T>
+struct _TypeEnumFor {};
+
+template <class T>
+struct _SupportsArray {};
+
+#define xx(ENUMNAME, _unused1, CPPTYPE, SUPPORTSARRAY)                         \
+template <> struct _TypeEnumFor<CPPTYPE> {                                     \
+    static const TypeEnum value = TypeEnum::ENUMNAME;                          \
+};                                                                             \
+template <> struct _SupportsArray<CPPTYPE> {                                   \
+    static constexpr bool value = SUPPORTSARRAY;                               \
+};
 #include "crateDataTypes.h"
 #undef xx
 
 template <class T>
 static constexpr ValueRep ValueRepFor(uint64_t payload = 0) {
-    return ValueRep(TypeEnumFor<T>(),
-                    ValueTypeTraits<T>::isInlined, /*isArray=*/false, payload);
+    return ValueRep(_TypeEnumFor<T>::value,
+                    _IsAlwaysInlined<T>::value, /*isArray=*/false, payload);
 }
 
 template <class T>
 static constexpr ValueRep ValueRepForArray(uint64_t payload = 0) {
-    return ValueRep(TypeEnumFor<T>(),
+    return ValueRep(_TypeEnumFor<T>::value,
                     /*isInlined=*/false, /*isArray=*/true, payload);
 }
 
 template <class T>
 T *RoundToPageAddr(T *addr) {
-    return reinterpret_cast<T *>(reinterpret_cast<uintptr_t>(addr) & PAGEMASK);
+    return reinterpret_cast<T *>(
+        reinterpret_cast<uintptr_t>(addr) & CRATE_PAGEMASK);
 }
 
 template <class T>
 uint64_t GetPageNumber(T *addr) {
-    return reinterpret_cast<uintptr_t>(addr) >> PAGESHIFT;
+    return reinterpret_cast<uintptr_t>(addr) >> CRATE_PAGESHIFT;
 }
+
+// A helper struct for thread_local that uses nullptr initialization as a
+// sentinel to prevent guard variable use from being invoked after first
+// initialization.
+template <class T>
+struct _FastThreadLocalBase
+{
+    static T &Get() {
+        static thread_local T *theTPtr = nullptr;
+        if (ARCH_LIKELY(theTPtr)) {
+            return *theTPtr;
+        }
+        static thread_local T theT;
+        theTPtr = &theT;
+        return *theTPtr;
+    }
+};
+
+// This is a set that's used as a thread-local to guard against assets that
+// contain VtValues that recursively claim to contain themselves.  We insert
+// ValueReps as we unpack VtValues and if we ever encounter the same rep again,
+// we know we've hit a loop and we can error out instead of infinitely
+// recursing.
+using UnpackRecursionGuard = pxr_tsl::robin_set<ValueRep, TfHash>;
+struct _LocalUnpackRecursionGuard
+    : _FastThreadLocalBase<UnpackRecursionGuard> {};
 
 } // anon
 
@@ -263,10 +311,10 @@ namespace Usd_CrateFile {
 
 // XXX: These checks ensure VtValue can hold ValueRep in the lightest
 // possible way -- WBN not to rely on internal knowledge of that.
-static_assert(boost::has_trivial_constructor<ValueRep>::value, "");
-static_assert(boost::has_trivial_copy<ValueRep>::value, "");
-static_assert(boost::has_trivial_assign<ValueRep>::value, "");
-static_assert(boost::has_trivial_destructor<ValueRep>::value, "");
+static_assert(std::is_trivially_constructible_v<ValueRep>);
+static_assert(std::is_trivially_copyable_v<ValueRep>);
+static_assert(std::is_trivially_copy_assignable_v<ValueRep>);
+static_assert(std::is_trivially_destructible_v<ValueRep>);
 
 using namespace Usd_CrateValueInliners;
 
@@ -278,83 +326,42 @@ using std::unordered_map;
 using std::vector;
 
 // Version history:
-// 0.9.0: Added support for the timecode and timecode[] value types.
-// 0.8.0: Added support for SdfPayloadListOp values and SdfPayload values with
-//        layer offsets.
-// 0.7.0: Array sizes written as 64 bit ints.
-// 0.6.0: Compressed (scalar) floating point arrays that are either all ints or
-//        can be represented efficiently with a lookup table.
-// 0.5.0: Compressed (u)int & (u)int64 arrays, arrays no longer store '1' rank.
-// 0.4.0: Compressed structural sections.
-// 0.3.0: (broken, unused)
-// 0.2.0: Added support for prepend and append fields of SdfListOp.
-// 0.1.0: Fixed structure layout issue encountered in Windows port.
-//        See _PathItemHeader_0_0_1.
-// 0.0.1: Initial release.
+// 0.12.0: Added support for splines.
+// 0.11.0: Added support for relocates in layer metadata.
+// 0.10.0: Added support for the pathExpression value type.
+//  0.9.0: Added support for the timecode and timecode[] value types.
+//  0.8.0: Added support for SdfPayloadListOp values and SdfPayload values with
+//         layer offsets.
+//  0.7.0: Array sizes written as 64 bit ints.
+//  0.6.0: Compressed (scalar) floating point arrays that are either all ints or
+//         can be represented efficiently with a lookup table.
+//  0.5.0: Compressed (u)int & (u)int64 arrays, arrays no longer store '1' rank.
+//  0.4.0: Compressed structural sections.
+//  0.3.0: (broken, unused)
+//  0.2.0: Added support for prepend and append fields of SdfListOp.
+//  0.1.0: Fixed structure layout issue encountered in Windows port.
+//         See _PathItemHeader_0_0_1.
+//  0.0.1: Initial release.
 constexpr uint8_t USDC_MAJOR = 0;
-constexpr uint8_t USDC_MINOR = 9;
+constexpr uint8_t USDC_MINOR = 12;
 constexpr uint8_t USDC_PATCH = 0;
 
-struct CrateFile::Version
+CrateFile::Version
+CrateFile::Version::FromString(char const *str)
 {
-    // Not named 'major' since that's a macro name conflict on POSIXes.
-    uint8_t majver, minver, patchver;
-
-    constexpr Version() : Version(0,0,0) {}
-    constexpr Version(uint8_t majver, uint8_t minver, uint8_t patchver)
-        : majver(majver), minver(minver), patchver(patchver) {}
-
-    explicit Version(CrateFile::_BootStrap const &boot)
-        : Version(boot.version[0], boot.version[1], boot.version[2]) {}
-    
-    static Version FromString(char const *str) {
-        uint32_t maj, min, pat;
-        if (sscanf(str, "%u.%u.%u", &maj, &min, &pat) != 3 ||
-            maj > 255 || min > 255 || pat > 255) {
-            return Version();
-        }
-        return Version(maj, min, pat);
+    uint32_t maj, min, pat;
+    if (sscanf(str, "%u.%u.%u", &maj, &min, &pat) != 3 ||
+        maj > 255 || min > 255 || pat > 255) {
+        return Version();
     }
+    return Version(maj, min, pat);
+}
 
-    constexpr uint32_t AsInt() const {
-        return static_cast<uint32_t>(majver) << 16 |
-            static_cast<uint32_t>(minver) << 8 |
-            static_cast<uint32_t>(patchver);
-    }
-
-    std::string AsString() const {
-        return TfStringPrintf("%" PRId8 ".%" PRId8 ".%" PRId8,
-                              majver, minver, patchver);
-    }
-
-    bool IsValid() const { return AsInt() != 0; }
-
-    // Return true if fileVer has the same major version as this, and has a
-    // lesser or same minor version.  Patch version irrelevant, since the
-    // versioning scheme specifies that patch level changes are
-    // forward-compatible.
-    bool CanRead(Version const &fileVer) const {
-        return fileVer.majver == majver && fileVer.minver <= minver;
-    }
-
-    // Return true if fileVer has the same major version as this, and has a
-    // lesser minor version, or has the same minor version and a lesser or equal
-    // patch version.
-    bool CanWrite(Version const &fileVer) const {
-        return fileVer.majver == majver &&
-            (fileVer.minver < minver ||
-             (fileVer.minver == minver && fileVer.patchver <= patchver));
-    }        
-    
-#define LOGIC_OP(op)                                                    \
-    constexpr bool operator op(Version const &other) const {            \
-        return AsInt() op other.AsInt();                                \
-    }
-    LOGIC_OP(==); LOGIC_OP(!=);
-    LOGIC_OP(<);  LOGIC_OP(>);
-    LOGIC_OP(<=); LOGIC_OP(>=);
-#undef LOGIC_OP
-};
+std::string
+CrateFile::Version::AsString() const {
+    return TfStringPrintf(
+        "%" PRId8 ".%" PRId8 ".%" PRId8, majver, minver, patchver);
+}
 
 constexpr CrateFile::Version
 _SoftwareVersion { USDC_MAJOR, USDC_MINOR, USDC_PATCH };
@@ -460,14 +467,15 @@ CrateFile::_FileRange::~_FileRange()
     }
 }
 
-CrateFile::_FileMapping::ZeroCopySource *
-CrateFile::_FileMapping::AddRangeReference(void *addr, size_t numBytes)
+Vt_ArrayForeignDataSource *
+CrateFile::_FileMapping::_Impl
+::_AddRangeReference(void const *addr, size_t numBytes)
 {
     auto iresult = _outstandingRanges.emplace(this, addr, numBytes);
     // If we take the source's count from 0 -> 1, add a reference to the
     // mapping.
     if (iresult.first->NewRef()) {
-        intrusive_ptr_add_ref(this);
+        TfDelegatedCountIncrement(this);
     }
     return &(*iresult.first);
 }
@@ -484,18 +492,17 @@ TouchPages(char volatile *start, size_t numPages)
                          // (copy-on-write).  This is sometimes called a "silent
                          // store".  No current hw architecture "optimizes out"
                          // silent stores.
-        start += PAGESIZE;
+        start += CRATE_PAGESIZE;
     }
 }
 
 void
-CrateFile::_FileMapping::DetachReferencedRanges()
+CrateFile::_FileMapping::_Impl::_DetachReferencedRanges()
 {
-    // At this moment, we're guaranteed that this _FileMapping object won't be
-    // destroyed because the calling CrateFile object owns a reference.  We're
-    // also guaranteed that no ZeroCopySource objects' reference counts will
-    // increase (and in particular go from 0 to 1) since the layer is being
-    // destroyed.  Similarly no new _outstandingRanges can be created.
+    // At this moment, we're guaranteed that no ZeroCopySource objects'
+    // reference counts will increase (and in particular go from 0 to 1) since
+    // the mapping is being destroyed.  Similarly no new _outstandingRanges
+    // can be created.
     for (auto const &zeroCopy: _outstandingRanges) {
         // This is racy, but benign.  If we see a nonzero count that's
         // concurrently being zeroed, we just do possibly unneeded work.  The
@@ -505,33 +512,44 @@ CrateFile::_FileMapping::DetachReferencedRanges()
             // Calculate the page-aligned start address and the number of pages
             // we need to touch.
             auto addrAsInt = reinterpret_cast<uintptr_t>(zeroCopy.GetAddr());
-            int64_t pageStart = addrAsInt / PAGESIZE;
+            int64_t pageStart = addrAsInt / CRATE_PAGESIZE;
             int64_t pageEnd =
-                ((addrAsInt + zeroCopy.GetNumBytes() - 1) / PAGESIZE) + 1;
-            TouchPages(reinterpret_cast<char *>(pageStart * PAGESIZE),
-                       pageEnd - pageStart);
+                ((addrAsInt + zeroCopy.GetNumBytes() - 1) / CRATE_PAGESIZE) + 1;
+            // Make the memory range read/copy-on-write.
+            char *startAddr =
+                reinterpret_cast<char *>(pageStart * CRATE_PAGESIZE);
+            if (ArchSetMemoryProtection(
+                    startAddr, (pageEnd-pageStart) * CRATE_PAGESIZE,
+                    ArchProtectReadWriteCopy)) {
+                TouchPages(reinterpret_cast<char *>(pageStart * CRATE_PAGESIZE),
+                           pageEnd - pageStart);
+            }
+            else {
+                TF_WARN("could not set address range permissions to "
+                        "copy-on-write");
+            }
         }
     }
 }
 
-CrateFile::_FileMapping::ZeroCopySource::ZeroCopySource(
-    CrateFile::_FileMapping *m,
-    void *addr, size_t numBytes)
+CrateFile::_FileMapping::_Impl::ZeroCopySource::ZeroCopySource(
+    CrateFile::_FileMapping::_Impl *m,
+    void const *addr, size_t numBytes)
     : Vt_ArrayForeignDataSource(_Detached)
     , _mapping(m)
     , _addr(addr)
     , _numBytes(numBytes) {}
 
-bool CrateFile::_FileMapping::ZeroCopySource::operator==(
+bool CrateFile::_FileMapping::_Impl::ZeroCopySource::operator==(
     ZeroCopySource const &other) const {
     return _mapping == other._mapping &&
         _addr == other._addr && _numBytes == other._numBytes;
 }
 
-void CrateFile::_FileMapping::ZeroCopySource::_Detached(
+void CrateFile::_FileMapping::_Impl::ZeroCopySource::_Detached(
     Vt_ArrayForeignDataSource *selfBase) {
     auto *self = static_cast<ZeroCopySource *>(selfBase);
-    intrusive_ptr_release(self->_mapping);
+    TfDelegatedCountDecrement(self->_mapping);
 }
 
 template <class FileMappingPtr>
@@ -552,6 +570,29 @@ struct _MmapStream {
     }
     
     inline void Read(void *dest, size_t nBytes) {
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+        const bool doRangeChecks = true;
+#else
+        const bool doRangeChecks = false;
+#endif
+
+        // Range check first.
+        if (doRangeChecks) {
+            char const *mapStart = _mapping->GetMapStart();
+            size_t mapLen = _mapping->GetLength();
+            
+            bool inRange = mapStart <= _cur &&
+                (_cur + nBytes) <= (mapStart + mapLen);
+            
+            if (ARCH_UNLIKELY(!inRange)) {
+                ptrdiff_t offset = _cur - mapStart;
+                TF_THROW(UsdReadOutOfBoundsError, TfStringPrintf(
+                    "Read out-of-bounds: %zd bytes at offset %td in "
+                    "a mapping of length %zd",
+                    nBytes, offset, mapLen));
+            }
+        }
+
         if (ARCH_UNLIKELY(_debugPageMap)) {
             auto mapStart = _mapping->GetMapStart();
             int64_t pageZero = GetPageNumber(mapStart);
@@ -594,16 +635,30 @@ struct _MmapStream {
     }
 
     Vt_ArrayForeignDataSource *
-    CreateZeroCopyDataSource(void *addr, size_t numBytes) {
+    CreateZeroCopyDataSource(void const *addr, size_t numBytes) {
+        char const *mapStart = _mapping->GetMapStart();
+        char const *chAddr = static_cast<char const *>(addr);
+        size_t mapLen = _mapping->GetLength();
+        bool inRange = mapStart <= chAddr &&
+            (chAddr + numBytes) <= (mapStart + mapLen);
+        
+        if (ARCH_UNLIKELY(!inRange)) {
+            ptrdiff_t offset = chAddr - mapStart;
+            TF_RUNTIME_ERROR(
+                "Zero-copy data range out-of-bounds: %zd bytes at offset "
+                "%td in a mapping of length %zd",
+                numBytes, offset, mapLen);
+            return nullptr;
+        }
         return _mapping->AddRangeReference(addr, numBytes);
     }
 
-    inline void *TellMemoryAddress() const {
+    inline void const *TellMemoryAddress() const {
         return _cur;
     }
     
 private:
-    char *_cur;
+    char const *_cur;
     FileMappingPtr _mapping;
     char *_debugPageMap;
     int _prefetchKB;
@@ -688,6 +743,8 @@ CrateFile::_TableOfContents::GetMinimumSectionStart() const
 class CrateFile::_BufferedOutput
 {
 public:
+    using OutputType = ArWritableAsset*;
+
     // Current buffer size is 512k.
     static const size_t BufferCap = 512*1024;
 
@@ -703,7 +760,7 @@ public:
         int64_t size = 0;
     };
 
-    explicit _BufferedOutput(FILE *file)
+    explicit _BufferedOutput(OutputType file)
         : _filePos(0)
         , _file(file)
         , _bufferPos(0)
@@ -810,7 +867,7 @@ private:
         _WriteOp op;
         while (_writeQueue.try_pop(op)) {
             // Write the bytes.
-            WriteToFd(_file, op.buf.bytes.get(), op.buf.size, op.pos);
+            WriteToAsset(_file, op.buf.bytes.get(), op.buf.size, op.pos);
             // Add the buffer back to _freeBuffers for reuse.
             op.buf.size = 0;
             _freeBuffers.push(std::move(op.buf));
@@ -819,7 +876,7 @@ private:
     
     // Write head in the file.  Always inside the buffer region.
     int64_t _filePos;
-    FILE *_file;
+    OutputType _file;
 
     // Start of current buffer is at this file offset.
     int64_t _bufferPos;
@@ -830,7 +887,7 @@ private:
     // Queue of pending write operations.
     tbb::concurrent_queue<_WriteOp> _writeQueue;
 
-    WorkArenaDispatcher _dispatcher;
+    WorkDispatcher _dispatcher;
     WorkSingularTask _writeTask;
 };
 
@@ -838,83 +895,92 @@ private:
 // _PackingContext
 struct CrateFile::_PackingContext
 {
+    using OutputType = ArWritableAssetSharedPtr;
+    static ArWritableAsset* _Get(OutputType& out) { return out.get(); }
+
     _PackingContext() = delete;
     _PackingContext(_PackingContext const &) = delete;
     _PackingContext &operator=(_PackingContext const &) = delete;
 
-    _PackingContext(CrateFile *crate, TfSafeOutputFile &&outFile,
+    _PackingContext(CrateFile *crate, 
+                    OutputType &&outAsset,
                     std::string const &fileName)
         : fileName(fileName)
         , writeVersion(crate->_assetPath.empty() ?
                        GetVersionForNewlyCreatedFiles() :
                        Version(crate->_boot))
-        , bufferedOutput(outFile.Get())
-        , safeOutputFile(std::move(outFile)) {
+        , bufferedOutput(_Get(outAsset))
+        , outputAsset(std::move(outAsset)) {
         
         // Populate this context with everything we need from \p crate in order
         // to do deduplication, etc.
-        WorkArenaDispatcher wd;
-
+        WorkDispatcher wd;
+        
         // Read in any unknown sections so we can rewrite them later.
         wd.Run([this, crate]() {
-                for (auto const &sec: crate->_toc.sections) {
-                    if (!_IsKnownSection(sec.name)) {
-                        unknownSections.emplace_back(
-                            sec.name, _ReadSectionBytes(sec, crate), sec.size);
-                    }
+            for (auto const &sec: crate->_toc.sections) {
+                if (!_IsKnownSection(sec.name)) {
+                    unknownSections.emplace_back(
+                        sec.name, _ReadSectionBytes(sec, crate),
+                        sec.size);
                 }
-            });
-
+            }
+        });
+        
         // Ensure that pathToPathIndex is correctly populated.
         wd.Run([this, crate]() {
-                for (size_t i = 0; i != crate->_paths.size(); ++i)
-                    pathToPathIndex[crate->_paths[i]] = PathIndex(i);
-            });
-
+            for (size_t i = 0; i != crate->_paths.size(); ++i)
+                pathToPathIndex[crate->_paths[i]] = PathIndex(i);
+        });
+        
         // Ensure that fieldToFieldIndex is correctly populated.
         wd.Run([this, crate]() {
-                for (size_t i = 0; i != crate->_fields.size(); ++i)
-                    fieldToFieldIndex[crate->_fields[i]] = FieldIndex(i);
-            });
+            for (size_t i = 0; i != crate->_fields.size(); ++i)
+                fieldToFieldIndex[
+                    crate->_fields[i]] = FieldIndex(i);
+        });
         
         // Ensure that fieldsToFieldSetIndex is correctly populated.
         auto const &fsets = crate->_fieldSets;
         wd.Run([this, &fsets]() {
-                vector<FieldIndex> fieldIndexes;
-                for (auto fsBegin = fsets.begin(),
-                         fsEnd = find(fsBegin, fsets.end(), FieldIndex());
-                     fsBegin != fsets.end();
-                     fsBegin = fsEnd + 1,
-                         fsEnd = find(fsBegin, fsets.end(), FieldIndex())) {
-                    fieldIndexes.assign(fsBegin, fsEnd);
-                    fieldsToFieldSetIndex[fieldIndexes] =
-                        FieldSetIndex(fsBegin - fsets.begin());
-                }
-            });
-
+            vector<FieldIndex> fieldIndexes;
+            for (auto fsBegin = fsets.begin(),
+                     fsEnd = find(
+                         fsBegin, fsets.end(), FieldIndex());
+                 fsBegin != fsets.end();
+                 fsBegin = fsEnd + 1,
+                     fsEnd = find(
+                         fsBegin, fsets.end(), FieldIndex())) {
+                fieldIndexes.assign(fsBegin, fsEnd);
+                fieldsToFieldSetIndex[fieldIndexes] =
+                    FieldSetIndex(fsBegin - fsets.begin());
+            }
+        });
+        
         // Ensure that tokenToTokenIndex is correctly populated.
         wd.Run([this, crate]() {
-                for (size_t i = 0; i != crate->_tokens.size(); ++i)
-                    tokenToTokenIndex[crate->_tokens[i]] = TokenIndex(i);
-            });
-
+            for (size_t i = 0; i != crate->_tokens.size(); ++i)
+                tokenToTokenIndex[
+                    crate->_tokens[i]] = TokenIndex(i);
+        });
+        
         // Ensure that stringToStringIndex is correctly populated.
         wd.Run([this, crate]() {
-                for (size_t i = 0; i != crate->_strings.size(); ++i)
-                    stringToStringIndex[
-                        crate->GetString(StringIndex(i))] = StringIndex(i);
-            });
-
+            for (size_t i = 0; i != crate->_strings.size(); ++i)
+                stringToStringIndex[
+                    crate->GetString(StringIndex(i))] =
+                    StringIndex(i);
+        });
+        
         // Set file pos to start of the structural sections in the current TOC.
         bufferedOutput.Seek(crate->_toc.GetMinimumSectionStart());
-        wd.Wait();
     }
 
-    // Destructively move the output file out of this context.
-    TfSafeOutputFile ExtractOutputFile() {
-        return std::move(safeOutputFile);
+    // Close output asset.  No further writes may be done.
+    bool CloseOutputAsset() {
+        return outputAsset->Close();
     }
-        
+   
     // Inform the writer that the output stream requires the given version
     // (or newer) to be read back.  This allows the writer to start with
     // a conservative version assumption and promote to newer versions
@@ -962,57 +1028,14 @@ struct CrateFile::_PackingContext
     // BufferedOutput helper.
     _BufferedOutput bufferedOutput;
     // Output destination.
-    TfSafeOutputFile safeOutputFile;
+    OutputType outputAsset;
 };
 
 /////////////////////////////////////////////////////////////////////////
-// Readers
-class CrateFile::_ReaderBase
-{
-public:
-    _ReaderBase(CrateFile const *crate) : crate(crate) {}
-
-    template <class T>
-    T GetUninlinedValue(uint32_t x, T *) const {
-        static_assert(sizeof(T) <= sizeof(x), "");
-        T r;
-        memcpy(&r, &x, sizeof(r));
-        return r;
-    }
-
-    string const & GetUninlinedValue(uint32_t i, string *) const {
-        return crate->GetString(StringIndex(i));
-    }
-
-    TfToken const &GetUninlinedValue(uint32_t i, TfToken *) const {
-        return crate->GetToken(TokenIndex(i));
-    }
-
-    SdfPath const &GetUninlinedValue(uint32_t i, SdfPath *) const {
-        return crate->GetPath(PathIndex(i));
-    }
-
-    SdfAssetPath GetUninlinedValue(uint32_t i, SdfAssetPath *) const {
-        return SdfAssetPath(crate->GetToken(TokenIndex(i)));
-    }
-
-    SdfVariability GetUninlinedValue(uint32_t i, SdfVariability *) const {
-        // Explicitly convert legacy SdfVariabilityConfig value to
-        // SdfVariabilityUniform. This "config" variability was never used
-        // in USD but clients may have written this value out so we need
-        // to handle it to maintain backwards compatibility.
-        static const uint32_t LEGACY_CONFIG_VARIABILITY = 2;
-        if (i == LEGACY_CONFIG_VARIABILITY) {
-            return SdfVariabilityUniform;
-        }
-        return static_cast<SdfVariability>(i);
-    }
-
-    CrateFile const *crate;
-};
+// Reader
 
 template <class ByteStream>
-class CrateFile::_Reader : public _ReaderBase
+class CrateFile::_Reader
 {
     void _RecursiveRead() {
         auto start = src.Tell();
@@ -1027,24 +1050,77 @@ class CrateFile::_Reader : public _ReaderBase
         src.Seek(start + offset);
     }
 
+    // Read implementations that need partial specialization.
+    template <class T>
+    SdfListOp<T> _Read(SdfListOp<T> *) {
+        SdfListOp<T> listOp;
+        auto h = Read<_ListOpHeader>();
+        if (h.IsExplicit()) { listOp.ClearAndMakeExplicit(); }
+        if (h.HasExplicitItems()) {
+            listOp.SetExplicitItems(Read<vector<T>>()); }
+        if (h.HasAddedItems()) { listOp.SetAddedItems(Read<vector<T>>()); }
+        if (h.HasPrependedItems()) {
+            listOp.SetPrependedItems(Read<vector<T>>()); }
+        if (h.HasAppendedItems()) {
+            listOp.SetAppendedItems(Read<vector<T>>()); }
+        if (h.HasDeletedItems()) { listOp.SetDeletedItems(Read<vector<T>>()); }
+        if (h.HasOrderedItems()) { listOp.SetOrderedItems(Read<vector<T>>()); }
+        return listOp;
+    }
+    
+    template <class T>
+    vector<T> _Read(vector<T> *) {
+        auto sz = Read<uint64_t>();
+        vector<T> vec(sz);
+        ReadContiguous(vec.data(), sz);
+        return vec;
+    }
+
 public:
     static constexpr bool StreamSupportsZeroCopy = ByteStream::SupportsZeroCopy;
     
     _Reader(CrateFile const *crate, ByteStream &src)
-        : _ReaderBase(crate)
+        : crate(crate)
         , src(src) {}
-
-    template <class T>
-    static typename std::enable_if<_IsBitwiseReadWrite<T>::value, T>::type
-    StaticRead(ByteStream &src, T *) {
-        T bits;
-        src.Read(&bits, sizeof(bits));
-        return bits;
-    }
 
     void Prefetch(int64_t offset, int64_t size) { src.Prefetch(offset, size); }
 
     void Seek(uint64_t offset) { src.Seek(offset); }
+
+    template <class T>
+    T GetUninlinedValue(uint32_t x) const {
+        if constexpr (std::is_same_v<T, string>) {
+            return crate->GetString(StringIndex(x));
+        }
+        else if constexpr (std::is_same_v<T, TfToken>) {
+            return crate->GetToken(TokenIndex(x));
+        }
+        else if constexpr (std::is_same_v<T, SdfPath>) {
+            return crate->GetPath(PathIndex(x));
+        }
+        else if constexpr (std::is_same_v<T, SdfAssetPath>) {
+            return SdfAssetPath(crate->GetToken(TokenIndex(x)));
+        }
+        else if constexpr (std::is_same_v<T, SdfVariability>) {
+            // Explicitly convert legacy SdfVariabilityConfig value to
+            // SdfVariabilityUniform. This "config" variability was never used
+            // in USD but clients may have written this value out so we need to
+            // handle it to maintain backwards compatibility.
+            static const uint32_t LEGACY_CONFIG_VARIABILITY = 2;
+            if (x == LEGACY_CONFIG_VARIABILITY) {
+                return SdfVariabilityUniform;
+            }
+            return static_cast<SdfVariability>(x);
+        }
+        else {
+            static_assert(sizeof(T) <= sizeof(x), "");
+            T r;
+            char const *srcBytes = reinterpret_cast<char const *>(&x);
+            char *dstBytes = reinterpret_cast<char *>(&r);
+            memcpy(dstBytes, srcBytes, sizeof(r));
+            return r;
+        }
+    }
 
     // Map helper.
     template <class Map>
@@ -1062,176 +1138,193 @@ public:
     }
 
     ////////////////////////////////////////////////////////////////////////
-    // Base template for Read.  It dispatches to the overloads that take a
-    // dummy pointer argument to allow overloading/enable_if.
+    // Main entry point Read() to read an object from the stream.
     template <class T>
     inline T Read() {
-        return this->Read(static_cast<T *>(nullptr));
-    }
-
-    // read bitwise.
-    template <class T>
-    typename std::enable_if<_IsBitwiseReadWrite<T>::value, T>::type
-    Read(T *) { return StaticRead(src, static_cast<T *>(nullptr)); }
-
-    _TableOfContents Read(_TableOfContents *) {
-        _TableOfContents ret;
-        ret.sections = Read<decltype(ret.sections)>();
-        return ret;
-    }
-    string Read(string *) { return crate->GetString(Read<StringIndex>()); }
-    TfToken Read(TfToken *) { return crate->GetToken(Read<TokenIndex>()); }
-    SdfPath Read(SdfPath *) { return crate->GetPath(Read<PathIndex>()); }
-    VtDictionary Read(VtDictionary *) { return ReadMap<VtDictionary>(); }
-    SdfAssetPath Read(SdfAssetPath *) {
-        return SdfAssetPath(Read<string>());
-    }
-    SdfTimeCode Read(SdfTimeCode *) { return SdfTimeCode(Read<double>()); }
-    SdfUnregisteredValue Read(SdfUnregisteredValue *) {
-        VtValue val = Read<VtValue>();
-        if (val.IsHolding<string>())
-            return SdfUnregisteredValue(val.UncheckedGet<string>());
-        if (val.IsHolding<VtDictionary>())
-            return SdfUnregisteredValue(val.UncheckedGet<VtDictionary>());
-        if (val.IsHolding<SdfUnregisteredValueListOp>())
-            return SdfUnregisteredValue(
-                val.UncheckedGet<SdfUnregisteredValueListOp>());
-        TF_CODING_ERROR("SdfUnregisteredValue in crate file contains invalid "
-                        "type '%s' = '%s'; expected string, VtDictionary or "
-                        "SdfUnregisteredValueListOp; returning empty",
-                        val.GetTypeName().c_str(), TfStringify(val).c_str());
-        return SdfUnregisteredValue();
-    }
-    SdfVariantSelectionMap Read(SdfVariantSelectionMap *) {
-        return ReadMap<SdfVariantSelectionMap>();
-    }
-    SdfLayerOffset Read(SdfLayerOffset *) {
-        // Do not combine the following into one statement.  It must be separate
-        // because the two modifications to 'src' must be correctly sequenced.
-        auto offset = Read<double>();
-        auto scale = Read<double>();
-        return SdfLayerOffset(offset, scale);
-    }
-    SdfReference Read(SdfReference *) {
-        // Do not combine the following into one statement.  It must be separate
-        // because the two modifications to 'src' must be correctly sequenced.
-        auto assetPath = Read<std::string>();
-        auto primPath = Read<SdfPath>();
-        auto layerOffset = Read<SdfLayerOffset>();
-        auto customData = Read<VtDictionary>();
-        return SdfReference(std::move(assetPath), std::move(primPath),
-                            std::move(layerOffset), std::move(customData));
-    }
-    SdfPayload Read(SdfPayload *) {
-        // Do not combine the following into one statement.  It must be separate
-        // because the two modifications to 'src' must be correctly sequenced.
-        auto assetPath = Read<string>();
-        auto primPath = Read<SdfPath>();
-
-        // Layer offsets were added to SdfPayload starting in 0.8.0. Files 
-        // before that cannot have them.
-        const bool canReadLayerOffset = 
-            (Version(crate->_boot) >= Version(0, 8, 0));
-        if (canReadLayerOffset) {
+        if constexpr (_IsBitwiseReadWrite<T>::value) {
+            T bits;
+            src.Read(&bits, sizeof(bits));
+            return bits;
+        }
+        else if constexpr (std::is_same_v<T, _TableOfContents>) {
+            _TableOfContents ret;
+            ret.sections = Read<decltype(ret.sections)>();
+            return ret;
+        }
+        else if constexpr (std::is_same_v<T, string>) {
+            return crate->GetString(Read<StringIndex>());
+        }
+        else if constexpr (std::is_same_v<T, TfToken>) {
+            return crate->GetToken(Read<TokenIndex>());
+        }
+        else if constexpr (std::is_same_v<T, SdfPath>) {
+            return crate->GetPath(Read<PathIndex>());
+        }
+        else if constexpr (std::is_same_v<T, SdfRelocate>) {
+            // Do not combine the following into one statement.  They must be
+            // separate because the two modifications to the 'src' member must
+            // be correctly sequenced.
+            auto sourcePath = Read<SdfPath>();
+            auto targetPath = Read<SdfPath>();
+            return SdfRelocate(std::move(sourcePath), std::move(targetPath));
+        }
+        else if constexpr (std::is_same_v<T, VtDictionary> ||
+                           std::is_same_v<T, SdfVariantSelectionMap>) {
+            return ReadMap<T>();
+        }
+        else if constexpr (std::is_same_v<T, SdfAssetPath> ||
+                           std::is_same_v<T, SdfPathExpression>) {
+            return T(Read<string>());
+        }
+        else if constexpr (std::is_same_v<T, SdfTimeCode>) {
+            return SdfTimeCode(Read<double>());
+        }
+        else if constexpr (std::is_same_v<T, SdfUnregisteredValue>) {
+            VtValue val = Read<VtValue>();
+            if (val.IsHolding<string>())
+                return SdfUnregisteredValue(val.UncheckedGet<string>());
+            if (val.IsHolding<VtDictionary>())
+                return SdfUnregisteredValue(val.UncheckedGet<VtDictionary>());
+            if (val.IsHolding<SdfUnregisteredValueListOp>())
+                return SdfUnregisteredValue(
+                    val.UncheckedGet<SdfUnregisteredValueListOp>());
+            TF_CODING_ERROR("SdfUnregisteredValue in crate file contains "
+                            "invalid type '%s' = '%s'; expected string, "
+                            "VtDictionary or SdfUnregisteredValueListOp; "
+                            "returning empty", val.GetTypeName().c_str(),
+                            TfStringify(val).c_str());
+            return SdfUnregisteredValue();
+        }
+        else if constexpr (std::is_same_v<T, SdfLayerOffset>) {
+            // Do not combine the following into one statement.  They must be
+            // separate because the two modifications to the 'src' member must
+            // be correctly sequenced.
+            auto offset = Read<double>();
+            auto scale = Read<double>();
+            return SdfLayerOffset(offset, scale);
+        }
+        else if constexpr (std::is_same_v<T, SdfReference>) {
+            // Do not combine the following into one statement.  They must be
+            // separate because the two modifications to the 'src' member must
+            // be correctly sequenced.
+            auto assetPath = Read<string>();
+            auto primPath = Read<SdfPath>();
             auto layerOffset = Read<SdfLayerOffset>();
-            return SdfPayload(assetPath, primPath, layerOffset);
-        } else {
-            return SdfPayload(assetPath, primPath);
+            auto customData = Read<VtDictionary>();
+            return SdfReference(std::move(assetPath), std::move(primPath),
+                                std::move(layerOffset), std::move(customData));
         }
-    }
-    template <class T>
-    SdfListOp<T> Read(SdfListOp<T> *) {
-        SdfListOp<T> listOp;
-        auto h = Read<_ListOpHeader>();
-        if (h.IsExplicit()) { listOp.ClearAndMakeExplicit(); }
-        if (h.HasExplicitItems()) {
-            listOp.SetExplicitItems(Read<vector<T>>()); }
-        if (h.HasAddedItems()) { listOp.SetAddedItems(Read<vector<T>>()); }
-        if (h.HasPrependedItems()) {
-            listOp.SetPrependedItems(Read<vector<T>>()); }
-        if (h.HasAppendedItems()) {
-            listOp.SetAppendedItems(Read<vector<T>>()); }
-        if (h.HasDeletedItems()) { listOp.SetDeletedItems(Read<vector<T>>()); }
-        if (h.HasOrderedItems()) { listOp.SetOrderedItems(Read<vector<T>>()); }
-        return listOp;
-    }
-    VtValue Read(VtValue *) {
-        _RecursiveReadAndPrefetch();
-        auto rep = Read<ValueRep>();
-        return crate->UnpackValue(rep);
-    }
-
-    TimeSamples Read(TimeSamples *) {
-
-        TimeSamples ret;
-
-        // Reconstitute a rep for this very location in the file to be retained
-        // in the TimeSamples result.
-        ret.valueRep = ValueRepFor<TimeSamples>(src.Tell());
-
-        _RecursiveRead();
-        auto timesRep = Read<ValueRep>();
-
-        // Deduplicate times in-memory by ValueRep.
-        // Optimistically take the read lock and see if we already have times.
-        tbb::spin_rw_mutex::scoped_lock
-            lock(crate->_sharedTimesMutex, /*write=*/false);
-        auto sharedTimesIter = crate->_sharedTimes.find(timesRep);
-        if (sharedTimesIter != crate->_sharedTimes.end()) {
-            // Yes, reuse existing times.
-            ret.times = sharedTimesIter->second;
-        } else {
-            // The lock upgrade here may or may not be atomic.  This means
-            // someone else may have populated the table while we were
-            // upgrading.
-            lock.upgrade_to_writer();
-            auto iresult =
-                crate->_sharedTimes.emplace(timesRep, Usd_EmptySharedTag);
-            if (iresult.second) {
-                // We get to do the population.
-                auto sharedTimes = TimeSamples::SharedTimes();
-                crate->_UnpackValue(timesRep, &sharedTimes.GetMutable());
-                iresult.first->second.swap(sharedTimes);
+        else if constexpr (std::is_same_v<T, SdfPayload>) {
+            // Do not combine the following into one statement.  They must be
+            // separate because the two modifications to the 'src' member must
+            // be correctly sequenced.
+            auto assetPath = Read<string>();
+            auto primPath = Read<SdfPath>();
+            
+            // Layer offsets were added to SdfPayload starting in 0.8.0. Files 
+            // before that cannot have them.
+            const bool canReadLayerOffset = 
+                (Version(crate->_boot) >= Version(0, 8, 0));
+            if (canReadLayerOffset) {
+                auto layerOffset = Read<SdfLayerOffset>();
+                return SdfPayload(assetPath, primPath, layerOffset);
+            } else {
+                return SdfPayload(assetPath, primPath);
             }
-            ret.times = iresult.first->second;
         }
-        lock.release();
+        else if constexpr (std::is_same_v<T, VtValue>) {
+            _RecursiveReadAndPrefetch();
+            auto rep = Read<ValueRep>();
+            // Guard against recursion here -- a bad file can cause infinite
+            // recursion via VtValues that claim to contain themselves.
+            auto &recursionGuard = _LocalUnpackRecursionGuard::Get();
+            VtValue result;
+            if (!recursionGuard.insert(rep).second) {
+                TF_RUNTIME_ERROR("Corrupt asset <%s>: a VtValue claims to "
+                                 "recursively contain itself -- returning "
+                                 "an empty VtValue instead",
+                                 crate->GetAssetPath().c_str());
+            }
+            else {
+                result = crate->UnpackValue(rep);
+            }
+            recursionGuard.erase(rep);
+            return result;
+        }
+        else if constexpr (std::is_same_v<T, TimeSamples>) {
+            TimeSamples ret;
+            
+            // Reconstitute a rep for this very location in the file to be
+            // retained in the TimeSamples result.
+            ret.valueRep = ValueRepFor<TimeSamples>(src.Tell());
+            
+            _RecursiveRead();
+            auto timesRep = Read<ValueRep>();
+            
+            // Deduplicate times in-memory by ValueRep.  Optimistically take the
+            // read lock and see if we already have times.
+            tbb::spin_rw_mutex::scoped_lock
+                lock(crate->_sharedTimesMutex, /*write=*/false);
+            auto sharedTimesIter = crate->_sharedTimes.find(timesRep);
+            if (sharedTimesIter != crate->_sharedTimes.end()) {
+                // Yes, reuse existing times.
+                ret.times = sharedTimesIter->second;
+            } else {
+                // The lock upgrade here may or may not be atomic.  This means
+                // someone else may have populated the table while we were
+                // upgrading.
+                lock.upgrade_to_writer();
+                auto iresult =
+                    crate->_sharedTimes.emplace(timesRep, Usd_EmptySharedTag);
+                if (iresult.second) {
+                    // We get to do the population.
+                    auto sharedTimes = TimeSamples::SharedTimes();
+                    crate->_UnpackValue(timesRep, &sharedTimes.GetMutable());
+                    iresult.first->second.swap(sharedTimes);
+                }
+                ret.times = iresult.first->second;
+            }
+            lock.release();
+            
+            _RecursiveRead();
+            
+            // Store the offset to the value reps in the file.  The values are
+            // encoded as a uint64_t size followed by contiguous reps.  So we
+            // jump over that uint64_t and store the start of the reps.  Then we
+            // seek forward past the reps to continue.
+            auto numValues = Read<uint64_t>();
+            ret.valuesFileOffset = src.Tell();
+            
+            // Now move past the reps to continue.
+            src.Seek(ret.valuesFileOffset + numValues * sizeof(ValueRep));
 
-        _RecursiveRead();
-
-        // Store the offset to the value reps in the file.  The values are
-        // encoded as a uint64_t size followed by contiguous reps.  So we jump
-        // over that uint64_t and store the start of the reps.  Then we seek
-        // forward past the reps to continue.
-        auto numValues = Read<uint64_t>();
-        ret.valuesFileOffset = src.Tell();
-
-        // Now move past the reps to continue.
-        src.Seek(ret.valuesFileOffset + numValues * sizeof(ValueRep));
-
-        return ret;
+            return ret;
+        }
+        else if constexpr (std::is_same_v<T, TsSpline>) {
+            // Splines are a data blob plus a customData map.
+            vector<uint8_t> splineData = Read<vector<uint8_t>>();
+            std::unordered_map<double, VtDictionary> customData =
+                ReadMap<std::unordered_map<double, VtDictionary>>();
+            return Ts_BinaryDataAccess::CreateSplineFromBinaryData(
+                splineData, std::move(customData));
+        }
+        else {
+            // Otherwise read partial-specialized stuff.
+            return this->_Read(static_cast<T *>(nullptr));
+        }
     }
 
     template <class T>
-    vector<T> Read(vector<T> *) {
-        auto sz = Read<uint64_t>();
-        vector<T> vec(sz);
-        ReadContiguous(vec.data(), sz);
-        return vec;
+    void ReadContiguous(T *values, size_t sz) {
+        if constexpr (_IsBitwiseReadWrite<T>::value) {
+            src.Read(static_cast<void *>(values), sz * sizeof(*values));
+        }
+        else {
+            std::for_each(values, values + sz, [this](T &v) { v = Read<T>(); });
+        }
     }
-
-    template <class T>
-    typename std::enable_if<_IsBitwiseReadWrite<T>::value>::type
-    ReadContiguous(T *values, size_t sz) {
-        src.Read(static_cast<void *>(values), sz * sizeof(*values));
-    }
-
-    template <class T>
-    typename std::enable_if<!_IsBitwiseReadWrite<T>::value>::type
-    ReadContiguous(T *values, size_t sz) {
-        std::for_each(values, values + sz, [this](T &v) { v = Read<T>(); });
-    }
-
+    
+    CrateFile const *crate;
     ByteStream src;
 };
 
@@ -1330,9 +1423,16 @@ public:
     void Write(SdfTimeCode const &tc) { 
         crate->_packCtx->RequestWriteVersionUpgrade(
             Version(0, 9, 0),
-            "A timecode or timecode[] value type was detected, which requires "
+            "A timecode or timecode[] value type was detected which requires "
             "crate version 0.9.0.");
         Write(tc.GetValue()); 
+    }
+    void Write(SdfPathExpression const &pathExpr) {
+        crate->_packCtx->RequestWriteVersionUpgrade(
+            Version(0,10,0),
+            "A pathExpression value type was detected which requires crate "
+            "version 0.10.0.");
+        Write(pathExpr.GetText());
     }
     void Write(SdfUnregisteredValue const &urv) { Write(urv.GetValue()); }
     void Write(SdfVariantSelectionMap const &vsmap) { WriteMap(vsmap); }
@@ -1388,6 +1488,14 @@ public:
             "version 0.8.0.");
         Write<SdfPayload>(listOp);
     }
+    void Write(SdfRelocate const &relocate) {
+        crate->_packCtx->RequestWriteVersionUpgrade(
+            Version(0, 11, 0),
+            "A SdfRelocatesMap value was detected which requires crate "
+            "version 0.11.0.");
+         Write(relocate.first);
+         Write(relocate.second);
+    }
     void Write(VtValue const &val) {
         ValueRep rep;
         _RecursiveWrite(
@@ -1418,6 +1526,24 @@ public:
         WriteContiguous(reps.data(), reps.size());
     }
 
+    void Write(const TsSpline &spline) {
+        // Make sure our output format is compatible with splines.  If the
+        // spline binary format is updated, we must rev the required version
+        // here as well; the static_assert is here to remind us.
+        static_assert(Ts_BinaryDataAccess::GetBinaryFormatVersion() == 1);
+        crate->_packCtx->RequestWriteVersionUpgrade(
+            Version(0,12,0),
+            "A spline was detected which requires crate "
+            "version 0.12.0.");
+
+        // Splines are a data blob plus a customData map.
+        vector<uint8_t> splineData;
+        const std::unordered_map<double, VtDictionary> *customData = nullptr;
+        Ts_BinaryDataAccess::GetBinaryData(spline, &splineData, &customData);
+        Write(splineData);
+        WriteMap(*customData);
+    }
+
     template <class T>
     void Write(vector<T> const &vec) {
         WriteAs<uint64_t>(vec.size());
@@ -1425,15 +1551,14 @@ public:
     }
 
     template <class T>
-    typename std::enable_if<_IsBitwiseReadWrite<T>::value>::type
-    WriteContiguous(T const *values, size_t sz) {
-        sink->Write(values, sizeof(*values) * sz);
-    }
-
-    template <class T>
-    typename std::enable_if<!_IsBitwiseReadWrite<T>::value>::type
-    WriteContiguous(T const *values, size_t sz) {
-        std::for_each(values, values + sz, [this](T const &v) { Write(v); });
+    void WriteContiguous(T const *values, size_t sz) {
+        if constexpr (_IsBitwiseReadWrite<T>::value) {
+            sink->Write(values, sizeof(*values) * sz);
+        }
+        else {
+            std::for_each(values, values + sz,
+                          [this](T const &v) { Write(v); });
+        }            
     }
 
     CrateFile *crate;
@@ -1442,95 +1567,152 @@ public:
 
 
 ////////////////////////////////////////////////////////////////////////
-// ValueHandler class hierarchy.  See comment for _ValueHandler itself for more
-// information.
+// ValueHandler class template -- supports top-level value pack/unpack.
 
-struct CrateFile::_ValueHandlerBase {
-    // Base Clear() does nothing.
-    void Clear() {}
-};
-
-// Scalar handler for non-inlined types -- does deduplication.
-template <class T, class Enable>
-struct CrateFile::_ScalarValueHandlerBase : _ValueHandlerBase
+template <class T>
+struct CrateFile::_ValueHandler : _ValueHandlerBase
 {
     inline ValueRep Pack(_Writer writer, T const &val) {
-        // See if we can inline the value -- we might be able to if there's some
-        // encoding that can exactly represent it in 4 bytes.
-        uint32_t ival = 0;
-        if (_EncodeInline(val, &ival)) {
-            auto ret = ValueRepFor<T>(ival);
-            ret.SetIsInlined();
-            return ret;
+        if constexpr (_IsAlwaysInlined<T>::value) {
+            // Inline it into the rep.
+            return ValueRepFor<T>(writer.GetInlinedValue(val));
+        }
+        else {
+            // The type is not always inlined, but some values of the type might
+            // be if they can be encoded in 4 bytes.
+            uint32_t ival = 0;
+            if (_EncodeInline(val, &ival)) {
+                auto ret = ValueRepFor<T>(ival);
+                ret.SetIsInlined();
+                return ret;
+            }
+            
+            // Otherwise dedup and/or write...
+            if (!_valueDedup) {
+                _valueDedup.reset(
+                    new typename decltype(_valueDedup)::element_type);
+            }
+            
+            auto iresult = _valueDedup->emplace(val, ValueRep());
+            ValueRep &target = iresult.first->second;
+            if (iresult.second) {
+                // Not yet present.  Invoke the write function.
+                target = ValueRepFor<T>(writer.Tell());
+                writer.Write(val);
+            }
+            return target;
+        }
+    }
+    
+    template <class Reader>
+    inline void Unpack(Reader reader, ValueRep rep, T *out) const {
+
+        if constexpr (_IsAlwaysInlined<T>::value) {
+            // Value is directly in payload data.
+            uint32_t tmp =
+                (rep.GetPayload() & ((1ull << (sizeof(uint32_t) * 8))-1));
+            *out = reader.template GetUninlinedValue<T>(tmp);
+        }
+        else {
+            // If the value is inlined, just decode it.
+            if (rep.IsInlined()) {
+                uint32_t tmp = (rep.GetPayload() &
+                                ((1ull << (sizeof(uint32_t) * 8))-1));
+                _DecodeInline(out, tmp);
+                return;
+            }
+            // Otherwise we have to read it from the file.
+            reader.Seek(rep.GetPayload());
+            *out = reader.template Read<T>();
+        }
+    }
+
+    ValueRep PackArray(_Writer w, VtArray<T> const &array) {
+        auto result = ValueRepForArray<T>(0);
+
+        // If this is an empty array we inline it.
+        if (array.empty())
+            return result;
+
+        if (!_arrayDedup) {
+            _arrayDedup.reset(
+                new typename decltype(_arrayDedup)::element_type);
         }
 
-        // Otherwise dedup and/or write...
-        if (!_valueDedup) {
-            _valueDedup.reset(
-                new typename decltype(_valueDedup)::element_type);
-        }
-
-        auto iresult = _valueDedup->emplace(val, ValueRep());
+        auto iresult = _arrayDedup->emplace(array, result);
         ValueRep &target = iresult.first->second;
         if (iresult.second) {
-            // Not yet present.  Invoke the write function.
-            target = ValueRepFor<T>(writer.Tell());
-            writer.Write(val);
+            // Not yet present.
+            if (w.crate->_packCtx->writeVersion < Version(0,5,0)) {
+                target.SetPayload(w.Align(sizeof(uint64_t)));
+                w.WriteAs<uint32_t>(1);
+                w.WriteAs<uint32_t>(array.size());
+                w.WriteContiguous(array.cdata(), array.size());
+            } else {
+                // If we're writing 0.5.0 or greater, see if we can possibly
+                // compress this array.
+                target = _WritePossiblyCompressedArray(
+                    w, array, w.crate->_packCtx->writeVersion, 0);
+            }
         }
         return target;
     }
+
     template <class Reader>
-    inline void Unpack(Reader reader, ValueRep rep, T *out) const {
-        // If the value is inlined, just decode it.
-        if (rep.IsInlined()) {
-            uint32_t tmp = (rep.GetPayload() &
-                            ((1ull << (sizeof(uint32_t) * 8))-1));
-            _DecodeInline(out, tmp);
+    void UnpackArray(Reader reader, ValueRep rep, VtArray<T> *out) const {
+        // If payload is 0, it's an empty array.
+        if (rep.GetPayload() == 0) {
+            *out = VtArray<T>();
             return;
         }
-        // Otherwise we have to read it from the file.
         reader.Seek(rep.GetPayload());
-        *out = reader.template Read<T>();
-    }
-    void Clear() {
-        _valueDedup.reset();
-    }
-    std::unique_ptr<std::unordered_map<T, ValueRep, _Hasher>> _valueDedup;
-};
 
-// Scalar handler for inlined types -- no deduplication.
-template <class T>
-struct CrateFile::_ScalarValueHandlerBase<
-    T, typename std::enable_if<ValueTypeTraits<T>::isInlined>::type>
-: _ValueHandlerBase
-{
-    inline ValueRep Pack(_Writer writer, T val) {
-        // Inline it into the rep.
-        return ValueRepFor<T>(writer.GetInlinedValue(val));
+        // Check version
+        Version fileVer(reader.crate->_boot);
+        if (fileVer < Version(0,5,0)) {
+            // Read and discard shape size.
+            reader.template Read<uint32_t>();
+        }
+        _ReadPossiblyCompressedArray(reader, rep, out, fileVer, 0);
     }
-    template <class Reader>
-    inline void Unpack(Reader reader, ValueRep rep, T *out) const {
-        // Value is directly in payload data.
-        uint32_t tmp =
-            (rep.GetPayload() & ((1ull << (sizeof(uint32_t) * 8))-1));
-        *out = reader.GetUninlinedValue(tmp, static_cast<T *>(nullptr));
-    }
-};
 
-// Array handler for types that don't support arrays.
-template <class T, class Enable>
-struct CrateFile::_ArrayValueHandlerBase : _ScalarValueHandlerBase<T>
-{
     ValueRep PackVtValue(_Writer w, VtValue const &v) {
+        if constexpr (_SupportsArray<T>::value) {
+            if (v.IsArrayValued()) {
+                return this->PackArray(w, v.UncheckedGet<VtArray<T>>());
+            }
+        }
         return this->Pack(w, v.UncheckedGet<T>());
     }
 
     template <class Reader>
     void UnpackVtValue(Reader r, ValueRep rep, VtValue *out) {
+        if constexpr (_SupportsArray<T>::value) {
+            if (rep.IsArray()) {
+                VtArray<T> array;
+                this->UnpackArray(r, rep, &array);
+                out->Swap(array);
+                return;
+            }
+        }
         T obj;
         this->Unpack(r, rep, &obj);
         out->Swap(obj);
     }
+    
+    void Clear() {
+        if constexpr (!_IsAlwaysInlined<T>::value) {
+            _valueDedup.reset();
+        }
+        if constexpr (_SupportsArray<T>::value) {
+            _arrayDedup.reset();
+        }                
+    }
+    
+    std::unique_ptr<std::unordered_map<T, ValueRep, _Hasher>> _valueDedup;
+    std::unique_ptr<
+        std::unordered_map<VtArray<T>, ValueRep, _Hasher>> _arrayDedup;
+
 };
 
 // Don't compress arrays smaller than this.
@@ -1738,11 +1920,19 @@ _ReadUncompressedArray(
         // pass addRef=false here, because CreateZeroCopyDataSource does that
         // already -- it needs to know if it's taken the count from 0 to 1 or
         // not.
-        void *addr = reader.src.TellMemoryAddress();
-        *out = std::move(
-            VtArray<T>(reader.src.CreateZeroCopyDataSource(addr, numBytes),
-                       static_cast<T *>(addr), size, /*addRef=*/false)
-            );
+        void const *addr = reader.src.TellMemoryAddress();
+
+        if (Vt_ArrayForeignDataSource *foreignSrc =
+            reader.src.CreateZeroCopyDataSource(addr, numBytes)) {
+            *out = VtArray<T>(
+                foreignSrc,
+                static_cast<T *>(const_cast<void *>(addr)),
+                size, /*addRef=*/false);
+        }
+        else {
+            // In case of error, return an empty array.
+            out->clear();
+        }
     }
     else {
         // Copy the data instead.
@@ -1760,20 +1950,54 @@ _ReadPossiblyCompressedArray(
     _ReadUncompressedArray(reader, rep, out, ver);
 }
 
-// Return true if compressed, false if not.
+struct _CompressedIntsReader
+{
+    template <class Reader, class Int>
+    void Read(Reader &reader, Int *out, size_t numInts) {
+        using Compressor = typename std::conditional<
+            sizeof(Int) == 4,
+            Usd_IntegerCompression,
+            Usd_IntegerCompression64>::type;
+        
+        _AllocateBufferAndWorkingSpace<Compressor>(numInts);
+        auto compressedSize = reader.template Read<uint64_t>();
+        if (compressedSize > _compBufferSize) {
+            // Don't read more than the available memory buffer.
+            compressedSize = _compBufferSize;
+        }
+        reader.ReadContiguous(_compBuffer.get(), compressedSize);
+        Compressor::DecompressFromBuffer(
+            _compBuffer.get(), compressedSize, out, numInts,
+            _workingSpace.get());
+    }
+
+private:
+    template <class Comp>
+    void _AllocateBufferAndWorkingSpace(size_t numInts) {
+        size_t reqBufferSize = Comp::GetCompressedBufferSize(numInts);
+        size_t reqWorkingSize = Comp::GetDecompressionWorkingSpaceSize(numInts);
+        if (reqBufferSize > _compBufferSize) {
+            _compBuffer.reset(new char[reqBufferSize]);
+            _compBufferSize = reqBufferSize;
+        }
+        if (reqWorkingSize > _workingSpaceSize) {
+            _workingSpace.reset(new char[reqWorkingSize]);
+            _workingSpaceSize = reqWorkingSize;
+        }
+    }
+    
+    std::unique_ptr<char[]> _compBuffer;
+    size_t _compBufferSize = 0;
+    std::unique_ptr<char[]> _workingSpace;
+    size_t _workingSpaceSize = 0;
+};
+
 template <class Reader, class Int>
 static inline void
-_ReadCompressedInts(Reader reader, Int *out, size_t size)
+_ReadCompressedInts(Reader &reader, Int *out, size_t size)
 {
-    using Compressor = typename std::conditional<
-        sizeof(Int) == 4,
-        Usd_IntegerCompression,
-        Usd_IntegerCompression64>::type;
-    std::unique_ptr<char[]> compBuffer(
-        new char[Compressor::GetCompressedBufferSize(size)]);
-    auto compSize = reader.template Read<uint64_t>();
-    reader.ReadContiguous(compBuffer.get(), compSize);
-        Compressor::DecompressFromBuffer(compBuffer.get(), compSize, out, size);
+    _CompressedIntsReader r;
+    r.Read(reader, out, size);
 }
 
 template <class Reader, class T>
@@ -1855,109 +2079,22 @@ _ReadPossiblyCompressedArray(
     }
 }
 
-// Array handler for types that support arrays -- does deduplication.
-template <class T>
-struct CrateFile::_ArrayValueHandlerBase<
-    T, typename std::enable_if<ValueTypeTraits<T>::supportsArray>::type>
-: _ScalarValueHandlerBase<T>
-{
-    ValueRep PackArray(_Writer w, VtArray<T> const &array) {
-        auto result = ValueRepForArray<T>(0);
-
-        // If this is an empty array we inline it.
-        if (array.empty())
-            return result;
-
-        if (!_arrayDedup) {
-            _arrayDedup.reset(
-                new typename decltype(_arrayDedup)::element_type);
-        }
-
-        auto iresult = _arrayDedup->emplace(array, result);
-        ValueRep &target = iresult.first->second;
-        if (iresult.second) {
-            // Not yet present.
-            if (w.crate->_packCtx->writeVersion < Version(0,5,0)) {
-                target.SetPayload(w.Align(sizeof(uint64_t)));
-                w.WriteAs<uint32_t>(1);
-                w.WriteAs<uint32_t>(array.size());
-                w.WriteContiguous(array.cdata(), array.size());
-            } else {
-                // If we're writing 0.5.0 or greater, see if we can possibly
-                // compress this array.
-                target = _WritePossiblyCompressedArray(
-                    w, array, w.crate->_packCtx->writeVersion, 0);
-            }
-        }
-        return target;
-    }
-
-    template <class Reader>
-    void UnpackArray(Reader reader, ValueRep rep, VtArray<T> *out) const {
-        // If payload is 0, it's an empty array.
-        if (rep.GetPayload() == 0) {
-            *out = VtArray<T>();
-            return;
-        }
-        reader.Seek(rep.GetPayload());
-
-        // Check version
-        Version fileVer(reader.crate->_boot);
-        if (fileVer < Version(0,5,0)) {
-            // Read and discard shape size.
-            reader.template Read<uint32_t>();
-        }
-        _ReadPossiblyCompressedArray(reader, rep, out, fileVer, 0);
-    }
-
-    ValueRep PackVtValue(_Writer w, VtValue const &v) {
-        return v.IsArrayValued() ?
-            this->PackArray(w, v.UncheckedGet<VtArray<T>>()) :
-            this->Pack(w, v.UncheckedGet<T>());
-    }
-
-    template <class Reader>
-    void UnpackVtValue(Reader r, ValueRep rep, VtValue *out) {
-        if (rep.IsArray()) {
-            VtArray<T> array;
-            this->UnpackArray(r, rep, &array);
-            out->Swap(array);
-        } else {
-            T obj;
-            this->Unpack(r, rep, &obj);
-            out->Swap(obj);
-        }
-    }
-
-    void Clear() {
-        // Invoke base implementation to clear scalar table.
-        _ScalarValueHandlerBase<T>::Clear();
-        _arrayDedup.reset();
-    }
-    
-    std::unique_ptr<
-        std::unordered_map<VtArray<T>, ValueRep, _Hasher>> _arrayDedup;
-};
-
-// _ValueHandler derives _ArrayValueHandlerBase, which in turn derives
-// _ScalarValueHandlerBase.  Those templates are specialized to handle types
-// that support or do not support arrays and types that are inlined or not
-// inlined.
-template <class T>
-struct CrateFile::_ValueHandler : public _ArrayValueHandlerBase<T> {};
-
-
 ////////////////////////////////////////////////////////////////////////
 // CrateFile
 
-/*static*/ bool
-CrateFile::CanRead(string const &assetPath) {
+/*static*/
+bool
+CrateFile::CanRead(string const &assetPath)
+{
     // Fetch the asset from Ar.
-    auto asset = ArGetResolver().OpenAsset(assetPath);
-    if (!asset) {
-        return false;
-    }
+    auto asset = ArGetResolver().OpenAsset(ArResolvedPath(assetPath));
+    return asset && CanRead(assetPath, asset);
+}
 
+/*static*/
+bool
+CrateFile::CanRead(string const &assetPath, ArAssetSharedPtr const &asset)
+{
     // If the asset has a file, mark it random access to avoid prefetch.
     FILE *file; size_t offset;
     std::tie(file, offset) = asset->GetFileUnsafe();
@@ -1983,85 +2120,110 @@ CrateFile::CanRead(string const &assetPath) {
 
 /* static */
 std::unique_ptr<CrateFile>
-CrateFile::CreateNew()
+CrateFile::CreateNew(bool detached)
 {
-    bool useMmap = !TfGetenvBool("USDC_USE_PREAD", false);
-    return std::unique_ptr<CrateFile>(new CrateFile(useMmap));
+    const bool useMmap = 
+        !TfGetEnvSetting(USDC_USE_ASSET) &&
+        !TfGetenvBool("USDC_USE_PREAD", false);
+
+    const Options opt = 
+        detached ? Options::Detached :
+        useMmap ? Options::UseMmap :
+        Options::Default;
+    
+    return std::unique_ptr<CrateFile>(new CrateFile(opt));
 }
 
 /* static */
-CrateFile::_FileMappingIPtr
+CrateFile::_FileMapping
 CrateFile::_MmapAsset(char const *assetPath, ArAssetSharedPtr const &asset)
 {
     FILE *file; size_t offset;
     std::tie(file, offset) = asset->GetFileUnsafe();
     std::string errMsg;
-    auto mapping = _FileMappingIPtr(
-        new _FileMapping(ArchMapFileReadWrite(file, &errMsg),
-                         offset, asset->GetSize()));
-    if (!mapping->GetMapStart()) {
+    auto mapping = _FileMapping(ArchMapFileReadOnly(file, &errMsg),
+                                offset, asset->GetSize());
+    if (!mapping.GetMapStart()) {
         TF_RUNTIME_ERROR("Couldn't map asset '%s'%s%s", assetPath,
                          !errMsg.empty() ? ": " : "",
                          errMsg.c_str());
-        mapping.reset();
+        mapping.Reset();
     }
     return mapping;
 }
 
 /* static */
-CrateFile::_FileMappingIPtr
+CrateFile::_FileMapping
 CrateFile::_MmapFile(char const *fileName, FILE *file)
 {
     std::string errMsg;
-    auto mapping = _FileMappingIPtr(
-        new _FileMapping(ArchMapFileReadWrite(file, &errMsg)));
-    if (!mapping->GetMapStart()) {
+    auto mapping = _FileMapping(ArchMapFileReadOnly(file, &errMsg));
+    if (!mapping.GetMapStart()) {
         TF_RUNTIME_ERROR("Couldn't map file '%s'%s%s", fileName,
                          !errMsg.empty() ? ": " : "",
                          errMsg.c_str());
-        mapping.reset();
+        mapping.Reset();
     }
     return mapping;
 }
 
 /* static */
 std::unique_ptr<CrateFile>
-CrateFile::Open(string const &assetPath)
+CrateFile::Open(string const &assetPath,
+                bool detached)
 {
-    TfAutoMallocTag tag2("Usd_CrateFile::CrateFile::Open");
+    TfAutoMallocTag tag("Usd_CrateFile::CrateFile::Open");
+    return Open(
+        assetPath, ArGetResolver().OpenAsset(ArResolvedPath(assetPath)),
+        detached);
+}
+
+std::unique_ptr<CrateFile>
+CrateFile::Open(string const &assetPath, ArAssetSharedPtr const &srcAsset,
+                bool detached)
+{
+    TfAutoMallocTag tag("Usd_CrateFile::CrateFile::Open");
 
     std::unique_ptr<CrateFile> result;
 
-    // Fetch the asset from Ar.
-    auto asset = ArGetResolver().OpenAsset(assetPath);
+    ArAssetSharedPtr detachedAsset;
+    if (detached && srcAsset) {
+        detachedAsset = srcAsset->GetDetachedAsset();
+    }
+
+    const ArAssetSharedPtr& asset = detached ? detachedAsset : srcAsset;
+
     if (!asset) {
         TF_RUNTIME_ERROR("Failed to open asset '%s'", assetPath.c_str());
         return result;
     }
 
-    // See if we can get an underlying FILE * for the asset.
-    FILE *file; size_t offset;
-    std::tie(file, offset) = asset->GetFileUnsafe();
-    if (file) {
-        // If so, then we'll either mmap it or use pread() on it.
-        if (!TfGetenvBool("USDC_USE_PREAD", false)) {
-            // Try to memory-map the file.
-            auto mapping = _MmapAsset(assetPath.c_str(), asset);
-            result.reset(new CrateFile(assetPath, ArchGetFileName(file),
-                                       std::move(mapping), asset));
-        } else {
-            // Use pread with the asset's file.
-            result.reset(new CrateFile(
-                             assetPath, ArchGetFileName(file),
-                             _FileRange(
-                                 file, offset, asset->GetSize(),
-                                 /*hasOwnership=*/ false),
-                             asset));
+    if (!TfGetEnvSetting(USDC_USE_ASSET)) {
+        // See if we can get an underlying FILE * for the asset.
+        FILE *file; size_t offset;
+        std::tie(file, offset) = asset->GetFileUnsafe();
+        if (file) {
+            // If so, then we'll either mmap it or use pread() on it.
+            if (!TfGetenvBool("USDC_USE_PREAD", false)) {
+                // Try to memory-map the file.
+                auto mapping = _MmapAsset(assetPath.c_str(), asset);
+                result.reset(new CrateFile(assetPath, ArchGetFileName(file),
+                                           std::move(mapping), asset));
+            } else {
+                // Use pread with the asset's file.
+                result.reset(new CrateFile(
+                                 assetPath, ArchGetFileName(file),
+                                 _FileRange(
+                                     file, offset, asset->GetSize(),
+                                     /*hasOwnership=*/ false),
+                                 asset));
+            }
         }
     }
-    else {
+
+    if (!result) {
         // With no underlying FILE *, we'll go through ArAsset::Read() directly.
-        result.reset(new CrateFile(assetPath, asset));
+        result.reset(new CrateFile(assetPath, asset, detached));
     }
     
     // If the resulting CrateFile has no asset path, reading failed.
@@ -2072,11 +2234,24 @@ CrateFile::Open(string const &assetPath)
 }
 
 /* static */
+CrateFile::Version
+CrateFile::GetSoftwareVersion()
+{
+    return _SoftwareVersion;
+}
+
+/* static */
 TfToken const &
 CrateFile::GetSoftwareVersionToken()
 {
-    static TfToken tok(_SoftwareVersion.AsString());
+    static TfToken tok(GetSoftwareVersion().AsString());
     return tok;
+}
+
+CrateFile::Version
+CrateFile::GetFileVersion() const
+{
+    return Version(_boot);
 }
 
 TfToken
@@ -2085,17 +2260,18 @@ CrateFile::GetFileVersionToken() const
     return TfToken(Version(_boot).AsString());
 }
 
-CrateFile::CrateFile(bool useMmap)
-    : _useMmap(useMmap)
+CrateFile::CrateFile(Options opt)
+    : _detached(opt == Options::Detached)
+    , _useMmap(opt == Options::UseMmap)
 {
     _DoAllTypeRegistrations();
 }
 
 CrateFile::CrateFile(string const &assetPath, string const &fileName,
-                     _FileMappingIPtr mapping, ArAssetSharedPtr const &asset)
+                     _FileMapping &&mapping, ArAssetSharedPtr const &asset)
     : _mmapSrc(std::move(mapping))
+    , _detached(false)
     , _assetPath(assetPath)
-    , _fileReadFrom(fileName)
     , _useMmap(true)
 {
     // Note that we intentionally do not store the asset -- we want to close the
@@ -2107,12 +2283,12 @@ CrateFile::CrateFile(string const &assetPath, string const &fileName,
 void
 CrateFile::_InitMMap() {
     if (_mmapSrc) {
-        int64_t mapSize = _mmapSrc->GetLength();
+        int64_t mapSize = _mmapSrc.GetLength();
         
         // Mark the whole file as random access to start to avoid large NFS
         // prefetch.  We explicitly prefetch the structural sections later.
         ArchMemAdvise(
-            _mmapSrc->GetMapStart(), mapSize, ArchMemAdviceRandomAccess);
+            _mmapSrc.GetMapStart(), mapSize, ArchMemAdviceRandomAccess);
 
         // If we're debugging access, allocate a debug page map. 
         static string debugPageMapPattern = TfGetenv("USDC_DUMP_PAGE_MAPS");
@@ -2122,9 +2298,10 @@ CrateFile::_InitMMap() {
              ArchRegex(debugPageMapPattern,
                        ArchRegex::GLOB).Match(_assetPath))) {
             auto pageAlignedMapSize =
-                (_mmapSrc->GetMapStart() + mapSize) -
-                RoundToPageAddr(_mmapSrc->GetMapStart());
-            int64_t npages = (pageAlignedMapSize + PAGESIZE-1) / PAGESIZE;
+                (_mmapSrc.GetMapStart() + mapSize) -
+                RoundToPageAddr(_mmapSrc.GetMapStart());
+            int64_t npages =
+                (pageAlignedMapSize + CRATE_PAGESIZE-1) / CRATE_PAGESIZE;
             _debugPageMap.reset(new char[npages]);
             memset(_debugPageMap.get(), 0, npages);
         } 
@@ -2132,23 +2309,21 @@ CrateFile::_InitMMap() {
         // Make an mmap stream but disable auto prefetching -- the
         // _ReadStructuralSections() call manages prefetching itself using
         // higher-level knowledge.
-        auto reader =
-            _MakeReader(
-                _MakeMmapStream(
-                    _mmapSrc.get(), _debugPageMap.get()).DisablePrefetch());
+        auto reader = _MakeReader(
+            _MakeMmapStream(&_mmapSrc, _debugPageMap.get()).DisablePrefetch());
         TfErrorMark m;
         _ReadStructuralSections(reader, mapSize);
-        if (!m.IsClean())
+        if (!m.IsClean()){
             _assetPath.clear();
+        }
 
         // Restore default prefetch behavior if we're not doing custom prefetch.
         if (!_GetMMapPrefetchKB()) {
             ArchMemAdvise(
-                _mmapSrc->GetMapStart(), mapSize, ArchMemAdviceNormal);
+                _mmapSrc.GetMapStart(), mapSize, ArchMemAdviceNormal);
         }
     } else {
         _assetPath.clear();
-        _fileReadFrom.clear();
     }
 }
 
@@ -2156,8 +2331,8 @@ CrateFile::CrateFile(string const &assetPath, string const &fileName,
                      _FileRange &&inputFile, ArAssetSharedPtr const &asset)
     : _preadSrc(std::move(inputFile))
     , _assetSrc(asset)
+    , _detached(false)
     , _assetPath(assetPath)
-    , _fileReadFrom(fileName)
     , _useMmap(false)
 {
     // Note that we *do* store the asset here, since we need to keep the FILE*
@@ -2179,15 +2354,16 @@ CrateFile::_InitPread()
     _ReadStructuralSections(reader, rangeLength);
     if (!m.IsClean()) {
         _assetPath.clear();
-        _fileReadFrom.clear();
     }
     // Restore default prefetch behavior.
     ArchFileAdvise(_preadSrc.file, _preadSrc.startOffset,
                    rangeLength, ArchFileAdviceNormal);
 }
 
-CrateFile::CrateFile(string const &assetPath, ArAssetSharedPtr const &asset)
+CrateFile::CrateFile(string const &assetPath, ArAssetSharedPtr const &asset,
+                     bool detached)
     : _assetSrc(asset)
+    , _detached(detached)
     , _assetPath(assetPath)
     , _useMmap(false)
 {
@@ -2211,14 +2387,14 @@ CrateFile::~CrateFile()
 
     // Dump a debug page map if requested.
     if (_useMmap && _mmapSrc && _debugPageMap) {
-        auto mapStart = _mmapSrc->GetMapStart();
+        auto mapStart = _mmapSrc.GetMapStart();
         int64_t startPage = GetPageNumber(mapStart);
-        int64_t endPage = GetPageNumber(mapStart + _mmapSrc->GetLength() - 1);
+        int64_t endPage = GetPageNumber(mapStart + _mmapSrc.GetLength() - 1);
         int64_t npages = 1 + endPage - startPage;
         std::unique_ptr<unsigned char []> mincoreMap(new unsigned char[npages]);
         void const *p = static_cast<void const *>(RoundToPageAddr(mapStart));
         if (!ArchQueryMappedMemoryResidency(
-                p, npages*PAGESIZE, mincoreMap.get())) {
+                p, npages*CRATE_PAGESIZE, mincoreMap.get())) {
             TF_WARN("failed to obtain memory residency information");
             return;
         }
@@ -2274,42 +2450,30 @@ CrateFile::~CrateFile()
 
     // If we have zero copy ranges to detach, do it now.
     if (_useMmap && _mmapSrc) {
-        _mmapSrc->DetachReferencedRanges();
-        _mmapSrc.reset();
+        _mmapSrc.Reset();
     }
+
+    WorkMoveDestroyAsync(_paths);
+    WorkMoveDestroyAsync(_tokens);
+    WorkMoveDestroyAsync(_strings);
+    WorkMoveDestroyAsync(_sharedTimes);
+    WorkMoveDestroyAsync(_packValueFunctions);
 
     _DeleteValueHandlers();
-}
-
-bool
-CrateFile::CanPackTo(string const &fileName) const
-{
-    if (_assetPath.empty()) {
-        return true;
-    }
-    // Try to open \p fileName and get its filename.
-    bool result = false;
-    if (FILE *f = ArchOpenFile(fileName.c_str(), "rb")) {
-        if (ArchGetFileName(f) == _fileReadFrom) {
-            result = true;
-        }
-        fclose(f);
-    }
-    return result;
 }
 
 CrateFile::Packer
 CrateFile::StartPacking(string const &fileName)
 {
-    // We open the file using the TfSafeOutputFile helper so that we can avoid
-    // stomping on the file for other processes currently observing it, in the
-    // case that we're replacing it.  In the case where we're actually updating
-    // an existing file, we have no choice but to modify it in place.
-    TfErrorMark m;
-    auto out = _assetPath.empty() ?
-        TfSafeOutputFile::Replace(fileName) :
-        TfSafeOutputFile::Update(fileName);
-    if (m.IsClean()) {
+    auto out = ArGetResolver().OpenAssetForWrite(
+        ArResolvedPath(fileName), 
+        _assetPath.empty() ? 
+            ArResolver::WriteMode::Replace :
+            ArResolver::WriteMode::Update);
+    if (!out) {
+        TF_RUNTIME_ERROR("Unable to open %s for write", fileName.c_str());
+    }
+    else {
         // Create a packing context so we can start writing.
         _packCtx.reset(new _PackingContext(this, std::move(out), fileName));
         // Get rid of our local list of specs, if we have one -- the client is
@@ -2338,55 +2502,68 @@ CrateFile::Packer::Close()
     if (!TF_VERIFY(_crate && _crate->_packCtx))
         return false;
 
-    // Write contents.
+    // Write contents. Always close the output asset even if writing failed.
     bool writeResult = _crate->_Write();
+
+    if (writeResult) {
+        // Abandon the asset here to release resources that the subsequent call
+        // to CloseOutputAsset() might need.  E.g. on Windows,
+        // CloseOutputAsset() may try to overwrite the file that _assetSrc has
+        // open for read.
+        _crate->_assetSrc.reset();
+    }
     
-    // If we wrote successfully, store the fileName and size.
+    writeResult &= _crate->_packCtx->CloseOutputAsset();
+    
+    // If we wrote successfully, store the fileName.
     if (writeResult) {
         _crate->_assetPath = _crate->_packCtx->fileName;
     }
 
-    // Pull out the file handle and kill the packing context.
-    TfSafeOutputFile outFile = _crate->_packCtx->ExtractOutputFile();
     _crate->_packCtx.reset();
 
     if (!writeResult)
         return false;
 
-    // Note that once Save()d, we never go back to reading from an _assetSrc.
-    _crate->_assetSrc.reset();
-
-    // Try to reuse the open FILE * if we can, otherwise open for read.
-    _FileRange fileRange;
-    if (outFile.IsOpenForUpdate()) {
-        fileRange = _FileRange(outFile.ReleaseUpdatedFile(),
-                               /*startOffset=*/0, /*length=*/-1,
-                               /*hasOwnership=*/true);
-    }
-    else {
-        outFile.Close();
-        fileRange = _FileRange(ArchOpenFile(_crate->_assetPath.c_str(), "rb"),
-                               /*startOffset=*/0, /*length=*/-1,
-                               /*hasOwnership=*/true);
+    // Reset so we can read values from the newly written asset.
+    // See CrateFile::Open.
+    auto asset = ArGetResolver().OpenAsset(ArResolvedPath(_crate->_assetPath));
+    if (asset && _crate->IsDetached()) {
+        asset = asset->GetDetachedAsset();
     }
 
-    // Reset the filename we've read content from.
-    _crate->_fileReadFrom = ArchGetFileName(fileRange.file);
-
-    // Reset the mapping or file so we can read values from the newly
-    // written file.
-    if (_crate->_useMmap) {
-        // Must remap the file.
-        _crate->_mmapSrc =
-            _MmapFile(_crate->_assetPath.c_str(), fileRange.file);
-        if (!_crate->_mmapSrc)
-            return false;
-        _crate->_InitMMap();
-    } else {
-        // Must adopt the file handle if we don't already have one.
-        _crate->_preadSrc = std::move(fileRange);
-        _crate->_InitPread();
+    if (!asset) {
+        return false;
     }
+
+    if (!TfGetEnvSetting(USDC_USE_ASSET)) {
+        FILE *file; size_t offset;
+        std::tie(file, offset) = asset->GetFileUnsafe();
+        if (file) {
+            if (_crate->_useMmap) {
+                // Must remap the file.
+                _crate->_mmapSrc = _MmapFile(_crate->_assetPath.c_str(), file);
+                if (!_crate->_mmapSrc) {
+                    return false;
+                }
+                _crate->_assetSrc.reset();
+                _crate->_InitMMap();
+            }
+            else {
+                _crate->_preadSrc = _FileRange(
+                    file, offset, asset->GetSize(), /*hasOwnership=*/false);
+                _crate->_assetSrc = asset;
+                _crate->_InitPread();
+            }
+
+            return true;
+        }
+    }
+
+    _crate->_mmapSrc.Reset();
+    _crate->_preadSrc = _FileRange();
+    _crate->_assetSrc = asset;
+    _crate->_InitAsset();
         
     return true;
 }
@@ -2406,8 +2583,9 @@ CrateFile::Packer::operator=(Packer &&other)
 
 CrateFile::Packer::~Packer()
 {
-    if (_crate)
+    if (_crate) {
         _crate->_packCtx.reset();
+    }
 }
 
 vector<tuple<string, int64_t, int64_t>>
@@ -2435,7 +2613,7 @@ CrateFile::_AddDeferredSpecs()
 {
     // A map from sample time to VtValues within TimeSamples instances in
     // _deferredSpecs.
-    boost::container::flat_map<double, vector<VtValue *>> allValuesAtAllTimes;
+    pxr_tsl::robin_map<double, vector<VtValue *>, TfHash> allValuesAtAllTimes;
 
     // Search for the TimeSamples, add to the allValuesAtAllTimes.
     for (auto &spec: _deferredSpecs) {
@@ -2449,12 +2627,22 @@ CrateFile::_AddDeferredSpecs()
         }
     }
 
+    // Create a sorted view of the underlying map keys.
+    std::vector<double> orderedTimes(allValuesAtAllTimes.size());
+    std::transform(std::cbegin(allValuesAtAllTimes),
+                   std::cend(allValuesAtAllTimes),
+                   std::begin(orderedTimes),
+                   [](const auto& element) { return element.first; });
+    std::sort(orderedTimes.begin(), orderedTimes.end());
+
     // Now walk through allValuesAtAllTimes in order and pack all the values,
     // swapping them out with the resulting reps.  This ensures that when we
     // pack the specs, which will re-pack the values, they'll be noops since
     // they are just holding value reps that point into the file.
-    for (auto const &p: allValuesAtAllTimes) {
-        for (VtValue *val: p.second)
+    for (auto const &t: orderedTimes) {
+        auto it = allValuesAtAllTimes.find(t);
+        TF_DEV_AXIOM(it != allValuesAtAllTimes.end());
+        for (VtValue *val: it->second)
             *val = _PackValue(*val);
     }
 
@@ -2575,6 +2763,10 @@ CrateFile::_AddSpec(const SdfPath &path, SdfSpecType type,
             // format instead of having a mix of formats depending on the order 
             // we wrote our payload values in.
             versionUpgradePendingFields.push_back(p);
+        } else if (p.second.IsHolding<TsSpline>()
+            && p.second.UncheckedGet<TsSpline>().IsEmpty()) {
+            // Don't serialize empty splines, because they don't affect
+            // anything.
         } else {
             ordinaryFields.push_back(_AddField(p));
         }
@@ -2600,8 +2792,8 @@ CrateFile::_GetTimeSampleValueImpl(TimeSamples const &ts, size_t i) const
     // Need to read the rep from the file for index i.
     auto offset = ts.valuesFileOffset + i * sizeof(ValueRep);
     if (_useMmap) {
-        auto reader = _MakeReader(
-            _MakeMmapStream(_mmapSrc.get(), _debugPageMap.get()));
+        auto reader =
+            _MakeReader(_MakeMmapStream(&_mmapSrc, _debugPageMap.get()));
         reader.Seek(offset);
         return VtValue(reader.Read<ValueRep>());
     } else if (_preadSrc) {
@@ -2621,8 +2813,8 @@ CrateFile::_MakeTimeSampleValuesMutableImpl(TimeSamples &ts) const
     // Read out the reps into the vector.
     ts.values.resize(ts.times.Get().size());
     if (_useMmap) {
-        auto reader = _MakeReader(
-            _MakeMmapStream(_mmapSrc.get(), _debugPageMap.get()));
+        auto reader =
+            _MakeReader(_MakeMmapStream(&_mmapSrc, _debugPageMap.get()));
         reader.Seek(ts.valuesFileOffset);
         for (size_t i = 0, n = ts.times.Get().size(); i != n; ++i)
             ts.values[i] = reader.Read<ValueRep>();
@@ -3028,15 +3220,70 @@ void
 CrateFile::_ReadStructuralSections(Reader reader, int64_t fileSize)
 {
     TfErrorMark m;
-    _boot = _ReadBootStrap(reader.src, fileSize);
-    if (m.IsClean()) _toc = _ReadTOC(reader, _boot);
-    if (m.IsClean()) _PrefetchStructuralSections(reader);
-    if (m.IsClean()) _ReadTokens(reader);
-    if (m.IsClean()) _ReadStrings(reader);
-    if (m.IsClean()) _ReadFields(reader);
-    if (m.IsClean()) _ReadFieldSets(reader);
-    if (m.IsClean()) _ReadPaths(reader);
-    if (m.IsClean()) _ReadSpecs(reader);
+    try{
+        _boot = _ReadBootStrap(reader.src, fileSize);
+        if (m.IsClean()) _toc = _ReadTOC(reader, _boot);
+        if (m.IsClean()) _PrefetchStructuralSections(reader);
+        if (m.IsClean()) _ReadTokens(reader);
+        if (m.IsClean()) _ReadStrings(reader);
+        if (m.IsClean()) _ReadFields(reader);
+        if (m.IsClean()) _ReadFieldSets(reader);
+        if (m.IsClean()) _ReadPaths(reader);
+        if (m.IsClean()) _ReadSpecs(reader);
+    } catch (const std::exception &e){
+        TF_RUNTIME_ERROR("Encountered: %s, while reading @%s@", 
+            e.what(), _assetPath.c_str());
+        _specs.clear();
+        _fieldSets.clear();
+        _fields.clear();
+    }
+
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+    if (m.IsClean()) {
+        auto errorAndClear = [this]() {
+            TF_RUNTIME_ERROR("Corrupt asset @%s@", _assetPath.c_str());
+            _specs.clear();
+            _fieldSets.clear();
+            _fields.clear();
+        };
+        
+        // Sanity check structural validity.
+
+        // Fields.
+        for (Field const &f: _fields) {
+            if (f.tokenIndex.value >= _tokens.size()) {
+                errorAndClear();
+                return;
+            }
+        }
+
+        // FieldSets.
+        for (FieldIndex fi: _fieldSets) {
+            // Default-constructed FieldIndex terminates field runs, otherwise
+            // must index into _fields.
+            if (fi != FieldIndex() && fi.value >= _fields.size()) {
+                errorAndClear();
+                return;
+            }
+        }
+
+        // Specs.
+        for (Spec const &spec: _specs) {
+            // Range check path indexes, fieldSet indexes, spec types.
+            // Additionally, a fieldSetIndex must either be 0, or the element at
+            // the prior index must be a default-constructed FieldIndex.
+            if (spec.pathIndex.value >= _paths.size() ||
+                spec.fieldSetIndex.value >= _fieldSets.size() ||
+                (spec.fieldSetIndex.value &&
+                 _fieldSets[spec.fieldSetIndex.value-1] != FieldIndex()) ||
+                spec.specType == SdfSpecTypeUnknown ||
+                spec.specType >= SdfNumSpecTypes) {
+                errorAndClear();
+                return;
+            }
+        }
+    }
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
 }
 
 template <class ByteStream>
@@ -3113,24 +3360,17 @@ CrateFile::_ReadFieldSets(Reader reader)
             // Compressed fieldSets in 0.4.0.
             auto numFieldSets = reader.template Read<uint64_t>();
             _fieldSets.resize(numFieldSets);
-
-            // Create temporary space for decompressing.
-            std::unique_ptr<char[]> compBuffer(
-                new char[Usd_IntegerCompression::
-                         GetCompressedBufferSize(numFieldSets)]);
             vector<uint32_t> tmp(numFieldSets);
-            std::unique_ptr<char[]> workingSpace(
-                new char[Usd_IntegerCompression::
-                         GetDecompressionWorkingSpaceSize(numFieldSets)]);
-
-            auto fsetsSize = reader.template Read<uint64_t>();
-            reader.ReadContiguous(compBuffer.get(), fsetsSize);
-            Usd_IntegerCompression::DecompressFromBuffer(
-                compBuffer.get(), fsetsSize, tmp.data(), numFieldSets,
-                workingSpace.get());
+            _ReadCompressedInts(reader, tmp.data(), numFieldSets);
             for (size_t i = 0; i != numFieldSets; ++i) {
                 _fieldSets[i].value = tmp[i];
             }
+        }
+
+        // FieldSets must be terminated by a default-constructed FieldIndex.
+        if (!_fieldSets.empty() && _fieldSets.back() != FieldIndex()) {
+            TF_RUNTIME_ERROR("Corrupt field sets in crate file");
+            _fieldSets.back() = FieldIndex();
         }
     }
 }
@@ -3148,23 +3388,15 @@ CrateFile::_ReadFields(Reader reader)
             // Compressed fields in 0.4.0.
             auto numFields = reader.template Read<uint64_t>();
             _fields.resize(numFields);
-
-            // Create temporary space for decompressing.
-            std::unique_ptr<char[]> compBuffer(
-                new char[Usd_IntegerCompression::
-                         GetCompressedBufferSize(numFields)]);
             vector<uint32_t> tmp(numFields);
-            auto fieldsSize = reader.template Read<uint64_t>();
-            reader.ReadContiguous(compBuffer.get(), fieldsSize);
-            Usd_IntegerCompression::DecompressFromBuffer(
-                compBuffer.get(), fieldsSize, tmp.data(), numFields);
+            _ReadCompressedInts(reader, tmp.data(), tmp.size());
             for (size_t i = 0; i != numFields; ++i) {
                 _fields[i].tokenIndex.value = tmp[i];
             }
 
-            // Value reps
+            // Compressed value reps.
             uint64_t repsSize = reader.template Read<uint64_t>();
-            compBuffer.reset(new char[repsSize]);
+            std::unique_ptr<char[]> compBuffer(new char[repsSize]);
             reader.ReadContiguous(compBuffer.get(), repsSize);
             vector<uint64_t> repsData;
             repsData.resize(numFields);
@@ -3199,45 +3431,90 @@ CrateFile::_ReadSpecs(Reader reader)
             _specs.resize(numSpecs);
 
             // Create temporary space for decompressing.
-            std::unique_ptr<char[]> compBuffer(
-                new char[Usd_IntegerCompression::
-                         GetCompressedBufferSize(numSpecs)]);
-            vector<uint32_t> tmp(_specs.size());
-            std::unique_ptr<char[]> workingSpace(
-                new char[Usd_IntegerCompression::
-                         GetDecompressionWorkingSpaceSize(numSpecs)]);
+            _CompressedIntsReader cr;
+            vector<uint32_t> tmp(numSpecs);
 
             // pathIndexes.
-            auto pathIndexesSize = reader.template Read<uint64_t>();
-            reader.ReadContiguous(compBuffer.get(), pathIndexesSize);
-            Usd_IntegerCompression::DecompressFromBuffer(
-                compBuffer.get(), pathIndexesSize, tmp.data(), numSpecs,
-                workingSpace.get());
+            cr.Read(reader, tmp.data(), numSpecs);
             for (size_t i = 0; i != numSpecs; ++i) {
                 _specs[i].pathIndex.value = tmp[i];
             }
 
             // fieldSetIndexes.
-            auto fsetIndexesSize = reader.template Read<uint64_t>();
-            reader.ReadContiguous(compBuffer.get(), fsetIndexesSize);
-            Usd_IntegerCompression::DecompressFromBuffer(
-                compBuffer.get(), fsetIndexesSize, tmp.data(), numSpecs,
-                workingSpace.get());
+            cr.Read(reader, tmp.data(), numSpecs);
             for (size_t i = 0; i != numSpecs; ++i) {
                 _specs[i].fieldSetIndex.value = tmp[i];
             }
             
             // specTypes.
-            auto specTypesSize = reader.template Read<uint64_t>();
-            reader.ReadContiguous(compBuffer.get(), specTypesSize);
-            Usd_IntegerCompression::DecompressFromBuffer(
-                compBuffer.get(), specTypesSize, tmp.data(), numSpecs,
-                workingSpace.get());
+            cr.Read(reader, tmp.data(), numSpecs);
             for (size_t i = 0; i != numSpecs; ++i) {
                 _specs[i].specType = static_cast<SdfSpecType>(tmp[i]);
             }
         }
     }
+
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED 
+    // Spec sanity checks, in "prefer-safety-over-speed" mode.
+
+    pxr_tsl::robin_set<SdfPath, SdfPath::Hash> seenPaths;
+
+    std::vector<std::string> messages;
+    
+    for (Spec &spec: _specs) {
+        // Check for valid-looking specs (no empty paths, no repeated paths,
+        // valid SdfSpecType enum values...)
+        SdfPath const &specPath = GetPath(spec.pathIndex);
+        if (specPath.IsEmpty()) {
+            messages.push_back(
+                TfStringPrintf("spec at index %zu has empty path",
+                               std::distance(&_specs.front(), &spec))); 
+            // Mark for removal. 
+            spec.specType = SdfSpecTypeUnknown;
+            continue;
+        }
+        if (spec.specType == SdfSpecTypeUnknown ||
+            spec.specType >= SdfNumSpecTypes) {
+            messages.push_back(
+                TfStringPrintf("spec <%s> has %s",
+                               specPath.GetAsString().c_str(),
+                               spec.specType == SdfSpecTypeUnknown ?
+                               "unknown spec type" :
+                               TfStringPrintf("invalid spec type value %d",
+                                              spec.specType).c_str()));
+            // Mark for removal.
+            spec.specType = SdfSpecTypeUnknown;
+            continue;
+        }
+        if (!seenPaths.insert(specPath).second) {
+            messages.push_back(
+                TfStringPrintf("spec <%s> repeated",
+                               specPath.GetAsString().c_str()));
+            // Mark for removal.
+            spec.specType = SdfSpecTypeUnknown;
+            continue;
+        }
+    }
+
+    if (!messages.empty()) {
+        // Remove everything with specType == Unknown -- any failed tests above
+        // set specs that failed to have this spec type.
+        _specs.erase(
+            std::remove_if(_specs.begin(), _specs.end(),
+                           [](Spec const &s) {
+                               return s.specType == SdfSpecTypeUnknown;
+                           }),
+            _specs.end());
+
+        // Sort and unique the messages, then emit a warning.
+        std::sort(messages.begin(), messages.end(), TfDictionaryLessThan());
+        messages.erase(std::unique(messages.begin(), messages.end()),
+                       messages.end());
+        TF_RUNTIME_ERROR(
+            "Corrupt asset @%s@ - ignoring invalid specs: %s.",
+            _assetPath.c_str(), TfStringJoin(messages, ", ").c_str());
+    }
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
 }
 
 template <class Reader>
@@ -3267,6 +3544,7 @@ CrateFile::_ReadTokens(Reader reader)
     auto numTokens = reader.template Read<uint64_t>();
 
     RawDataPtr chars;
+    char const *charsEnd = nullptr;
     
     Version fileVer(_boot);
     if (fileVer < Version(0,4,0)) {
@@ -3275,16 +3553,24 @@ CrateFile::_ReadTokens(Reader reader)
         // which we can just construct from the chars directly.
         auto tokensNumBytes = reader.template Read<uint64_t>();
         chars.reset(new char[tokensNumBytes]);
+        charsEnd = chars.get() + tokensNumBytes;
         reader.ReadContiguous(chars.get(), tokensNumBytes);
     } else {
         // Compressed token data.
         uint64_t uncompressedSize = reader.template Read<uint64_t>();
         uint64_t compressedSize = reader.template Read<uint64_t>();
         chars.reset(new char[uncompressedSize]);
+        charsEnd = chars.get() + uncompressedSize;
         RawDataPtr compressed(new char[compressedSize]);
         reader.ReadContiguous(compressed.get(), compressedSize);
         TfFastCompression::DecompressFromBuffer(
             compressed.get(), chars.get(), compressedSize, uncompressedSize);
+    }
+
+    // Check/ensure that we're null terminated.
+    if (chars.get() != charsEnd && charsEnd[-1] != '\0') {
+        TF_RUNTIME_ERROR("Tokens section not null-terminated in crate file");
+        const_cast<char *>(charsEnd)[-1] = '\0';
     }
 
     // Now we read that many null-terminated strings into _tokens.
@@ -3292,19 +3578,24 @@ CrateFile::_ReadTokens(Reader reader)
     _tokens.clear();
     _tokens.resize(numTokens);
 
-    WorkArenaDispatcher wd;
+    WorkDispatcher wd;
     struct MakeToken {
         void operator()() const { (*tokens)[index] = TfToken(str); }
         vector<TfToken> *tokens;
         size_t index;
         char const *str;
     };
-    for (size_t i = 0; i != numTokens; ++i) {
+    size_t i = 0;
+    for (; p < charsEnd && i != numTokens; ++i) {
         MakeToken mt { &_tokens, i, p };
         wd.Run(mt);
         p += strlen(p) + 1;
     }
     wd.Wait();
+    if (i != numTokens) {
+        TF_RUNTIME_ERROR("Crate file claims %zu tokens, found %zu",
+                         numTokens, i);
+    }
 
     WorkSwapDestroyAsync(chars);
 }
@@ -3325,7 +3616,7 @@ CrateFile::_ReadPaths(Reader reader)
     _paths.resize(reader.template Read<uint64_t>());
     std::fill(_paths.begin(), _paths.end(), SdfPath());
 
-    WorkArenaDispatcher dispatcher;
+    WorkDispatcher dispatcher;
     // VERSIONING: PathItemHeader changes size from 0.0.1 to 0.1.0.
     Version fileVer(_boot);
     if (fileVer == Version(0,0,1)) {
@@ -3336,14 +3627,12 @@ CrateFile::_ReadPaths(Reader reader)
         // 0.4.0 has compressed paths.
         _ReadCompressedPaths(reader, dispatcher);
     }
-
-    dispatcher.Wait();
 }
 
 template <class Header, class Reader>
 void
 CrateFile::_ReadPathsImpl(Reader reader,
-                          WorkArenaDispatcher &dispatcher,
+                          WorkDispatcher &dispatcher,
                           SdfPath parentPath)
 {
     bool hasChild = false, hasSibling = false;
@@ -3374,13 +3663,14 @@ CrateFile::_ReadPathsImpl(Reader reader,
                 auto siblingOffset = reader.template Read<int64_t>();
                 dispatcher.Run(
                     [this, reader,
-                     siblingOffset, &dispatcher, parentPath]() mutable {
+                     siblingOffset, &dispatcher, parentPath]() {
                         // XXX Remove these tags when bug #132031 is addressed
-                        TfAutoMallocTag2 tag("Usd", "Usd_CrateDataImpl::Open");
-                        TfAutoMallocTag2 tag2("Usd_CrateFile::CrateFile::Open",
-                                              "_ReadPaths");
-                        reader.Seek(siblingOffset);
-                        _ReadPathsImpl<Header>(reader, dispatcher, parentPath);
+                        TfAutoMallocTag tag(
+                            "Usd", "Usd_CrateDataImpl::Open",
+                            "Usd_CrateFile::CrateFile::Open", "_ReadPaths");
+                        auto readerCopy = reader;
+                        readerCopy.Seek(siblingOffset);
+                        _ReadPathsImpl<Header>(readerCopy, dispatcher, parentPath);
                     });
             }
             // Have a child (may have also had a sibling). Reset parent path.
@@ -3395,7 +3685,7 @@ CrateFile::_ReadPathsImpl(Reader reader,
 template <class Reader>
 void
 CrateFile::_ReadCompressedPaths(Reader reader,
-                                WorkArenaDispatcher &dispatcher)
+                                WorkDispatcher &dispatcher)
 {
     // Read compressed data first.
     vector<uint32_t> pathIndexes;
@@ -3405,37 +3695,44 @@ CrateFile::_ReadCompressedPaths(Reader reader,
     // Read number of encoded paths.
     size_t numPaths = reader.template Read<uint64_t>();
     
-    pathIndexes.resize(numPaths);
-    elementTokenIndexes.resize(numPaths);
-    jumps.resize(numPaths);
-
-    // Create temporary space for decompressing.
-    std::unique_ptr<char[]> compBuffer(
-        new char[Usd_IntegerCompression::GetCompressedBufferSize(numPaths)]);
-    std::unique_ptr<char[]> workingSpace(
-        new char[Usd_IntegerCompression::
-                 GetDecompressionWorkingSpaceSize(numPaths)]);
+    _CompressedIntsReader cr;
 
     // pathIndexes.
-    auto pathIndexesSize = reader.template Read<uint64_t>();
-    reader.ReadContiguous(compBuffer.get(), pathIndexesSize);
-    Usd_IntegerCompression::DecompressFromBuffer(
-        compBuffer.get(), pathIndexesSize, pathIndexes.data(), numPaths,
-        workingSpace.get());
+    pathIndexes.resize(numPaths);
+    cr.Read(reader, pathIndexes.data(), numPaths);
+
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+    // Range check the pathIndexes, which index into _paths.
+    for (const uint32_t pathIndex: pathIndexes) {
+        if (pathIndex >= _paths.size()) {
+            TF_RUNTIME_ERROR("Corrupt path index in crate file (%u >= %zu)",
+                             pathIndex, _paths.size());
+            return;
+        }
+    }
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
 
     // elementTokenIndexes.
-    auto elementTokenIndexesSize = reader.template Read<uint64_t>();
-    reader.ReadContiguous(compBuffer.get(), elementTokenIndexesSize);
-    Usd_IntegerCompression::DecompressFromBuffer(
-        compBuffer.get(), elementTokenIndexesSize,
-        elementTokenIndexes.data(), numPaths, workingSpace.get());
+    elementTokenIndexes.resize(numPaths);
+    cr.Read(reader, elementTokenIndexes.data(), numPaths);
+
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+    // Range check the pathIndexes, which index (by absolute value) into
+    // _tokens.
+    for (const int32_t elementTokenIndex: elementTokenIndexes) {
+        if (static_cast<size_t>(
+                std::abs(elementTokenIndex)) >= _tokens.size()) {
+            TF_RUNTIME_ERROR("Corrupt path element token index in crate file "
+                             "(%d >= %zu)",
+                             std::abs(elementTokenIndex), _tokens.size());
+            return;
+        }
+    }
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
 
     // jumps.
-    auto jumpsSize = reader.template Read<uint64_t>();
-    reader.ReadContiguous(compBuffer.get(), jumpsSize);
-    Usd_IntegerCompression::DecompressFromBuffer(
-        compBuffer.get(), jumpsSize, jumps.data(), numPaths,
-        workingSpace.get());
+    jumps.resize(numPaths);
+    cr.Read(reader, jumps.data(), numPaths);
 
     // Now build the paths.
     _BuildDecompressedPathsImpl(pathIndexes, elementTokenIndexes, jumps, 0,
@@ -3451,11 +3748,20 @@ CrateFile::_BuildDecompressedPathsImpl(
     vector<int32_t> const &jumps,
     size_t curIndex,
     SdfPath parentPath,
-    WorkArenaDispatcher &dispatcher)
+    WorkDispatcher &dispatcher)
 {
     bool hasChild = false, hasSibling = false;
     do {
         auto thisIndex = curIndex++;
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+        // Range check thisIndex.
+        if (thisIndex >= pathIndexes.size()) {
+            TF_RUNTIME_ERROR("Corrupt paths encoding in crate file "
+                             "(index:%zu >= %zu)",
+                             thisIndex, pathIndexes.size());
+            return;
+        }
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
         if (parentPath.IsEmpty()) {
             parentPath = SdfPath::AbsoluteRootPath();
             _paths[pathIndexes[thisIndex]] = parentPath;
@@ -3482,13 +3788,23 @@ CrateFile::_BuildDecompressedPathsImpl(
             if (hasSibling) {
                 // Branch off a parallel task for the sibling subtree.
                 auto siblingIndex = thisIndex + jumps[thisIndex];
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+                // Range check siblingIndex, which indexes into pathIndexes.
+                if (siblingIndex >= pathIndexes.size()) {
+                    TF_RUNTIME_ERROR(
+                        "Corrupt paths jumps table in crate file (jump:%d + "
+                        "thisIndex:%zu >= %zu)",
+                        jumps[thisIndex], thisIndex, pathIndexes.size());
+                    return;
+                }
+#endif
                 dispatcher.Run(
                     [this, &pathIndexes, &elementTokenIndexes, &jumps,
-                     siblingIndex, &dispatcher, parentPath]() mutable {
+                     siblingIndex, &dispatcher, parentPath]()  {
                         // XXX Remove these tags when bug #132031 is addressed
-                        TfAutoMallocTag2 tag("Usd", "Usd_CrateDataImpl::Open");
-                        TfAutoMallocTag2 tag2("Usd_CrateFile::CrateFile::Open",
-                                              "_ReadPaths");
+                        TfAutoMallocTag tag(
+                            "Usd", "Usd_CrateDataImpl::Open",
+                            "Usd_CrateFile::CrateFile::Open", "_ReadPaths");
                         _BuildDecompressedPathsImpl(
                             pathIndexes, elementTokenIndexes, jumps,
                             siblingIndex, parentPath, dispatcher);
@@ -3507,8 +3823,8 @@ void
 CrateFile::_ReadRawBytes(int64_t start, int64_t size, char *buf) const
 {
     if (_useMmap) {
-        auto reader = _MakeReader(
-            _MakeMmapStream(_mmapSrc.get(), _debugPageMap.get()));
+        auto reader =
+            _MakeReader(_MakeMmapStream(&_mmapSrc, _debugPageMap.get()));
         reader.Seek(start);
         reader.template ReadContiguous<char>(buf, size);
     } else if (_preadSrc) {
@@ -3616,14 +3932,14 @@ template <class T>
 CrateFile::_ValueHandler<T> &
 CrateFile::_GetValueHandler() {
     return *static_cast<_ValueHandler<T> *>(
-        _valueHandlers[static_cast<int>(TypeEnumFor<T>())]);
+        _valueHandlers[static_cast<int>(_TypeEnumFor<T>::value)]);
 }
 
 template <class T>
 CrateFile::_ValueHandler<T> const &
 CrateFile::_GetValueHandler() const {
     return *static_cast<_ValueHandler<T> const *>(
-        _valueHandlers[static_cast<int>(TypeEnumFor<T>())]);
+        _valueHandlers[static_cast<int>(_TypeEnumFor<T>::value)]);
 }
 
 template <class T>
@@ -3676,7 +3992,7 @@ CrateFile::_PackValue(VtValue const &v)
         return it->second(v);
 
     TF_CODING_ERROR("Attempted to pack unsupported type '%s' "
-                    "(%s)\n", ArchGetDemangled(ti).c_str(),
+                    "(%s)", ArchGetDemangled(ti).c_str(),
                     TfStringify(v).c_str());
 
     return ValueRep(0);
@@ -3686,30 +4002,49 @@ template <class T>
 void
 CrateFile::_UnpackValue(ValueRep rep, T *out) const
 {
-    auto const &h = _GetValueHandler<T>();
-    if (_useMmap) {
-        h.Unpack(
-            _MakeReader(
-                _MakeMmapStream(_mmapSrc.get(), _debugPageMap.get())), rep, out);
-    } else if (_preadSrc) {
-        h.Unpack(_MakeReader(_PreadStream(_preadSrc)), rep, out);
-    } else {
-        h.Unpack(_MakeReader(_AssetStream(_assetSrc)), rep, out);
+    try {
+        auto const &h = _GetValueHandler<T>();
+        if (_useMmap) {
+            h.Unpack(
+                _MakeReader(
+                    _MakeMmapStream(
+                        &_mmapSrc, _debugPageMap.get())), rep, out);
+        } else if (_preadSrc) {
+            h.Unpack(_MakeReader(_PreadStream(_preadSrc)), rep, out);
+        } else {
+            h.Unpack(_MakeReader(_AssetStream(_assetSrc)), rep, out);
+        }
+    }
+    catch (...) {
+        TF_RUNTIME_ERROR("Corrupt asset <%s>: exception thrown unpacking a "
+                         "%s, returning a value-initialized object",
+                         GetAssetPath().c_str(),
+                         ArchGetDemangled<T>().c_str());
+        *out = T();
     }
 }
 
 template <class T>
 void
 CrateFile::_UnpackValue(ValueRep rep, VtArray<T> *out) const {
-    auto const &h = _GetValueHandler<T>();
-    if (_useMmap) {
-        h.UnpackArray(
-            _MakeReader(
-                _MakeMmapStream(_mmapSrc.get(), _debugPageMap.get())), rep, out);
-    } else if (_preadSrc) {
-        h.UnpackArray(_MakeReader(_PreadStream(_preadSrc)), rep, out);
-    } else {
-        h.UnpackArray(_MakeReader(_AssetStream(_assetSrc)), rep, out);
+    try {
+        auto const &h = _GetValueHandler<T>();
+        if (_useMmap) {
+            h.UnpackArray(_MakeReader(
+                              _MakeMmapStream(
+                                  &_mmapSrc, _debugPageMap.get())), rep, out);
+        } else if (_preadSrc) {
+            h.UnpackArray(_MakeReader(_PreadStream(_preadSrc)), rep, out);
+        } else {
+            h.UnpackArray(_MakeReader(_AssetStream(_assetSrc)), rep, out);
+        }
+    }
+    catch (...) {
+        TF_RUNTIME_ERROR("Corrupt asset <%s>: exception thrown unpacking a "
+                         "VtArray<%s>, returning an empty array",
+                         GetAssetPath().c_str(),
+                         ArchGetDemangled<T>().c_str());
+        *out = VtArray<T>();
     }
 }
 
@@ -3722,34 +4057,23 @@ CrateFile::_UnpackValue(ValueRep rep, VtValue *result) const {
                         static_cast<int>(repType));
         return;
     }
-    auto index = static_cast<int>(repType);
-    if (_useMmap) {
-        _unpackValueFunctionsMmap[index](rep, result);
-    } else if (_preadSrc) {
-        _unpackValueFunctionsPread[index](rep, result);
-    } else {
-        _unpackValueFunctionsAsset[index](rep, result);
+    try {
+        auto index = static_cast<int>(repType);
+        if (_useMmap) {
+            _unpackValueFunctionsMmap[index](rep, result);
+        } else if (_preadSrc) {
+            _unpackValueFunctionsPread[index](rep, result);
+        } else {
+            _unpackValueFunctionsAsset[index](rep, result);
+        }
+    }
+    catch (...) {
+        TF_RUNTIME_ERROR("Corrupt asset <%s>: exception thrown unpacking a "
+                         "value, returning an empty VtValue",
+                         GetAssetPath().c_str());
+        *result = VtValue();
     }
 }
-
-struct _GetTypeidForArrayTypes {
-    template <class T>
-    static std::type_info const &Get(bool array) {
-        return array ? typeid(VtArray<T>) : typeid(T);
-    }
-};
-
-struct _GetTypeidForNonArrayTypes {
-    template <class T>
-    static std::type_info const &Get(bool) {
-        return typeid(T);
-    }
-};
-
-template <bool SupportsArray>
-using _GetTypeid = typename std::conditional<SupportsArray,
-                                             _GetTypeidForArrayTypes,
-                                             _GetTypeidForNonArrayTypes>::type;
 
 std::type_info const &
 CrateFile::GetTypeid(ValueRep rep) const
@@ -3757,12 +4081,16 @@ CrateFile::GetTypeid(ValueRep rep) const
     switch (rep.GetType()) {
 #define xx(ENUMNAME, _unused, T, SUPPORTSARRAY)                                \
         case TypeEnum::ENUMNAME:                                               \
-            return _GetTypeid<SUPPORTSARRAY>::Get<T>(rep.IsArray());
+            if constexpr (SUPPORTSARRAY) {                                     \
+                return rep.IsArray() ? typeid(VtArray<T>) : typeid(T);         \
+            }                                                                  \
+            else {                                                             \
+                return typeid(T);                                              \
+            }
 
 #include "crateDataTypes.h"
 
 #undef xx
-
     default:
         return typeid(void);
     };
@@ -3771,7 +4099,7 @@ CrateFile::GetTypeid(ValueRep rep) const
 template <class T>
 void
 CrateFile::_DoTypeRegistration() {
-    auto typeEnumIndex = static_cast<int>(TypeEnumFor<T>());
+    auto typeEnumIndex = static_cast<int>(_TypeEnumFor<T>::value);
     auto valueHandler = new _ValueHandler<T>();
     _valueHandlers[typeEnumIndex] = valueHandler;
 
@@ -3790,8 +4118,8 @@ CrateFile::_DoTypeRegistration() {
     _unpackValueFunctionsMmap[typeEnumIndex] =
         [this, valueHandler](ValueRep rep, VtValue *out) {
             valueHandler->UnpackVtValue(
-                _MakeReader(_MakeMmapStream(_mmapSrc.get(),
-                                            _debugPageMap.get())), rep, out);
+                _MakeReader(_MakeMmapStream(
+                                &_mmapSrc, _debugPageMap.get())), rep, out);
         };
 
     _unpackValueFunctionsAsset[typeEnumIndex] =
@@ -3817,7 +4145,7 @@ void
 CrateFile::_DeleteValueHandlers() {
 #define xx(_unused1, _unused2, T, _unused3)                                    \
     delete static_cast<_ValueHandler<T> *>(                                    \
-        _valueHandlers[static_cast<int>(TypeEnumFor<T>())]);
+        _valueHandlers[static_cast<int>(_TypeEnumFor<T>::value)]);
 
 #include "crateDataTypes.h"
 
@@ -3828,7 +4156,7 @@ void
 CrateFile::_ClearValueHandlerDedupTables() {
 #define xx(_unused1, _unused2, T, _unused3)                                    \
     static_cast<_ValueHandler<T> *>(                                           \
-        _valueHandlers[static_cast<int>(TypeEnumFor<T>())])->Clear();
+        _valueHandlers[static_cast<int>(_TypeEnumFor<T>::value)])->Clear();
 
 #include "crateDataTypes.h"
 
@@ -3845,6 +4173,29 @@ CrateFile::_IsKnownSection(char const *name) {
     }
     return false;
 }
+
+#ifdef PXR_PREFER_SAFETY_OVER_SPEED
+CrateFile::Field const &
+CrateFile::_GetEmptyField() const
+{
+    static Field empty;
+    return empty;
+}
+
+std::string const &
+CrateFile::_GetEmptyString() const
+{
+    static std::string empty;
+    return empty;
+}
+
+TfToken const &
+CrateFile::_GetEmptyToken() const
+{
+    static TfToken empty;
+    return empty;
+}
+#endif // PXR_PREFER_SAFETY_OVER_SPEED
 
 CrateFile::Spec::Spec(Spec_0_0_1 const &s) 
     : Spec(s.pathIndex, s.specType, s.fieldSetIndex) {}

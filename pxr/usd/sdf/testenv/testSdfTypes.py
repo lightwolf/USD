@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from pxr import Sdf, Vt, Gf, Tf
 import unittest
@@ -96,6 +79,71 @@ class TestSdfTypes(unittest.TestCase):
                 self.assertEqual(Sdf.GetValueTypeNameForValue(value), typeName)
     
             self._TestRoundTrippingValue(typeName, value)
+
+    def test_ConvertToValidMetadataDictionary(self):
+        # Test that Sdf.ConvertToValidMetadataDictionary works as expected.
+        def assertEqualish(s, x, y):
+            "First elements identical, last (diagnostic) just a subset"
+            s.assertEqual(x[:-1], y[:-1])
+            for msg in y[-1]:
+                s.assertIn(msg, x[-1])
+            
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({}),
+            (True, {}, ''))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':123}),
+            (True, {'a': 123}, ''))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':[]}),
+            (False, {'a': None},
+             "cannot infer type from empty vector/list under key 'a' -- "
+             "use an empty typed array like VtIntArray/VtStringArray instead"))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':[1]}),
+            (True, {'a': Vt.IntArray(1, (1,))}, ''))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':['hello']}),
+            (True, {'a': Vt.StringArray(1, ('hello',))}, ''))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':['hello', 1]}),
+            (False, {'a': None},
+             "failed to cast array element 1: <int> '1' under key 'a' "
+             "to <string>"))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':[{}, {}]}),
+            (False, {'a': None},
+             "first vector/list element <VtDictionary> '{}' under key 'a' "
+             "is not a valid scene description datatype"))
+        assertEqualish(
+            self,
+            Sdf.ConvertToValidMetadataDictionary({'a':[[1,2,3], [2,3,4]]}),
+            (False, {'a': None},
+             ("first vector/list element",
+              "'[1, 2, 3]' under key 'a' is not a valid scene description "
+              "datatype")))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'a':'abc', 'b':234}),
+            (True, {'a': 'abc', 'b': 234}, ''))
+        assertEqualish(
+            self,
+            Sdf.ConvertToValidMetadataDictionary({'a': ['a', 123, 'b', 234]}),
+            (False, {'a': None},
+             ("failed to cast array element 1: <int> '123' under key 'a' "
+             "to ", "failed to cast array element 3: <int> '234' "
+             "under key 'a' to")))
+        assertEqualish(
+            self,
+            Sdf.ConvertToValidMetadataDictionary(
+                {'subdict':{'a': ['a', 123, 'b', 234]}}),
+            (False, {'subdict': {'a': None}},
+             ("failed to cast array element 1: <int> '123' under key "
+              "'subdict:a' to", "failed to cast array element 3: <int> '234' "
+              "under key 'subdict:a' to")))
+        self.assertEqual(
+            Sdf.ConvertToValidMetadataDictionary({'foo':['a', 'b']}),
+            (True, {'foo': Vt.StringArray(2, ('a', 'b'))}, ''))
+        
     
     # Test types like color3f which correspond to a basic type.
     #
@@ -312,6 +360,15 @@ class TestSdfTypes(unittest.TestCase):
         _TestValueTypeName("/OldAttrTest.a25", Sdf.ValueTypeNames.Matrix3d)
         _TestValueTypeName("/OldAttrTest.a26", Sdf.ValueTypeNames.Matrix4d)
         _TestValueTypeName("/OldAttrTest.a27", Sdf.ValueTypeNames.Frame4d)
-   
+
+    def test_Hash(self):
+        self.assertEqual(hash(Sdf.ValueTypeNames.Point3d), hash(Sdf.ValueTypeNames.Point3d))
+
+    def test_UnregisteredValueEquality(self):
+        self.assertEqual(Sdf.UnregisteredValue(str(5)),
+                         Sdf.UnregisteredValue(str(5)))
+        self.assertNotEqual(Sdf.UnregisteredValue(str(5)),
+                            Sdf.UnregisteredValue(str(6)))
+
 if __name__ == "__main__":
     unittest.main()

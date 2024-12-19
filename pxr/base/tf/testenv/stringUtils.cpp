@@ -1,27 +1,11 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
+#include "pxr/base/tf/diagnosticLite.h"
 #include "pxr/base/tf/regTest.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/arch/defines.h"
@@ -156,6 +140,76 @@ TestPreds()
     TF_AXIOM(DictLessThan("foo", "foo") == 0);
     TF_AXIOM(DictLessThan("aa", "aaa"));
     TF_AXIOM(!DictLessThan("aaa", "aa"));
+    TF_AXIOM(DictLessThan("0a", "00A"));
+    TF_AXIOM(!DictLessThan("00A", "0a"));
+    TF_AXIOM(DictLessThan("000a", "0000a"));
+    TF_AXIOM(!DictLessThan("0000a", "000a"));
+    TF_AXIOM(DictLessThan("foo_bar", "foobar"));
+    TF_AXIOM(!DictLessThan("foobar", "foo_bar"));
+    TF_AXIOM(DictLessThan("_foobar", "foobar"));
+    TF_AXIOM(!DictLessThan("foobar", "_foobar"));
+    TF_AXIOM(DictLessThan("__foobar", "_foobar"));
+    TF_AXIOM(!DictLessThan("_foobar", "__foobar"));
+    TF_AXIOM(DictLessThan("Foo_Bar", "FooBar"));
+    TF_AXIOM(!DictLessThan("FooBar", "Foo_Bar"));
+    TF_AXIOM(DictLessThan("_FooBar", "FooBar"));
+    TF_AXIOM(!DictLessThan("FooBar", "_FooBar"));
+    TF_AXIOM(DictLessThan("__FooBar", "_FooBar"));
+    TF_AXIOM(!DictLessThan("_FooBar", "__FooBar"));
+    TF_AXIOM(DictLessThan("abc012300", "abc000012300"));
+    TF_AXIOM(!DictLessThan("abc0000123000", "abc0123000"));
+    TF_AXIOM(DictLessThan(
+                 "0345678987654321234567", "03456789876543212345670"));
+    TF_AXIOM(!DictLessThan(
+                 "03456789876543212345670", "0345678987654321234567"));
+    TF_AXIOM(DictLessThan(
+                 "0345678987654321234567", "0345678987654322234567"));
+    TF_AXIOM(!DictLessThan(
+                 "0345678987654322234567", "0345678987654321234567"));
+    TF_AXIOM(DictLessThan(
+                 "XXX_0345678987654321234567", "XXX_03456789876543212345670"));
+    TF_AXIOM(!DictLessThan(
+                 "XXX_03456789876543212345670", "XXX_0345678987654321234567"));
+    TF_AXIOM(DictLessThan(
+                 "XXX_0345678987654321234567", "XXX_0345678987654322234567"));
+    TF_AXIOM(!DictLessThan(
+                 "XXX_0345678987654322234567", "XXX_0345678987654321234567"));
+    TF_AXIOM(!DictLessThan("primvars:curveHierarchy__id",
+                           "primvars:curveHierarchy:id"));
+    TF_AXIOM(DictLessThan("primvars:curveHierarchy:id",
+                          "primvars:curveHierarchy__id"));
+    
+    // basic UTF-8 character tests
+    // U+00FC (C3 B2)           U+0061 (61)
+    // U+1300A (F0 93 80 8A)    U+0041 (41)
+    // U+222B (E2 88 AB)        U+003D (3D)
+    // U+0F22 (E0 BC A2)        U+0036 (36)
+    // U+0F22 (E0 BC A2)        U+0F28 (E0 BC A8)
+    TF_AXIOM(!DictLessThan("ü", "a"));
+    TF_AXIOM(!DictLessThan("𓀊", "A"));
+    TF_AXIOM(!DictLessThan("∫", "="));
+    TF_AXIOM(!DictLessThan("༢", "6"));
+    TF_AXIOM(DictLessThan("༢", "༨"));
+    TF_AXIOM(DictLessThan("_", "㤼"));
+    TF_AXIOM(DictLessThan("_a", "_a㤼"));
+    TF_AXIOM(DictLessThan("6", "_a"));
+    TF_AXIOM(!DictLessThan("2_༢1", "2_༢"));
+    TF_AXIOM(!DictLessThan("∫∫", "∫="));
+
+    // U+03C7 (CF 87)  U+03C0 (CF 80)
+    TF_AXIOM(!DictLessThan("a00χ", "a0π"));
+    TF_AXIOM(!DictLessThan("00χ", "0π"));
+
+    // additional tests for UTF-8 characters in the loop
+    // U+393B (E3 A4 BB)        U+393C (E3 A4 BC)
+    // U+393B (E3 A4 BB)        U+393A (E3 A4 BA)
+    // U+393B (E3 A4 BB)        U+393B (E3 A4 BB)
+    // U+00FC (C3 B2)           U+0061 (61)
+    TF_AXIOM(DictLessThan("foo001bar001abc㤻", "foo001bar001abc㤼"));
+    TF_AXIOM(!DictLessThan("foo001㤻bar01abc", "foo001㤺bar001abc"));
+    TF_AXIOM(!DictLessThan("foo001㤻bar001abc", "foo001㤻bar001abc"));
+    TF_AXIOM(!DictLessThan("foo00001bar0002ü", "foo001bar002abc"));
+    TF_AXIOM(DictLessThan("üfoo", "㤻foo"));
 
     TF_AXIOM(TfIsValidIdentifier("f"));
     TF_AXIOM(TfIsValidIdentifier("foo"));
@@ -228,6 +282,13 @@ TestStrings()
     TF_AXIOM(TfStringCapitalize("notyet") == "Notyet");
     TF_AXIOM(TfStringCapitalize("@@@@") == "@@@@");
     TF_AXIOM(TfStringCapitalize("") == "");
+
+    TF_AXIOM(TfStringToLowerAscii("PIXAR") == TfStringToLowerAscii("pixar"));
+    TF_AXIOM(TfStringToLowerAscii("PiXaR") == TfStringToLowerAscii("pixar"));
+    // 'Pixar' in capital Greek letters is not case folded
+    TF_AXIOM(TfStringToLowerAscii("ΠΙΞΑΡ") == "ΠΙΞΑΡ");
+    // Mixture of symbols, capital non-ASCII letters, and ASCII letters
+    TF_AXIOM(TfStringToLowerAscii("ΠΙΞΑΡ ≈ PIXAR") == "ΠΙΞΑΡ ≈ pixar");
 
     TF_AXIOM(TfStringGetSuffix("file.ext") == "ext");
     TF_AXIOM(TfStringGetSuffix("here are some words", ' ') == "words");
@@ -347,8 +408,8 @@ TestStrings()
     TF_AXIOM(TfEscapeString("\\c \\d") == "c d");
     TF_AXIOM(TfEscapeString("\\xB") == "\xB");
     TF_AXIOM(TfEscapeString("\\xab") == "\xab");
-    TF_AXIOM(TfEscapeString("\\x01f") == "\x01f");
-    TF_AXIOM(TfEscapeString("\\x008d") == "\x008d");
+    TF_AXIOM(TfEscapeString("\\x01f") == "\x1" "f");
+    TF_AXIOM(TfEscapeString("\\x008d") == string() + '\0' + "8d");
     TF_AXIOM(TfEscapeString("x\\x0x") == string() + 'x' + '\0' + 'x');
     TF_AXIOM(TfEscapeString("\\5") == "\5");
     TF_AXIOM(TfEscapeString("\\70") == "\70");
@@ -356,9 +417,9 @@ TestStrings()
     TF_AXIOM(TfEscapeString("\\007") == "\007");
     TF_AXIOM(TfEscapeString("\\008") == string() + '\0' + '8');
     TF_AXIOM(TfEscapeString("\\010") == "\010");
-    TF_AXIOM(TfEscapeString("\\0077") == "\0077");
-    TF_AXIOM(TfEscapeString("\\00107") == "\00107");
-    TF_AXIOM(TfEscapeString("\\005107") == "\005107");
+    TF_AXIOM(TfEscapeString("\\0077") == "\07" "7");
+    TF_AXIOM(TfEscapeString("\\00107") == "\01" "07");
+    TF_AXIOM(TfEscapeString("\\005107") == "\05" "107");
 
     TF_AXIOM(TfStringCatPaths("foo", "bar") == "foo/bar");
     TF_AXIOM(TfStringCatPaths("foo/crud", "../bar") == "foo/bar");

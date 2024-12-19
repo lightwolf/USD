@@ -1,30 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdRi/materialAPI.h"
 #include "pxr/usd/usd/schemaRegistry.h"
 #include "pxr/usd/usd/typed.h"
-#include "pxr/usd/usd/tokens.h"
 
 #include "pxr/usd/sdf/types.h"
 #include "pxr/usd/sdf/assetPath.h"
@@ -38,11 +20,6 @@ TF_REGISTRY_FUNCTION(TfType)
         TfType::Bases< UsdAPISchemaBase > >();
     
 }
-
-TF_DEFINE_PRIVATE_TOKENS(
-    _schemaTokens,
-    (RiMaterialAPI)
-);
 
 /* virtual */
 UsdRiMaterialAPI::~UsdRiMaterialAPI()
@@ -62,16 +39,27 @@ UsdRiMaterialAPI::Get(const UsdStagePtr &stage, const SdfPath &path)
 
 
 /* virtual */
-UsdSchemaType UsdRiMaterialAPI::_GetSchemaType() const {
-    return UsdRiMaterialAPI::schemaType;
+UsdSchemaKind UsdRiMaterialAPI::_GetSchemaKind() const
+{
+    return UsdRiMaterialAPI::schemaKind;
+}
+
+/* static */
+bool
+UsdRiMaterialAPI::CanApply(
+    const UsdPrim &prim, std::string *whyNot)
+{
+    return prim.CanApplyAPI<UsdRiMaterialAPI>(whyNot);
 }
 
 /* static */
 UsdRiMaterialAPI
 UsdRiMaterialAPI::Apply(const UsdPrim &prim)
 {
-    return UsdAPISchemaBase::_ApplyAPISchema<UsdRiMaterialAPI>(
-            prim, _schemaTokens->RiMaterialAPI);
+    if (prim.ApplyAPI<UsdRiMaterialAPI>()) {
+        return UsdRiMaterialAPI(prim);
+    }
+    return UsdRiMaterialAPI();
 }
 
 /* static */
@@ -199,27 +187,14 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
-
     ((defaultOutputName, "outputs:out"))
-
-    // These tokens are required for backwards compatibility. They're 
-    // redefined here so we can stop relying on UsdRiLookAPI entirely.
     (ri)
-    ((riLookDisplacement, "riLook:displacement"))
-    ((riLookSurface, "riLook:surface"))
-    ((riLookVolume, "riLook:volume"))
 
     // deprecated tokens for handling backwards compatibility.
     ((bxdfOutputName, "ri:bxdf"))
     ((bxdfOutputAttrName, "outputs:ri:bxdf"))
     ((riLookBxdf, "riLook:bxdf"))
 );
-
-TF_DEFINE_ENV_SETTING(
-    USD_RI_WRITE_BXDF_OUTPUT, false, 
-    "If set to false, then \"ri:surface\" output is created instead of the "
-    "\"ri:bxdf\" output, when UsdRiMaterialAPI::SetSurfaceSource() is "
-    "invoked.");
 
 UsdShadeShader
 UsdRiMaterialAPI::_GetSourceShaderObject(const UsdShadeOutput &output,
@@ -306,21 +281,6 @@ UsdRiMaterialAPI::GetVolumeOutput() const
 bool
 UsdRiMaterialAPI::SetSurfaceSource(const SdfPath &surfacePath) const
 {
-    static const bool writeBxdfOutput = 
-            TfGetEnvSetting(USD_RI_WRITE_BXDF_OUTPUT);
-    if (writeBxdfOutput) {
-        if (UsdShadeOutput bxdfOutput = UsdShadeMaterial(GetPrim())
-                .CreateOutput(_tokens->bxdfOutputName, 
-                              SdfValueTypeNames->Token)) {
-            const SdfPath sourcePath = surfacePath.IsPropertyPath() ? 
-                surfacePath : 
-                surfacePath.AppendProperty(_tokens->defaultOutputName);
-            return UsdShadeConnectableAPI::ConnectToSource(
-                bxdfOutput, sourcePath);
-        }
-        return false;
-    }
-
     UsdShadeOutput surfaceOutput = UsdShadeMaterial(GetPrim())
             .CreateSurfaceOutput(/*purpose*/ _tokens->ri);
     return UsdShadeConnectableAPI::ConnectToSource(

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/base/arch/defines.h"
@@ -32,6 +15,11 @@
 #include "pxr/base/arch/error.h"
 #include "pxr/base/arch/errno.h"
 #include "pxr/base/arch/export.h"
+#if defined(ARCH_OS_WINDOWS)
+// Need to include Winsock2.h BEFORE windows.h - which is included in
+// fileSystem.h
+#include <Winsock2.h>
+#endif
 #include "pxr/base/arch/fileSystem.h"
 #include "pxr/base/arch/inttypes.h"
 #include "pxr/base/arch/symbols.h"
@@ -39,7 +27,6 @@
 #if defined(ARCH_OS_WINDOWS)
 #include <io.h>
 #include <process.h>
-#include <Winsock2.h>
 #include <DbgHelp.h>
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN 64
@@ -54,6 +41,7 @@
 #endif
 #include <algorithm>
 #include <atomic>
+#include <csignal>
 #include <fstream>
 #include <ostream>
 #include <iterator>
@@ -106,7 +94,7 @@ using namespace std;
 typedef int (*ForkFunc)(void);
 ForkFunc Arch_nonLockingFork =
 #if defined(ARCH_OS_LINUX)
-    (ForkFunc)dlsym(RTLD_NEXT, "__libc_fork");
+    (ForkFunc)dlsym(RTLD_DEFAULT, "_Fork");
 #elif defined(ARCH_OS_DARWIN)
     NULL;
 #else
@@ -136,6 +124,10 @@ static const char* const* _sessionCrashLogArgv = nullptr;
 // displaying error information.  Initialized in
 // Arch_InitConfig() to ArchGetExecutablePath()
 static char * _progNameForErrors = NULL;
+
+// Flag indicating whether the crash signal handler has been invoked.
+// Use a type that's safe in the presence of asynchronous signals.
+static volatile std::sig_atomic_t _isCrashing = 0;
 
 namespace {
 // Key-value map for program info. Stores additional
@@ -275,8 +267,7 @@ Arch_LogInfo::EmitAnyExtraLogInfo(FILE *outFile, size_t max) const
         fputs(":\n", outFile);
         for (std::string const &line: *i->second) {
             if (max && n++ >= max) {
-                fputs("... full diagnostics reported in the stack trace "
-                      "file.\n", outFile);
+                fputs("... see full diagnostics in crash report.\n", outFile);
                 return;
             }
             fputs(line.c_str(), outFile);
@@ -308,8 +299,10 @@ ArchEnableSessionLogging()
 }
 
 static const char* const stackTracePrefix = "st";
-static const char* stackTraceCmd = nullptr;
-static const char* const* stackTraceArgv = nullptr;
+
+static const char* _processStateCmd = nullptr;
+static const char* const* _nonFatalArgv = nullptr;
+static const char* const* _fatalArgv = nullptr;
 
 static long _GetAppElapsedTime();
 
@@ -417,7 +410,7 @@ char* asitoa(char* s, long x)
     // Write the minus sign.
     if (x < 0) {
         x = -x;
-        *s = '-';
+        *s++ = '-';
     }
 
     // Skip to the end and write the terminating NUL.
@@ -583,18 +576,37 @@ nonLockingLinux__execve (const char *file,
                          char *const argv[],
                          char *const envp[])
 {
-#if defined(ARCH_BITS_64)
     /*
      * We make a direct system call here, because we can't find an
      * execve which corresponds with the non-locking fork we call
-     * (__libc_fork().)
+     * (_Fork().)
      *
      * This code doesn't mess with other threads, and avoids the bug
      * that calling regular execv after the nonLockingFork() causes
      * hangs in a threaded app.  (We use the non-locking fork to get
      * around problems with forking when we have had memory
      * corruption.)  whew.
-     *
+     */
+
+    unsigned long result;
+
+#if defined (ARCH_CPU_ARM)
+    {
+        long __file_result asm ("x0") = (long)file;
+        char* const* __argv asm ("x1") = argv;
+        char* const* __envp asm ("x2") = envp;
+        long __num_execve asm ("x8") = 221;
+        __asm__ __volatile__ (
+            "svc 0"
+            : "=r" (__file_result)
+            : "r"(__num_execve), "r" (__file_result), "r" (__argv), "r" (__envp)
+            : "memory"
+        );
+        result = __file_result;
+    }
+#elif defined(ARCH_CPU_INTEL) && defined(ARCH_BITS_64)
+
+    /*
      * %rdi, %rsi, %rdx, %rcx, %r8, %r9 are args 0-5
      * syscall clobbers %rcx and %r11
      *
@@ -603,7 +615,6 @@ nonLockingLinux__execve (const char *file,
      * constraints to gcc.
      */
 
-    unsigned long result;
     __asm__ __volatile__ (
         "mov    %0, %%rdi    \n\t"
         "mov    %%rcx, %%rsi \n\t"
@@ -614,6 +625,9 @@ nonLockingLinux__execve (const char *file,
         : "0" (file), "c" (argv), "d" (envp)
         : "memory", "cc", "r11"
     );
+#else
+#error Unknown architecture
+#endif
 
     if (result >= 0xfffffffffffff000) {
         errno = -result;
@@ -621,9 +635,6 @@ nonLockingLinux__execve (const char *file,
     }
 
     return result;
-#else
-#error Unknown architecture
-#endif
 }
 
 #endif
@@ -683,14 +694,18 @@ getBase(const char* path)
  */
 
 static
-int _LogStackTraceForPid(const char *logfile)
+int _LogStackTraceForPid(bool isFatal,
+                         const char *logfile, 
+                         const char *reason)
 {
     // Get the command to run.
     const char* cmd = asgetenv("ARCH_POSTMORTEM");
+    const char* const* cmdArgv =
+        isFatal ? _fatalArgv : _nonFatalArgv;
     if (!cmd) {
-        cmd = stackTraceCmd;
+        cmd = _processStateCmd;
     }
-    if (!cmd || !stackTraceArgv) {
+    if (!cmd || !cmdArgv) {
         // Silently do nothing.
         return 0;
     }
@@ -699,14 +714,17 @@ int _LogStackTraceForPid(const char *logfile)
     char pidBuffer[numericBufferSize], timeBuffer[numericBufferSize];
     asitoa(pidBuffer, getpid());
     asitoa(timeBuffer, _GetAppElapsedTime());
-    const char* const substitutions[3][2] = {
-        { "$pid", pidBuffer }, { "$log", logfile }, { "$time", timeBuffer }
+    const char* const substitutions[4][2] = {
+        { "$pid", pidBuffer }, 
+        { "$log", logfile }, 
+        { "$time", timeBuffer }, 
+        { "$reason", reason }
     };
 
     // Build the argument list.
     static constexpr size_t maxArgs = 32;
     const char* argv[maxArgs];
-    if (!_MakeArgv(argv, maxArgs, cmd, stackTraceArgv, substitutions, 2)) {
+    if (!_MakeArgv(argv, maxArgs, cmd, cmdArgv, substitutions, 4)) {
         static const char msg[] = "Too many arguments to postmortem command\n";
         aswrite(2, msg);
         return 0;
@@ -719,10 +737,13 @@ int _LogStackTraceForPid(const char *logfile)
 }
 
 void
-ArchSetPostMortem(const char* command, const char *const argv[] )
+ArchSetProcessStateLogCommand(const char* command, 
+                              const char *const argv[], 
+                              const char *const fatalArgv[])
 {
-    stackTraceCmd  = command;
-    stackTraceArgv = argv;
+    _processStateCmd  = command;
+    _nonFatalArgv = argv;
+    _fatalArgv = fatalArgv;
 }
 
 /*
@@ -742,7 +763,7 @@ Arch_SetAppLaunchTime()
  * ArchGetAppLaunchTime()
  * -------------------------------
  * Returns the application's launch time, or NULL if a timestamp hasn't
- * been created with AchSetAppLaunchTime().  
+ * been created with ArchSetAppLaunchTime().  
  */
 time_t
 ArchGetAppLaunchTime()
@@ -964,16 +985,29 @@ ArchSetLogSession(
     _sessionCrashLogArgv = crashArgv;
 }
 
+bool
+ArchIsAppCrashing()
+{
+    return _isCrashing;
+}
+
+static void
+_SetAppIsCrashing(bool crashing)
+{
+    _isCrashing = crashing;
+}
+
 /*
  * Run an external program to make a report and tell the user where the report
  * file is.
  *
  * Use of char*'s is deliberate: only async-safe calls allowed past this point!
  */
-void
-ArchLogPostMortem(const char* reason,
-                  const char* message /* = nullptr */,
-                  const char* extraLogMsg /* = nullptr */)
+static void
+_ArchLogProcessStateHelper(bool isFatal,
+                           const char* reason,
+                           const char* message = nullptr,
+                           const char* extraLogMsg = nullptr)
 {
     static std::atomic_flag busy = ATOMIC_FLAG_INIT;
 
@@ -981,6 +1015,10 @@ ArchLogPostMortem(const char* reason,
     while (busy.test_and_set(std::memory_order_acquire)) {
         // Spin!
         std::this_thread::yield();
+    }
+
+    if (isFatal) {
+        _SetAppIsCrashing(true);
     }
 
     const char* progname = ArchGetProgramNameForErrors();
@@ -1028,10 +1066,30 @@ ArchLogPostMortem(const char* reason,
         hostname[0] = '\0';
     }
 
+    auto printNDashes = [](int nDashes) {
+        const char *dash64 =
+            "----------------------------------------------------------------";
+        int dividend = nDashes / 64;
+        int remainder = nDashes % 64;
+        while (dividend--) {
+            fputs(dash64, stderr);
+        }
+        fputs(dash64 + 64 - remainder, stderr);
+    };
+
+    const char *haltMsg = " terminated";
+    int labelSize = strlen(progname) + strlen(haltMsg);
+    int bannerSize = std::max<int>(80, labelSize + strlen("-- ") * 2);
+
     fputs("\n", stderr);
-    fputs("------------------------ '", stderr);
+    int numLeadingDashes = (bannerSize - labelSize) / 2 - 1;
+    printNDashes(numLeadingDashes);
+    fputs(" ", stderr);
     fputs(progname, stderr);
-    fputs("' is dying ------------------------\n", stderr);
+    fputs(haltMsg, stderr);
+    fputs(" ", stderr);
+    printNDashes(bannerSize - numLeadingDashes - labelSize - 2);
+    fputs("\n", stderr);
 
     // print out any registered program info
     {
@@ -1047,19 +1105,23 @@ ArchLogPostMortem(const char* reason,
         fputs(message, stderr);
         fputs("\n", stderr);
     }
-    fputs("The stack can be found in ", stderr);
+
+    fputs("writing crash report to [ ", stderr);
     fputs(hostname, stderr);
     fputs(":", stderr);
     fputs(logfile, stderr);
-    fputs("\n", stderr);
+    fputs(" ] ...", stderr);
+    fflush(stderr);
 
-    int loggedStack = _LogStackTraceForPid(logfile);
-    fputs("done.\n", stderr);
+    int loggedStack = reason ?
+         _LogStackTraceForPid(isFatal, logfile, reason) :
+         _LogStackTraceForPid(isFatal, logfile, message);
+    fputs(" done.\n", stderr);
     // Additionally, print the first few lines of extra log information since
     // developers don't always think to look for it in the stack trace file.
     ArchStackTrace_GetLogInfo().EmitAnyExtraLogInfo(stderr, 3 /* max */);
-    fputs("------------------------------------------------------------------\n",
-          stderr);
+    printNDashes(bannerSize);
+    fputs("\n", stderr);
 
     if (loggedStack) {
         _FinishLoggingFatalStackTrace(progname, logfile, NULL /*session log*/, 
@@ -1067,6 +1129,24 @@ ArchLogPostMortem(const char* reason,
     }
 
     busy.clear(std::memory_order_release);
+}
+
+void
+ArchLogFatalProcessState(const char* reason,
+                         const char* message /* = nullptr */,
+                         const char* extraLogMsg /* = nullptr */)
+{
+    _ArchLogProcessStateHelper(true /* isFatal */, 
+        reason, message, extraLogMsg);
+}
+
+void
+ArchLogCurrentProcessState(const char* reason,
+                           const char* message /* = nullptr */,
+                           const char* extraLogMsg /* = nullptr */)
+{
+    _ArchLogProcessStateHelper(false /* isFatal */,
+        reason, message, extraLogMsg);
 }
 
 /*
@@ -1156,7 +1236,7 @@ _LogStackTraceToOutputIterator(OutputIterator oi, size_t maxDepth, bool addEndl)
     char logfile[1024];
     _GetStackTraceName(logfile, sizeof(logfile));
 
-    _LogStackTraceForPid(logfile);
+    _LogStackTraceForPid(false, logfile, "Log Stack Trace");
 
     ifstream inFile(logfile);
     string line;
@@ -1249,17 +1329,24 @@ ArchGetStackFrames(size_t maxDepth, vector<uintptr_t> *frames)
     ArchGetStackFrames(maxDepth, /* skip = */ 0, frames);
 }
 
+void
+ArchGetStackFrames(size_t maxDepth, size_t skip, vector<uintptr_t> *frames)
+{
+    frames->resize(maxDepth);
+    frames->resize(ArchGetStackFrames(maxDepth, skip, frames->data()));
+}
+
 #if defined(ARCH_OS_LINUX) && defined(ARCH_BITS_64)
 struct Arch_UnwindContext {
 public:
-    Arch_UnwindContext(size_t inMaxdepth, size_t inSkip,
-                       vector<uintptr_t>* inFrames) :
-        maxdepth(inMaxdepth), skip(inSkip), frames(inFrames) { }
+    Arch_UnwindContext(size_t maxdepth, size_t skip, uintptr_t* frames) :
+        maxdepth(maxdepth), skip(skip), curdepth(0), frames(frames) {}
 
 public:
     size_t maxdepth;
     size_t skip;
-    vector<uintptr_t>* frames;
+    size_t curdepth;
+    uintptr_t* frames;
 };
 
 static _Unwind_Reason_Code
@@ -1270,15 +1357,15 @@ Arch_unwindcb(struct _Unwind_Context *ctx, void *data)
     // never extend frames because it is unsafe to alloc inside a
     // signal handler, and this function is called sometimes (when
     // profiling) from a signal handler.
-    if (context->frames->size() >= context->maxdepth) {
+    if (context->curdepth >= context->maxdepth) {
         return _URC_END_OF_STACK;
     }
     else {
-        if (context->skip > 0) {
+        if (context->skip) {
             --context->skip;
         }
         else {
-            context->frames->push_back(_Unwind_GetIP(ctx));
+            context->frames[context->curdepth++] = _Unwind_GetIP(ctx);
         }
         return _URC_NO_REASON;
     }
@@ -1288,48 +1375,49 @@ Arch_unwindcb(struct _Unwind_Context *ctx, void *data)
  * ArchGetStackFrames
  *  save some of stack into buffer.
  */
-void
-ArchGetStackFrames(size_t maxdepth, size_t skip, vector<uintptr_t> *frames)
+size_t
+ArchGetStackFrames(size_t maxdepth, size_t skip, uintptr_t *frames)
 {
     /* use the exception handling mechanism to unwind our stack.
      * note this is gcc >= 3.3.3 only.
      */
     Arch_UnwindContext context(maxdepth, skip, frames);
     _Unwind_Backtrace(Arch_unwindcb, (void*)&context);
+    return context.curdepth;
 }
 
 #elif defined(ARCH_OS_WINDOWS)
 
-void
-ArchGetStackFrames(size_t maxdepth, size_t skip, vector<uintptr_t> *frames)
+size_t
+ArchGetStackFrames(size_t maxdepth, size_t skip, uintptr_t *frames)
 {
     void* stack[MAX_STACK_DEPTH];
-    size_t frameCount = CaptureStackBackTrace(0, MAX_STACK_DEPTH, stack, NULL);
+    size_t frameCount = CaptureStackBackTrace(skip, MAX_STACK_DEPTH, stack, NULL);
     frameCount = std::min(frameCount, maxdepth);
-    frames->reserve(frameCount);
-    for (size_t frame = skip; frame != frameCount; ++frame) {
-        frames->push_back(reinterpret_cast<uintptr_t>(stack[frame]));
+    for (size_t frame = 0; frame != frameCount; ++frame) {
+        frames[frame] = reinterpret_cast<uintptr_t>(stack[frame]);
     }
+    return frameCount;
 }
 
 #elif defined(ARCH_OS_DARWIN)
 
-void
-ArchGetStackFrames(size_t maxdepth, size_t skip, vector<uintptr_t> *frames)
+size_t
+ArchGetStackFrames(size_t maxdepth, size_t skip, uintptr_t *frames)
 {
     void* stack[MAX_STACK_DEPTH];
-    const size_t frameCount =
-        backtrace(stack, std::max((size_t)MAX_STACK_DEPTH, maxdepth));
-    frames->reserve(frameCount);
+    size_t maxFrames = std::min<size_t>(MAX_STACK_DEPTH, maxdepth+skip);
+    const size_t frameCount = backtrace(stack, maxFrames);
     for (size_t frame = skip; frame != frameCount; ++frame) {
-        frames->push_back(reinterpret_cast<uintptr_t>(stack[frame]));
+        *frames++ = reinterpret_cast<uintptr_t>(stack[frame]);
     }
+    return frameCount-skip;
 }
 
 #else
 
-void
-ArchGetStackFrames(size_t, size_t, vector<uintptr_t> *)
+size_t
+ArchGetStackFrames(size_t, size_t, uintptr_t *)
 {
 }
 
@@ -1360,22 +1448,24 @@ Arch_DefaultStackTraceCallback(uintptr_t address)
         return ArchStringPrintf("%s+%#0lx", symbolName.c_str(), symbolOffset);
     }
     else {
-        return ArchStringPrintf("%#016lx", address);
+        return "<unknown>";
     }
 }
 
 static
 vector<string>
-Arch_GetStackTrace(const vector<uintptr_t> &frames);
+Arch_GetStackTrace(const vector<uintptr_t> &frames,
+                   bool skipUnknownFrames=false);
 
 /*
  * ArchPrintStackFrames
  *  print out stack frames to the given ostream.
  */
 void
-ArchPrintStackFrames(ostream& oss, const vector<uintptr_t> &frames)
+ArchPrintStackFrames(ostream& oss, const vector<uintptr_t> &frames,
+                     bool skipUnknownFrames)
 {
-    const vector<string> result = Arch_GetStackTrace(frames);
+    const vector<string> result = Arch_GetStackTrace(frames, skipUnknownFrames);
     for (size_t i = 0; i < result.size(); i++) {
         oss << result[i] << std::endl;
     }
@@ -1402,8 +1492,9 @@ Arch_GetStackTraceCallback()
     return &callback;
 }
 
-vector<string>
-Arch_GetStackTrace(const vector<uintptr_t> &frames)
+static vector<string>
+Arch_GetStackTrace(const vector<uintptr_t> &frames,
+                   bool skipUnknownFrames)
 {
     vector<string> rv;
 
@@ -1417,10 +1508,14 @@ Arch_GetStackTrace(const vector<uintptr_t> &frames)
     if (!callback) {
         callback = Arch_DefaultStackTraceCallback;
     }
+    int n = 0;
     for (size_t i = 0; i < frames.size(); i++) {
         const std::string symbolic = callback(frames[i]);
+        if (skipUnknownFrames && symbolic == "<unknown>") {
+            continue;
+        }
         rv.push_back(ArchStringPrintf(" #%-3i 0x%016lx in %s",
-                                      (int)i, frames[i], symbolic.c_str()));
+                                      n++, frames[i], symbolic.c_str()));
     }
 
     return rv;

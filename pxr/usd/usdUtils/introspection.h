@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_UTILS_INTROSPECTION_H
 #define PXR_USD_USD_UTILS_INTROSPECTION_H
@@ -51,11 +34,11 @@ SDF_DECLARE_HANDLES(SdfLayer);
     (modelCount)                        \
     (instancedModelCount)               \
     (assetCount)                        \
-    (masterCount)                       \
+    (prototypeCount)                    \
     (totalInstanceCount)                \
     (usedLayerCount)                    \
     (primary)                           \
-    (masters)                           \
+    (prototypes)                        \
     (primCounts)                        \
         /*(totalPrimCount)*/            \
         (activePrimCount)               \
@@ -78,10 +61,10 @@ TF_DECLARE_PUBLIC_TOKENS(UsdUtilsUsdStageStatsKeys,
 ///  * modelCount - number of models
 ///  * instancedModelCount - number of instanced models
 ///  * assetCount - number of assets
-///  * masterCount - number of masters
+///  * prototypeCount - number of prototypes
 ///  * totalInstanceCount - total number of instances (including nested instances)
-///  * two sub-dictionaries, 'primary' and 'masters' for the "primary" prim tree
-///  and for all the master subtrees respectively, containing the following 
+///  * two sub-dictionaries, 'primary' and 'prototypes' for the "primary" prim tree
+///  and for all the prototype subtrees respectively, containing the following 
 ///  stats:
 ///  * primCounts - a sub-dictionary containing the following 
 ///     * totalPrimCount - number of prims
@@ -94,7 +77,7 @@ TF_DECLARE_PUBLIC_TOKENS(UsdUtilsUsdStageStatsKeys,
 ///
 /// Returns the stage that was opened.
 /// 
-/// The "masters" subdictionary is populated only if the stage has one ore more 
+/// The "prototypes" subdictionary is populated only if the stage has one or more 
 /// instanced models.
 /// 
 /// \note The approximate memory allocated when opening the stage is computed 
@@ -115,7 +98,7 @@ UsdStageRefPtr UsdUtilsComputeUsdStageStats(const std::string &rootLayerPath,
 /// Computes stats on an already opened USD stage.
 /// 
 /// Returns the total number of prims on the stage, including active, inactive.
-/// pure overs, prims inside masters etc.
+/// pure overs, prims inside prototypes etc.
 /// 
 USDUTILS_API
 size_t UsdUtilsComputeUsdStageStats(const UsdStageWeakPtr &stage, 

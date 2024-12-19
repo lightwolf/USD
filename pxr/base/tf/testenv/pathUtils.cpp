@@ -1,27 +1,11 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
+#include "pxr/base/tf/diagnosticLite.h"
 #include "pxr/base/tf/regTest.h"
 #include "pxr/base/tf/pathUtils.h"
 #include "pxr/base/tf/fileUtils.h"
@@ -32,6 +16,10 @@
 
 #include <string>
 #include <vector>
+
+#if defined(ARCH_OS_WINDOWS)
+#include <Windows.h>
+#endif
 
 using namespace std;
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -122,6 +110,38 @@ TestTfRealPath()
         TF_AXIOM(split == 0);
         TF_AXIOM(error == "encountered dangling symbolic link");
     }
+
+#if defined(ARCH_OS_WINDOWS)
+    string thisdir = TfRealPath(".");
+    // This directory on Windows should start with a drive letter.
+    TF_AXIOM(thisdir.length() > 2 && thisdir[1] == ':');
+    // Strip off the drive letter, leaving a path that starts with a slash,
+    // but is still a valid absolute path equivalent to this directory
+    // (because of the "current drive" concept in Windows).
+    string testdir = thisdir;
+    testdir.erase(0, 2);
+    TF_AXIOM(TfRealPath(testdir) == thisdir);
+    if (testSymlinks) {
+        // Call Windows function to change the current working directory to
+        // put us inside a directory that is a symlink. Then validate that
+        // the symlink is resolved properly when getting the real path to
+        // the current directory.
+        ::SetCurrentDirectory("b");
+        string thissubdir = thisdir;
+        thissubdir += "/subdir";
+        TF_AXIOM(TfRealPath(".") == thissubdir);
+        ::SetCurrentDirectory("..");
+        // Then from outside the directory, validate that the more indirect
+        // symlink (d->c->b->subdir) also resolves properly. We can't actually
+        // "cd" to "d", because it isn't configured as a "directory" symlink.
+        string testsubdir = thisdir;
+        testsubdir += "/d";
+        TF_AXIOM(TfRealPath(testsubdir) == thissubdir);
+        // Test the more direct and indirect symlinks as relative paths.
+        TF_AXIOM(TfRealPath("b") == thissubdir);
+        TF_AXIOM(TfRealPath("d") == thissubdir);
+    }
+#endif
 
     return true;
 }

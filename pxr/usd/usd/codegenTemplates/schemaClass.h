@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef {{ Upper(libraryName) }}_GENERATED_{{ Upper(cls.className) }}_H
 #define {{ Upper(libraryName) }}_GENERATED_{{ Upper(cls.className) }}_H
@@ -79,8 +62,8 @@ class {{ cls.cppClassName }} : public {{ cls.parentCppClassName }}
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = {{cls.schemaType }};
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = {{cls.schemaKindEnumValue }};
 
 {% if cls.isMultipleApply %}
     /// Construct a {{ cls.cppClassName }} on UsdPrim \p prim with
@@ -88,7 +71,7 @@ public:
     /// {{ cls.cppClassName }}::Get(
     ///    prim.GetStage(),
     ///    prim.GetPath().AppendProperty(
-    ///        "{{ cls.propertyNamespacePrefix }}:name"));
+    ///        "{{ cls.propertyNamespace.prefix }}:name"));
     ///
     /// for a \em valid \p prim, but will not immediately throw an error for
     /// an invalid \p prim
@@ -130,28 +113,26 @@ public:
     {% endif -%}
     virtual ~{{ cls.cppClassName }}() {%- if cls.isAPISchemaBase %} = 0{% endif %};
 
+    /// Return a vector of names of all pre-declared attributes for this schema
+    /// class and all its ancestor classes.  Does not include attributes that
+    /// may be authored by custom/extended methods of the schemas involved.
+    {% if useExportAPI -%}
+    {{ Upper(libraryName) }}_API
+    {% endif -%}
+    static const TfTokenVector &
+    GetSchemaAttributeNames(bool includeInherited=true);
 {% if cls.isMultipleApply %}
+
     /// Return a vector of names of all pre-declared attributes for this schema
     /// class and all its ancestor classes for a given instance name.  Does not
     /// include attributes that may be authored by custom/extended methods of
     /// the schemas involved. The names returned will have the proper namespace
     /// prefix.
-{% else %}
-    /// Return a vector of names of all pre-declared attributes for this schema
-    /// class and all its ancestor classes.  Does not include attributes that
-    /// may be authored by custom/extended methods of the schemas involved.
-{% endif %}
     {% if useExportAPI -%}
     {{ Upper(libraryName) }}_API
     {% endif -%}
-    static const TfTokenVector &
-{% if cls.isMultipleApply %}
-    GetSchemaAttributeNames(
-        bool includeInherited=true, const TfToken instanceName=TfToken());
-{% else %}
-    GetSchemaAttributeNames(bool includeInherited=true);
-{% endif %}
-{% if cls.isMultipleApply %}
+    static TfTokenVector
+    GetSchemaAttributeNames(bool includeInherited, const TfToken &instanceName);
 
     /// Returns the name of this multiple-apply schema instance
     TfToken GetName() const {
@@ -163,9 +144,9 @@ public:
     /// Return a {{ cls.cppClassName }} holding the prim adhering to this
     /// schema at \p path on \p stage.  If no prim exists at \p path on
     /// \p stage, or if the prim at that path does not adhere to this schema,
-{% if cls.isMultipleApply and cls.propertyNamespacePrefix %}
+{% if cls.isMultipleApply and cls.propertyNamespace %}
     /// return an invalid schema object.  \p path must be of the format
-    /// <path>.{{ cls.propertyNamespacePrefix }}:name .
+    /// <path>.{{ cls.propertyNamespace.prefix }}:name .
     ///
     /// This is shorthand for the following:
     ///
@@ -196,6 +177,14 @@ public:
     {% endif -%}
     static {{ cls.cppClassName }}
     Get(const UsdPrim &prim, const TfToken &name);
+
+    /// Return a vector of all named instances of {{ cls.cppClassName }} on the 
+    /// given \p prim.
+    {% if useExportAPI -%}
+    {{ Upper(libraryName) }}_API
+    {% endif -%}
+    static std::vector<{{ cls.cppClassName }}>
+    GetAll(const UsdPrim &prim);
 {% endif %}
 {% endif %}
 
@@ -228,7 +217,7 @@ public:
     static {{ cls.cppClassName }}
     Define(const UsdStagePtr &stage, const SdfPath &path);
 {% endif %}
-{% if cls.isMultipleApply and cls.propertyNamespacePrefix %}
+{% if cls.isMultipleApply and cls.propertyNamespace %}
     /// Checks if the given name \p baseName is the base name of a property
     /// of {{ cls.usdPrimTypeName }}.
     {% if useExportAPI -%}
@@ -246,10 +235,29 @@ public:
     static bool
     Is{{ cls.usdPrimTypeName }}Path(const SdfPath &path, TfToken *name);
 {% endif %}
-{% if cls.isPrivateApply %}
-private:
-{% endif %}
 {% if cls.isAppliedAPISchema and not cls.isMultipleApply %}
+
+    /// Returns true if this <b>single-apply</b> API schema can be applied to 
+    /// the given \p prim. If this schema can not be a applied to the prim, 
+    /// this returns false and, if provided, populates \p whyNot with the 
+    /// reason it can not be applied.
+    /// 
+    /// Note that if CanApply returns false, that does not necessarily imply
+    /// that calling Apply will fail. Callers are expected to call CanApply
+    /// before calling Apply if they want to ensure that it is valid to 
+    /// apply a schema.
+    /// 
+    /// \sa UsdPrim::GetAppliedSchemas()
+    /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
+    ///
+    {% if useExportAPI -%}
+    {{ Upper(libraryName) }}_API
+    {% endif -%}
+    static bool 
+    CanApply(const UsdPrim &prim, std::string *whyNot=nullptr);
 
     /// Applies this <b>single-apply</b> API schema to the given \p prim.
     /// This information is stored by adding "{{ cls.primName }}" to the 
@@ -257,23 +265,45 @@ private:
     /// 
     /// \return A valid {{ cls.cppClassName }} object is returned upon success. 
     /// An invalid (or empty) {{ cls.cppClassName }} object is returned upon 
-    /// failure. See \ref UsdAPISchemaBase::_ApplyAPISchema() for conditions 
+    /// failure. See \ref UsdPrim::ApplyAPI() for conditions 
     /// resulting in failure. 
     /// 
     /// \sa UsdPrim::GetAppliedSchemas()
     /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
     ///
-    {% if useExportAPI and not cls.isPrivateApply -%}
+    {% if useExportAPI -%}
     {{ Upper(libraryName) }}_API
     {% endif -%}
     static {{ cls.cppClassName }} 
-{% if cls.isPrivateApply %}
-    _Apply(const UsdPrim &prim);
-{% else %}
     Apply(const UsdPrim &prim);
 {% endif %}
-{% endif %}
 {% if cls.isAppliedAPISchema and cls.isMultipleApply %}
+
+    /// Returns true if this <b>multiple-apply</b> API schema can be applied,
+    /// with the given instance name, \p name, to the given \p prim. If this 
+    /// schema can not be a applied the prim, this returns false and, if 
+    /// provided, populates \p whyNot with the reason it can not be applied.
+    /// 
+    /// Note that if CanApply returns false, that does not necessarily imply
+    /// that calling Apply will fail. Callers are expected to call CanApply
+    /// before calling Apply if they want to ensure that it is valid to 
+    /// apply a schema.
+    /// 
+    /// \sa UsdPrim::GetAppliedSchemas()
+    /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
+    ///
+    {% if useExportAPI -%}
+    {{ Upper(libraryName) }}_API
+    {% endif -%}
+    static bool 
+    CanApply(const UsdPrim &prim, const TfToken &name, 
+             std::string *whyNot=nullptr);
 
     /// Applies this <b>multiple-apply</b> API schema to the given \p prim 
     /// along with the given instance name, \p name. 
@@ -285,31 +315,30 @@ private:
     /// 
     /// \return A valid {{ cls.cppClassName }} object is returned upon success. 
     /// An invalid (or empty) {{ cls.cppClassName }} object is returned upon 
-    /// failure. See \ref UsdAPISchemaBase::_MultipleApplyAPISchema() for 
+    /// failure. See \ref UsdPrim::ApplyAPI() for 
     /// conditions resulting in failure. 
     /// 
     /// \sa UsdPrim::GetAppliedSchemas()
     /// \sa UsdPrim::HasAPI()
+    /// \sa UsdPrim::CanApplyAPI()
+    /// \sa UsdPrim::ApplyAPI()
+    /// \sa UsdPrim::RemoveAPI()
     ///
-    {% if useExportAPI and not cls.isPrivateApply -%}
-    {{ Upper(libraryName) }}_API
-    {% endif -%}
-    static {{ cls.cppClassName }} 
-{% if cls.isPrivateApply %}
-    _Apply(const UsdPrim &prim, const TfToken &name);
-{% else %}
-    Apply(const UsdPrim &prim, const TfToken &name);
-{% endif %}
-{% endif %}
-
-protected:
-    /// Returns the type of schema this class belongs to.
-    ///
-    /// \sa UsdSchemaType
     {% if useExportAPI -%}
     {{ Upper(libraryName) }}_API
     {% endif -%}
-    UsdSchemaType _GetSchemaType() const override;
+    static {{ cls.cppClassName }} 
+    Apply(const UsdPrim &prim, const TfToken &name);
+{% endif %}
+
+protected:
+    /// Returns the kind of schema this class belongs to.
+    ///
+    /// \sa UsdSchemaKind
+    {% if useExportAPI -%}
+    {{ Upper(libraryName) }}_API
+    {% endif -%}
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.

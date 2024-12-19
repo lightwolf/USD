@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/usdFileFormat.h"
@@ -27,12 +10,12 @@
 #include "pxr/usd/usd/usdaFileFormat.h"
 #include "pxr/usd/usd/usdcFileFormat.h"
 
+#include "pxr/usd/ar/resolver.h"
 #include "pxr/usd/sdf/layer.h"
 
 #include "pxr/base/trace/trace.h"
 
 #include "pxr/base/tf/envSetting.h"
-#include "pxr/base/tf/pathUtils.h"
 #include "pxr/base/tf/registryManager.h"
 #include "pxr/base/tf/type.h"
 
@@ -62,26 +45,27 @@ _GetFileFormat(const TfToken& formatId)
     return fileFormat;
 }
 
-// A .usd file may actually be either a text .usda file or a binary crate 
-// .usdc file. These functions returns the appropriate file format for a
-// given file or data object.
 static
-SdfFileFormatConstPtr
-_GetUnderlyingFileFormat(const string& filePath)
+const UsdUsdcFileFormatConstPtr&
+_GetUsdcFileFormat()
 {
-    auto usdcFormat = _GetFileFormat(UsdUsdcFileFormatTokens->Id);
-    if (usdcFormat->CanRead(filePath)) {
-        return usdcFormat;
-    }
-
-    auto usdaFormat = _GetFileFormat(UsdUsdaFileFormatTokens->Id);
-    if (usdaFormat->CanRead(filePath)) {
-        return usdaFormat;
-    }
-
-    return SdfFileFormatConstPtr();
+    static const auto usdcFormat = TfDynamic_cast<UsdUsdcFileFormatConstPtr>(
+        _GetFileFormat(UsdUsdcFileFormatTokens->Id));
+    return usdcFormat;
 }
 
+static
+const UsdUsdaFileFormatConstPtr&
+_GetUsdaFileFormat()
+{
+    static const auto usdaFormat = TfDynamic_cast<UsdUsdaFileFormatConstPtr>(
+        _GetFileFormat(UsdUsdaFileFormatTokens->Id));
+    return usdaFormat;
+}
+
+// A .usd file may actually be either a text .usda file or a binary crate 
+// .usdc file. This function returns the appropriate file format for a
+// given data object.
 static
 SdfFileFormatConstPtr
 _GetUnderlyingFileFormat(const SdfAbstractDataConstPtr& data)
@@ -188,10 +172,24 @@ UsdUsdFileFormat::InitData(const FileFormatArguments& args) const
     return fileFormat->InitData(args);
 }
 
+SdfAbstractDataRefPtr
+UsdUsdFileFormat::_InitDetachedData(const FileFormatArguments& args) const
+{
+    SdfFileFormatConstPtr fileFormat = _GetFileFormatForArguments(args);
+    if (!fileFormat) {
+        fileFormat = _GetDefaultFileFormat();
+    }
+    
+    return fileFormat->InitDetachedData(args);
+}
+
 bool
 UsdUsdFileFormat::CanRead(const string& filePath) const
 {
-    return _GetUnderlyingFileFormat(filePath) != SdfFileFormatConstPtr();
+    auto asset = ArGetResolver().OpenAsset(ArResolvedPath(filePath));
+    return asset &&
+        (_GetUsdcFileFormat()->_CanReadFromAsset(filePath, asset) ||
+         _GetUsdaFileFormat()->_CanReadFromAsset(filePath, asset));
 }
 
 bool
@@ -202,26 +200,71 @@ UsdUsdFileFormat::Read(
 {
     TRACE_FUNCTION();
 
-    // Try binary usdc format first, since that's most common, then usda text.
-    static auto formats = {
-        _GetFileFormat(UsdUsdcFileFormatTokens->Id),
-        _GetFileFormat(UsdUsdaFileFormatTokens->Id),
-    };
+    return _ReadHelper</* Detached = */ false>(
+        layer, resolvedPath, metadataOnly);
+}
+
+bool
+UsdUsdFileFormat::_ReadDetached(
+    SdfLayer* layer,
+    const std::string& resolvedPath,
+    bool metadataOnly) const
+{
+    TRACE_FUNCTION();
+
+    return _ReadHelper</* Detached = */ true>(
+        layer, resolvedPath, metadataOnly);
+}
+
+template <bool Detached>
+bool 
+UsdUsdFileFormat::_ReadHelper(
+    SdfLayer* layer,
+    const string& resolvedPath,
+    bool metadataOnly) const
+{
+    // Fetch the asset from Ar.
+    auto asset = ArGetResolver().OpenAsset(ArResolvedPath(resolvedPath));
+    if (!asset) {
+        return false;
+    }
+
+    const auto& usdcFileFormat = _GetUsdcFileFormat();
+    const auto& usdaFileFormat = _GetUsdaFileFormat();
 
     // Network-friendly path -- just try to read the file and if we get one that
     // works we're good.
-    for (auto const &fmt: formats) {
+    //
+    // Try binary usdc format first, since that's most common, then usda text.
+    {
         TfErrorMark m;
-        if (fmt && fmt->Read(layer, resolvedPath, metadataOnly))
+        if (usdcFileFormat->_ReadFromAsset(
+                layer, resolvedPath, asset, metadataOnly, Detached)) {
             return true;
+        }
+        m.Clear();
+
+        if (usdaFileFormat->_ReadFromAsset(
+                layer, resolvedPath, asset, metadataOnly)) {
+            return true;
+        }
         m.Clear();
     }
 
     // Failed to load.  Do the slower (for the network) version where we attempt
-    // to determine the underlying format first, and then load using it.
-    auto underlyingFormat = _GetUnderlyingFileFormat(resolvedPath);
-    return underlyingFormat &&
-        underlyingFormat->Read(layer, resolvedPath, metadataOnly);
+    // to determine the underlying format first, and then load using it. This
+    // gives us better diagnostic messages.
+    if (usdcFileFormat->_CanReadFromAsset(resolvedPath, asset)) {
+        return usdcFileFormat->_ReadFromAsset(
+            layer, resolvedPath, asset, metadataOnly, Detached);
+    }
+
+    if (usdaFileFormat->_CanReadFromAsset(resolvedPath, asset)) {
+        return usdaFileFormat->_ReadFromAsset(
+            layer, resolvedPath, asset, metadataOnly);
+    }
+
+    return false;
 }
 
 SdfFileFormatConstPtr 
@@ -255,36 +298,35 @@ UsdUsdFileFormat::WriteToFile(
     // arguments, just use that.
     SdfFileFormatConstPtr fileFormat = _GetFileFormatForArguments(args);
 
-    // Otherwise, if we are saving a .usd layer (i.e., calling SdfLayer::Save),
-    // we want to maintain that layer's underlying format. For example,
-    // calling Save() on an ASCII .usd file should produce an ASCII file
-    // and not convert it to binary.
-    // 
-    // If we are exporting to a .usd layer (i.e., calling SdfLayer::Export),
-    // we use the default underlying format for .usd. This ensures consistent
-    // behavior -- creating a new .usd layer always uses the default format
-    // unless otherwise specified.
+    // When exporting to a .usd layer (i.e., calling SdfLayer::Export), we use
+    // the default underlying format for .usd. This ensures consistent behavior
+    // -- creating a new .usd layer always uses the default format unless
+    // otherwise specified.
     if (!fileFormat) {
-        // Note that SdfLayer::GetRealPath is *not* the same as realpath(3); 
-        // it does not follow symlinks. Hence, we use TfRealPath to determine 
-        // if the source and destination files are the same. If so, we know 
-        // we're saving the layer, not exporting it to a new location.
-        auto layerRealPath = 
-            TfRealPath(layer.GetRealPath(), 
-                       /* allowInaccessibleSuffix = */ true);
-        auto destRealPath = 
-            TfRealPath(filePath, /* allowInaccessibleSuffix = */ true);
-        const bool isSavingLayer = (layerRealPath == destRealPath);
-        if (isSavingLayer) {
-            fileFormat = _GetUnderlyingFileFormatForLayer(layer);
-        }
+        fileFormat = _GetDefaultFileFormat();
     }
+
+    return fileFormat->WriteToFile(layer, filePath, comment, args);
+}
+
+bool
+UsdUsdFileFormat::SaveToFile(
+    const SdfLayer& layer,
+    const std::string& filePath,
+    const std::string& comment,
+    const FileFormatArguments& args) const
+{
+    // If we are saving a .usd layer (i.e., calling SdfLayer::Save), we want to
+    // maintain that layer's underlying format. For example, calling Save() on a
+    // text .usd file should produce a text file and not convert it to binary.
+    // 
+    SdfFileFormatConstPtr fileFormat = _GetUnderlyingFileFormatForLayer(layer);
 
     if (!fileFormat) {
         fileFormat = _GetDefaultFileFormat();
     }
 
-    return fileFormat->WriteToFile(layer, filePath, comment);
+    return fileFormat->SaveToFile(layer, filePath, comment, args);
 }
 
 bool 
@@ -313,7 +355,7 @@ UsdUsdFileFormat::WriteToStream(
     size_t indent) const
 {
     return _GetUnderlyingFileFormatForLayer(
-        *boost::get_pointer(spec->GetLayer()))->WriteToStream(
+        *get_pointer(spec->GetLayer()))->WriteToStream(
             spec, out, indent);
 }
 

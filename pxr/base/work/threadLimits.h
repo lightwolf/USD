@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_WORK_THREAD_LIMITS_H
 #define PXR_BASE_WORK_THREAD_LIMITS_H
@@ -33,16 +16,25 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 /// Return the current concurrency limit, always >= 1.
 ///
-/// The initial value is determined by the PXR_WORK_THREAD_LIMIT env setting,
-/// which defaults to WorkGetPhysicalConcurrencyLimit(). If the env setting
-/// has been explicitly set to a non-zero value, it will always override any
-/// concurrency limit set via the API calls below.
+/// This value is determined by the underlying concurrency subsystem.  It may
+/// have been set by a third party, by a call to Work API below, or by Work
+/// itself if the PXR_WORK_THREAD_LIMIT env setting was set.  If the
+/// PXR_WORK_THREAD_LIMIT env setting has been explicitly set to a non-zero
+/// value, Work will attempt to configure the underlying concurrency subsystem
+/// to use the specified limit and will ignore concurrency limits set via the
+/// API calls below.
 ///
 /// Note that this can return a value larger than
 /// WorkGetPhysicalConcurrencyLimit() if WorkSetConcurrencyLimit() was called
 /// with such a value, or if PXR_WORK_THREAD_LIMIT was set with such a value.
 ///
 WORK_API unsigned WorkGetConcurrencyLimit();
+
+/// Return true if WorkGetPhysicalConcurrencyLimit() returns a number greater
+/// than 1 and PXR_WORK_THREAD_LIMIT was not set in an attempt to limit the
+/// process to a single thread, false otherwise.
+///
+WORK_API bool WorkHasConcurrency();
 
 /// Return the number of physical execution cores available to the program.
 /// This is either the number of physical cores on the machine or the number of

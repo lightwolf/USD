@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usdShade/output.h"
@@ -181,7 +164,8 @@ UsdShadeOutput::ClearSdrMetadataByKey(const TfToken &key) const
 bool 
 UsdShadeOutput::IsOutput(const UsdAttribute &attr)
 {
-    return TfStringStartsWith(attr.GetName().GetString(), 
+    return attr && attr.IsDefined() &&
+        TfStringStartsWith(attr.GetName().GetString(),
                               UsdShadeTokens->outputs);
 }
 
@@ -203,6 +187,14 @@ UsdShadeOutput::CanConnect(const UsdShadeOutput &sourceOutput) const
     return CanConnect(sourceOutput.GetAttr());
 }
 
+bool
+UsdShadeOutput::ConnectToSource(
+    UsdShadeConnectionSourceInfo const &source,
+    ConnectionModification const mod) const
+{
+    return UsdShadeConnectableAPI::ConnectToSource(*this, source, mod);
+}
+
 bool 
 UsdShadeOutput::ConnectToSource(
     UsdShadeConnectableAPI const &source, 
@@ -210,8 +202,8 @@ UsdShadeOutput::ConnectToSource(
     UsdShadeAttributeType const sourceType,
     SdfValueTypeName typeName) const 
 {
-    return UsdShadeConnectableAPI::ConnectToSource(*this, source, 
-        sourceName, sourceType, typeName);   
+    return UsdShadeConnectableAPI::ConnectToSource(*this, source,
+        sourceName, sourceType, typeName);
 }
 
 bool 
@@ -230,6 +222,20 @@ bool
 UsdShadeOutput::ConnectToSource(UsdShadeOutput const &sourceOutput) const 
 {
     return UsdShadeConnectableAPI::ConnectToSource(*this, sourceOutput);
+}
+
+bool
+UsdShadeOutput::SetConnectedSources(
+    std::vector<UsdShadeConnectionSourceInfo> const &sourceInfos) const
+{
+    return UsdShadeConnectableAPI::SetConnectedSources(*this, sourceInfos);
+}
+
+UsdShadeOutput::SourceInfoVector
+UsdShadeOutput::GetConnectedSources(SdfPathVector *invalidSourcePaths) const
+{
+    return UsdShadeConnectableAPI::GetConnectedSources(*this,
+                                                       invalidSourcePaths);
 }
 
 bool 
@@ -262,15 +268,29 @@ UsdShadeOutput::IsSourceConnectionFromBaseMaterial() const
 }
 
 bool 
-UsdShadeOutput::DisconnectSource() const
+UsdShadeOutput::DisconnectSource(UsdAttribute const &sourceAttr) const
 {
-    return UsdShadeConnectableAPI::DisconnectSource(*this);
+    return UsdShadeConnectableAPI::DisconnectSource(*this, sourceAttr);
+}
+
+bool
+UsdShadeOutput::ClearSources() const
+{
+    return UsdShadeConnectableAPI::ClearSources(*this);
 }
 
 bool 
-UsdShadeOutput::ClearSource() const
+UsdShadeOutput::ClearSource() const 
 {
-    return UsdShadeConnectableAPI::ClearSource(*this);
+    return UsdShadeConnectableAPI::ClearSources(*this);
+}
+
+UsdShadeAttributeVector
+UsdShadeOutput::GetValueProducingAttributes(
+    bool shaderOutputsOnly) const
+{
+    return UsdShadeUtils::GetValueProducingAttributes(*this,
+                                                      shaderOutputsOnly);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

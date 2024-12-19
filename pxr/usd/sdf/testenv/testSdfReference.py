@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from __future__ import print_function
 
@@ -31,7 +14,7 @@ class TestSdfReferences(unittest.TestCase):
     def test_Basic(self):
         # Test all combinations of the following keyword arguments.
         args = [
-            ['assetPath', '//menv30/layer.sdf'],
+            ['assetPath', '//unit/layer.sdf'],
             ['primPath', '/rootPrim'],
             ['layerOffset', Sdf.LayerOffset(48, -2)],
             ['customData', {'key': 42, 'other': 'yes'}],
@@ -60,7 +43,7 @@ class TestSdfReferences(unittest.TestCase):
         # way to support nested proxies).  Make sure the user can't modify
         # temporary Reference objects.
         with self.assertRaises(AttributeError):
-            Sdf.Reference().assetPath = '//menv30/blah.sdf'
+            Sdf.Reference().assetPath = '//unit/blah.sdf'
 
         with self.assertRaises(AttributeError):
             Sdf.Reference().primPath = '/root'
@@ -86,6 +69,39 @@ class TestSdfReferences(unittest.TestCase):
         self.assertTrue(ref1 > ref0)
         self.assertTrue(ref0 <= ref1)
         self.assertTrue(ref1 >= ref0)
+
+        # Regression test for bug USD-5000 where less than operator was not 
+        # fully anti-symmetric
+        r1 = Sdf.Reference()
+        r2 = Sdf.Reference('//test/layer.sdf', layerOffset=Sdf.LayerOffset(48, -2))
+        self.assertTrue(r1 < r2)
+        self.assertFalse(r2 < r1)
+
+        # Test IsInternal()
+
+        # r2 can not be an internal reference since it's assetPath is not empty
+        self.assertFalse(r2.IsInternal())
+
+        # ref0 is an internal referennce because it has an empty assetPath
+        self.assertTrue(ref0.IsInternal())
+
+        # Test invalid asset paths.
+        with self.assertRaises(Tf.ErrorException):
+            p = Sdf.Reference('\x01\x02\x03')
+
+        with self.assertRaises(Tf.ErrorException):
+            p = Sdf.AssetPath('\x01\x02\x03')
+            p = Sdf.AssetPath('foobar', '\x01\x02\x03')
+
+    def test_Hash(self):
+        reference = Sdf.Reference(
+            "//path/to/asset",
+            "/path/to/prim",
+            layerOffset=Sdf.LayerOffset(1.5, 2.8),
+            customData={"key" : "value"}
+        )
+        self.assertEqual(hash(reference), hash(reference))
+        self.assertEqual(hash(reference), hash(Sdf.Reference(reference)))
 
 if __name__ == "__main__":
     unittest.main()

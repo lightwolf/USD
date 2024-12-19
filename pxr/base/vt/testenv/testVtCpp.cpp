@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -28,7 +11,7 @@
 #include "pxr/base/vt/value.h"
 #include "pxr/base/vt/streamOut.h"
 #include "pxr/base/vt/types.h"
-#include "pxr/base/vt/functions.h"
+#include "pxr/base/vt/visitValue.h"
 
 #include "pxr/base/gf/matrix2f.h"
 #include "pxr/base/gf/matrix2d.h"
@@ -47,12 +30,23 @@
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/gf/vec4d.h"
 
+#include "pxr/base/gf/dualQuath.h"
+#include "pxr/base/gf/dualQuatf.h"
+#include "pxr/base/gf/dualQuatd.h"
+
+#include "pxr/base/gf/quaternion.h"
+#include "pxr/base/gf/quath.h"
+#include "pxr/base/gf/quatf.h"
+#include "pxr/base/gf/quatd.h"
+
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/stopwatch.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/base/tf/enum.h"
+#include "pxr/base/tf/preprocessorUtilsLite.h"
+#include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/type.h"
 #include "pxr/base/tf/fileUtils.h"
 #include "pxr/base/tf/span.h"
@@ -60,13 +54,15 @@
 #include "pxr/base/arch/defines.h"
 #include "pxr/base/arch/fileSystem.h"
 
-#include <boost/scoped_ptr.hpp>
-
 #include <cstdio>
+#include <cmath>
 #include <iterator>
 #include <iostream>
 #include <limits>
+#include <new>
+#include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using std::string;
@@ -78,7 +74,6 @@ PXR_NAMESPACE_USING_DIRECTIVE
 static void die(const std::string &msg) {
     TF_FATAL_ERROR("ERROR: %s failed.", msg.c_str());
 }
-
 
 static void testArray() {
 
@@ -207,6 +202,13 @@ static void testArray() {
 
         TF_AXIOM(array.size() == 5);
 
+        array.resize(10, 9.99);
+        TF_AXIOM(array.size() == 10);
+        TF_AXIOM(array[5] == 9.99 &&
+                 array[6] == 9.99 &&
+                 array[7] == 9.99 &&
+                 array[8] == 9.99 &&
+                 array[9] == 9.99);
     }
 
     {
@@ -253,9 +255,9 @@ static void testArray() {
         TF_AXIOM(array1.size() == 0);
         array1 = {7, 8, 9};
         TF_AXIOM(array1.size() == 3);
-        TF_AXIOM(array1[0] == 7);
-        TF_AXIOM(array1[1] == 8);
-        TF_AXIOM(array1[2] == 9);
+        TF_AXIOM(array1.AsConst()[0] == 7);
+        TF_AXIOM(array1.AsConst()[1] == 8);
+        TF_AXIOM(array1.AsConst()[2] == 9);
         array1 = {};
         TF_AXIOM(array1.size() == 0);
         
@@ -359,33 +361,175 @@ static void testArray() {
             TF_AXIOM(da.cdata()[n] == double(n));
         }
     }
-}
-
-static void testArrayOperators() {
-
     {
-        VtDoubleArray a(3), b(3);
-        a[0] = 1;
-        a[1] = 2;
-        a[2] = 3;
-        b[0] = 4;
-        b[1] = 5;
-        b[2] = 6;
+        // Test VtArray erasing from the middle
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray::iterator it = array.erase(
+            array.cbegin() + 2, array.cbegin() + 4);
+        TF_AXIOM(array.size() == 4);
+        TF_AXIOM(array == VtIntArray({1, 2, 5, 6}));
+        TF_AXIOM(it == array.begin() + 2);
+    }
+    {
+        // Test VtArray erasing from the beginning
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray::iterator it = array.erase(
+            array.cbegin(), array.cbegin() + 4);
+        TF_AXIOM(array.size() == 2);
+        TF_AXIOM(array == VtIntArray({5, 6}));
+        TF_AXIOM(it == array.begin());
+    }
+    {
+        // Test VtArray erasing to the end
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray::iterator it = array.erase(array.cbegin()+4, array.cend());
+        TF_AXIOM(array.size() == 4);
+        TF_AXIOM(array == VtIntArray({1, 2, 3, 4}));
+        TF_AXIOM(it == array.end());
+    }
+    {
+        // Test VtArray erasing all
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray::iterator it = array.erase(array.cbegin(), array.cend());
+        TF_AXIOM(array.empty());
+        TF_AXIOM(array == VtIntArray({}));
+        TF_AXIOM(it == array.end());
+    }
+    {
+        // Test VtArray erasing single element with copy
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray copy = array;
+        VtIntArray::iterator it = array.erase(array.cbegin() + 2);
+        TF_AXIOM(array.size() == 5);
+        TF_AXIOM(array == VtIntArray({1, 2, 4, 5, 6}));
+        TF_AXIOM(it == array.begin() + 2);
+        TF_AXIOM(copy.size() == 6);
+        TF_AXIOM(copy == VtIntArray({1, 2, 3, 4, 5, 6}));
+    }
+    {
+        // Test VtArray erasing all with copy
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        VtIntArray copy = array;
+        VtIntArray::iterator it = array.erase(array.cbegin(), array.cend());
+        TF_AXIOM(array.empty());
+        TF_AXIOM(array == VtIntArray({}));
+        TF_AXIOM(it == array.end());
+        TF_AXIOM(copy.size() == 6);
+        TF_AXIOM(copy == VtIntArray({1, 2, 3, 4, 5, 6}));
+    }
+    {
+        // Test VtArray erasing all strings with copies
+        VtStringArray array({"one", "two", "three", "four"});
+        VtStringArray copy = array;
+        VtStringArray::iterator it = array.erase(array.cbegin(), array.cend());
+        TF_AXIOM(array.empty());
+        TF_AXIOM(array == VtStringArray());
+        TF_AXIOM(it == array.end());
+        TF_AXIOM(copy.size() == 4);
+        TF_AXIOM(copy == VtStringArray({"one", "two", "three", "four"}));
+    }
+    {
+        // Test VtArray erasing single element string
+        VtStringArray array({"one", "two", "three", "four"});
+        array.erase(array.cbegin() + 1);
+        TF_AXIOM(array.size() == 3);
+        TF_AXIOM(array == VtStringArray({"one", "three", "four"}));
+    }
+    {
+        // Test erasing an empty range from an empty vec
+        VtStringArray array;
+        VtStringArray::iterator it =
+            array.erase(array.cbegin(), array.cbegin());
+        TF_AXIOM(array.empty());
+        TF_AXIOM(it == array.cbegin());
+        TF_AXIOM(it == array.cend());        
+    }
+    {
+        // Ensure that iterator returned from erase returns the same value 
+        // for vector and array
+        VtIntArray array({1, 2, 3, 4, 5, 6});
+        std::vector<int> vector({1, 2, 3, 4, 5, 6});
+        
+        VtIntArray::iterator arrayIt = array.erase(
+            std::next(array.cbegin(), 1));
+        std::vector<int>::iterator vectorIt = vector.erase(
+            std::next(vector.cbegin(), 1));
+        
+        TF_AXIOM(*vectorIt == 3);
+        TF_AXIOM(*vectorIt == *arrayIt);
 
-        VtDoubleArray c = VtCat(a,b);
-        VtDoubleArray d = c * 2.0;
-        TF_AXIOM(d[3] == 8);
-        VtDoubleArray e = a * b / 2.0;
-        TF_AXIOM(e[2] == 9);
-        TF_AXIOM(VtAnyTrue(VtEqual(a,VtZero<double>())) == false);
-        TF_AXIOM(VtAllTrue(VtEqual(a-a,VtZero<double>())) == true);
-        std::string empty = VtZero<std::string>();
-        VtStringArray s(4);
-        s[0] = empty;
-        s[1] = "a";
-        s[2] = "test";
-        s[3] = "array";
-        TF_AXIOM(VtAllTrue(VtNotEqual(s,VtZero<std::string>())) == false);
+        VtIntArray::iterator emptyArrayIt = 
+            array.erase(array.cbegin(), array.cbegin());
+        std::vector<int>::iterator emptyVectorIt = 
+            vector.erase(vector.cbegin(), vector.cbegin());
+
+        TF_AXIOM(*emptyVectorIt == 1);
+        TF_AXIOM(*emptyVectorIt == *emptyArrayIt);
+
+        // When erasing the last element in an array, make sure we return
+        // the new end()
+        VtIntArray::iterator lastArrayIt = array.erase(
+            std::next(array.cend(), - 1));
+        std::vector<int>::iterator lastVectorIt = 
+            vector.erase(std::next(vector.cend(), - 1));
+        TF_AXIOM(lastVectorIt == vector.end());
+        TF_AXIOM(lastArrayIt == array.end());
+    }
+    {
+        // Test emplace_back and push_back with rvalue references
+        std::string hello("hello");
+        std::string world("world");
+        std::string ciao("ciao");
+        std::string aloha("aloha");
+        VtStringArray array({hello});
+        TF_AXIOM(array.size() == 1);
+        TF_AXIOM(array.front() == "hello");
+        TF_AXIOM(array.cfront() == "hello");
+        TF_AXIOM(hello == "hello");
+        // Ensure that emplace_back forwards an rvalue to world
+        array.emplace_back(std::move(world));
+        TF_AXIOM(array.back() == "world");
+        // Ensure that the rvalue version of push_back is used
+        array.push_back(std::move(ciao));
+        TF_AXIOM(array.size() == 3);
+        TF_AXIOM(array.back() == "ciao");
+        TF_AXIOM(array.cback() == "ciao");
+        // Ensure that the lvalue version of push_back is used
+        array.push_back(aloha);
+        TF_AXIOM(array.size() == 4);
+        TF_AXIOM(array.back() == "aloha");
+        TF_AXIOM(array.cback() == "aloha");
+        TF_AXIOM(aloha == "aloha");
+    }
+    {
+        // Test that attempts to create overly large arrays throw
+        // std::bad_alloc
+
+        VtIntArray ia;
+        try {
+            ia.resize(std::numeric_limits<size_t>::max());
+            TF_FATAL_ERROR("Did not throw std::bad_alloc");
+        }
+        catch (std::bad_alloc const &) {
+            // pass
+        }
+
+        VtDoubleArray da;
+        try {
+            da.reserve(std::numeric_limits<size_t>::max() / 2);
+            TF_FATAL_ERROR("Did not throw std::bad_alloc");
+        }
+        catch (std::bad_alloc const &) {
+            // pass
+        }
+        
+        try {
+            da.resize(ia.max_size() + 1);
+            TF_FATAL_ERROR("Did not throw std::bad_alloc");
+        }
+        catch (std::bad_alloc const &) {
+            // pass
+        }
     }
 }
 
@@ -690,7 +834,7 @@ testDictionaryIterators()
         VtDictionary::iterator i = a.find(key2.first);
 
         {
-            boost::scoped_ptr<VtDictionary> b(new VtDictionary(a));
+            std::unique_ptr<VtDictionary> b = std::make_unique<VtDictionary>(a);
             a.insert(std::make_pair(key3.first, key3.second));
         }
 
@@ -722,7 +866,7 @@ testDictionaryIterators()
         VtDictionary::const_iterator i = a.find(key2.first);
         VtDictionary::const_iterator j = expected.find(key2.first);
         {
-            boost::scoped_ptr<VtDictionary> b(new VtDictionary(a));
+            std::unique_ptr<VtDictionary> b = std::make_unique<VtDictionary>(a);
             VtDictionary::value_type v(key3.first, key3.second);
             a.insert(v);
             expected.insert(v);
@@ -740,7 +884,7 @@ testDictionaryIterators()
         VtDictionary a = {key1, key2};
         VtDictionary::const_iterator i = a.find(key1.first);
         {
-            boost::scoped_ptr<VtDictionary> b(new VtDictionary(a));
+            std::unique_ptr<VtDictionary> b = std::make_unique<VtDictionary>(a);
             a[key1.first] = VtValue(12);
         }
 
@@ -769,7 +913,7 @@ testDictionaryInitializerList()
     TF_AXIOM(!dict2.empty());
 
     int i = 0;
-    for (const string& k : {"key_a", "key_b"}) {
+    for (const char* k : {"key_a", "key_b"}) {
         auto it = dict2.find(k);
         TF_AXIOM(it != dict2.end());
         TF_AXIOM(it->first == k);
@@ -1312,6 +1456,16 @@ static void testValue() {
         t = v.UncheckedRemove<string>();
         TF_AXIOM(t == "hello world!");
         TF_AXIOM(v.IsEmpty());
+
+        // Held value mutation.
+        v = t;
+        TF_AXIOM(v.Mutate<string>([](std::string &str) { str += "!"; }));
+        TF_AXIOM(v.Get<string>() == "hello world!!");
+        v.UncheckedMutate<string>([](std::string &str) { str += "!"; });
+        TF_AXIOM(v.Get<string>() == "hello world!!!");
+
+        TF_AXIOM(!v.Mutate<int>([](int &i) { ++i; }));
+        TF_AXIOM(v.Get<string>() == "hello world!!!");
     }
 
     // Test calling Get with incorrect type.  Should issue an error and produce
@@ -1324,6 +1478,23 @@ static void testValue() {
         TF_AXIOM(!m.IsClean());
         m.Clear();
     }
+
+#define _VT_TEST_ZERO_VALUE(unused, elem)                               \
+    {                                                                   \
+        VtValue empty;                                                  \
+        TfErrorMark m;                                                  \
+        TF_AXIOM(empty.Get<VT_TYPE(elem)>() == VtZero<VT_TYPE(elem)>());\
+        TF_AXIOM(!m.IsClean());                                         \
+        m.Clear();                                                      \
+    }
+    
+    TF_PP_SEQ_FOR_EACH(_VT_TEST_ZERO_VALUE, ~,
+        VT_VEC_VALUE_TYPES
+        VT_MATRIX_VALUE_TYPES
+        VT_QUATERNION_VALUE_TYPES
+        VT_DUALQUATERNION_VALUE_TYPES);
+
+#undef _VT_TEST_ZERO_VALUE
 
     {
         VtValue d(1.234);
@@ -1349,6 +1520,9 @@ static void
 testValueHash()
 {
     static_assert(VtIsHashable<int>(), "");
+    static_assert(VtIsHashable<double>(), "");
+    static_assert(VtIsHashable<GfVec3f>(), "");
+    static_assert(VtIsHashable<std::string>(), "");
     static_assert(!VtIsHashable<_Unhashable>(), "");
 
     VtValue vHashable{1};
@@ -1372,6 +1546,14 @@ testValueHash()
         TF_AXIOM(!m.IsClean());
         m.Clear();
     }
+}
+
+static void
+testArrayHash()
+{
+    VtArray<int> array = {1, 2, 3, 4, 5, 10, 100};
+    TF_AXIOM(TfHash()(array) == TfHash()(array));
+    TF_AXIOM(TfHash()(array) == TfHash()(VtArray<int>(array)));
 }
 
 template <class T>
@@ -1517,10 +1699,138 @@ testCombinedVtValueProxies()
     TF_AXIOM(eproxy.IsHolding<_TypedProxy<double>>());
 }
 
+struct Stringify
+{
+    std::string operator()(int x) const {
+        return TfStringPrintf("int: %d", x);
+    };
+
+    std::string operator()(double x) const {
+        return TfStringPrintf("double: %.2f", x);
+    }
+
+    std::string operator()(std::string const &str) const {
+        return TfStringPrintf("string: '%s'", str.c_str());
+    };
+
+    template <class T>
+    std::string operator()(VtArray<T> const &arr) const {
+        return TfStringPrintf("array: sz=%zu", arr.size());
+    }
+    
+    std::string operator()(VtValue const &unknown) const {
+        return "unknown type";
+    }
+};
+
+struct RoundOrMinusOne
+{
+    int operator()(int x) const { return x; }
+
+    int operator()(double x) const { return static_cast<int>(rint(x)); }
+
+    int operator()(VtValue const &val) const { return -1; }
+};
+
+struct GetArraySize
+{
+    template <class T>
+    size_t operator()(VtArray<T> const &array) const {
+        return array.size();
+    }
+
+    size_t operator()(VtValue const &val) const {
+        return ~0;
+    }
+};
+
+static void
+testVisitValue()
+{
+    VtValue iv(123);
+    VtValue dv(1.23);
+    VtValue fv(2.34f);
+    VtValue hv(GfHalf(3.45));
+    VtValue sv(std::string("hello"));
+    VtValue av(VtArray<float>(123));
+    VtValue ov(std::vector<float>(123));
+
+    TF_AXIOM(VtVisitValue(iv, Stringify()) == "int: 123");
+    TF_AXIOM(VtVisitValue(dv, Stringify()) == "double: 1.23");
+    TF_AXIOM(VtVisitValue(fv, Stringify()) == "double: 2.34");
+    TF_AXIOM(VtVisitValue(hv, Stringify()) == "double: 3.45");
+    TF_AXIOM(VtVisitValue(sv, Stringify()) == "string: 'hello'");
+    TF_AXIOM(VtVisitValue(av, Stringify()) == "array: sz=123");
+    TF_AXIOM(VtVisitValue(ov, Stringify()) == "unknown type");
+    
+    TF_AXIOM(VtVisitValue(iv, RoundOrMinusOne()) == 123);
+    TF_AXIOM(VtVisitValue(dv, RoundOrMinusOne()) == 1);
+    TF_AXIOM(VtVisitValue(fv, RoundOrMinusOne()) == 2);
+    TF_AXIOM(VtVisitValue(hv, RoundOrMinusOne()) == 3);
+    TF_AXIOM(VtVisitValue(sv, RoundOrMinusOne()) == -1);
+    TF_AXIOM(VtVisitValue(av, RoundOrMinusOne()) == -1);
+    TF_AXIOM(VtVisitValue(ov, RoundOrMinusOne()) == -1);
+    
+    TF_AXIOM(VtVisitValue(av, GetArraySize()) == 123);
+    TF_AXIOM(VtVisitValue(iv, GetArraySize()) == size_t(~0));
+    TF_AXIOM(VtVisitValue(
+                 VtValue(VtArray<GfVec3d>(234)), GetArraySize()) == 234);
+
+}
+
+template <typename T>
+static void
+AssertIsHoldingKnownType(const VtValue &val)
+{
+    switch (val.GetKnownValueTypeIndex()) {
+    case VtGetKnownValueTypeIndex<T>():
+        break;
+    default:
+        TF_FATAL_ERROR("Expected %s (index=%d); got index %d",
+                       ArchGetDemangled<T>().c_str(),
+                       VtGetKnownValueTypeIndex<T>(),
+                       val.GetKnownValueTypeIndex());
+    }
+}
+
+struct TypeNotKnownToVt {};
+
+static void
+testKnownValueTypeIndex()
+{
+    VtValue iv(123);
+    VtValue dv(1.23);
+    VtValue fv(2.34f);
+    VtValue hv(GfHalf(3.45));
+    VtValue sv(std::string("hello"));
+    VtValue av(VtArray<float>(123));
+
+    AssertIsHoldingKnownType<int>(iv);
+    AssertIsHoldingKnownType<double>(dv);
+    AssertIsHoldingKnownType<float>(fv);
+    AssertIsHoldingKnownType<GfHalf>(hv);
+    AssertIsHoldingKnownType<std::string>(sv);
+    AssertIsHoldingKnownType<VtArray<float>>(av);
+
+    TF_AXIOM(VtIsKnownValueType<int>());
+    TF_AXIOM(VtIsKnownValueType<VtArray<GfVec3d>>());
+    TF_AXIOM(!VtIsKnownValueType<void>());
+    TF_AXIOM(!VtIsKnownValueType<TypeNotKnownToVt>());
+}
+
+static void testVtCheapToCopy() {
+    static_assert(VtValueTypeHasCheapCopy<float>::value, "");
+    static_assert(VtValueTypeHasCheapCopy<int>::value, "");
+    static_assert(VtValueTypeHasCheapCopy<GfVec3d>::value, "");
+    static_assert(VtValueTypeHasCheapCopy<TfToken>::value, "");
+    static_assert(!VtValueTypeHasCheapCopy<std::string>::value, "");
+    static_assert(!VtValueTypeHasCheapCopy<VtArray<float>>::value, "");
+    static_assert(!VtValueTypeHasCheapCopy<VtArray<TfToken>>::value, "");
+}
+
 int main(int argc, char *argv[])
 {
     testArray();
-    testArrayOperators();
 
     testDictionary();
     testDictionaryKeyPathAPI();
@@ -1530,9 +1840,14 @@ int main(int argc, char *argv[])
 
     testValue();
     testValueHash();
+    testArrayHash();
     testTypedVtValueProxy();
     testErasedVtValueProxy();
     testCombinedVtValueProxies();
+
+    testVisitValue();
+    testKnownValueTypeIndex();
+    testVtCheapToCopy();
 
     printf("Test SUCCEEDED\n");
 

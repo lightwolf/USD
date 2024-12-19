@@ -16,9 +16,7 @@ pxr_plugin(${PXR_PACKAGE}
         ${DRACO_LIBRARY}
 
     INCLUDE_DIRS
-        ${Boost_INCLUDE_DIRS}
         ${DRACO_INCLUDES}
-        ${PYTHON_INCLUDE_DIRS}
 
     CPPFILES
         attributeDescriptor.cpp
@@ -40,6 +38,9 @@ pxr_plugin(${PXR_PACKAGE}
 
     RESOURCE_FILES
         plugInfo.json
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 if(USD_DRACO_SET_WINDOWS_EXPORT)

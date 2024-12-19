@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_TF_SPAN_H
 #define PXR_BASE_TF_SPAN_H
@@ -163,6 +146,18 @@ public:
         return _data[idx];
     }
 
+    /// Return a reference to the first element in the span.
+    reference front() const {
+        TF_DEV_AXIOM(!empty());
+        return *begin();
+    }
+
+    /// Return a reference to the last element in the span.
+    reference back() const {
+        TF_DEV_AXIOM(!empty());
+        return *(end() - 1);
+    }
+
     /// Returns a non-const iterator the start of the span.
     iterator begin() const noexcept { return _data; }
 
@@ -204,6 +199,17 @@ public:
             TF_DEV_AXIOM(((index_type)offset+(index_type)count) <= _size);
             return TfSpan<T>(_data + offset, count);
         }
+    }
+
+    /// Return a subspan consisting of the first \p count elements of this span.
+    TfSpan<T> first(size_t count) const {
+        return subspan(0, count);
+    }
+
+    /// Return a subspan consisting of the last \p count elements of this span.
+    TfSpan<T> last(size_t count) const {
+        TF_DEV_AXIOM(_size >= count);
+        return TfSpan<T>(end() - count, count);
     }
 
 private:

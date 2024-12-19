@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -29,18 +12,18 @@
 #include "pxr/base/tf/wrapTypeHelpers.h"
 #include "pxr/base/tf/pyContainerConversions.h"
 
-#include <boost/python/class.hpp>
-#include <boost/python/implicit.hpp>
-#include <boost/python/operators.hpp>
-#include <boost/python/return_arg.hpp>
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/implicit.hpp"
+#include "pxr/external/boost/python/operators.hpp"
+#include "pxr/external/boost/python/return_arg.hpp"
 
 #include <string>
-
-using namespace boost::python;
 
 using std::string;
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -69,6 +52,16 @@ static bool __contains__(const GfSize3 &self, size_t value) {
     return false;
 }
 
+static GfSize3 __truediv__(const GfSize3 &self, size_t value)
+{
+    return self / value;
+}
+
+static GfSize3& __itruediv__(GfSize3 &self, size_t value)
+{
+    return self /= value;
+}
+
 static string _Repr(GfSize3 const &self) {
     return TF_PY_REPR_PREFIX + "Size3(" + TfPyRepr(self[0]) + ", " +
         TfPyRepr(self[1]) + ", " + TfPyRepr(self[2]) + ")";
@@ -82,7 +75,8 @@ void wrapSize3()
 
     static const int dimension = 3;
 
-    class_<This>( "Size3", "A 3D size class", init<>() )
+    class_<This> cls( "Size3", "A 3D size class", init<>() );
+    cls
         .def(init<const This &>())
         .def(init<const GfVec3i &>())
         .def(init<size_t, size_t, size_t>())
@@ -112,7 +106,6 @@ void wrapSize3()
         .def( size_t() * self )
         .def( self * size_t() )
         .def( self / size_t() )
-        
         .def("__repr__", _Repr)
 
         ;
@@ -122,5 +115,19 @@ void wrapSize3()
 
     // conversion operator
     implicitly_convertible<This, GfVec3i>();
-    
+
+    if (!PyObject_HasAttrString(cls.ptr(), "__truediv__")) {
+        // __truediv__ not added by .def( self / double() ) above, which
+        // happens when building with python 2, but we need it to support
+        // "from __future__ import division"
+        cls.def("__truediv__", __truediv__);
+    }
+    if (!PyObject_HasAttrString(cls.ptr(), "__itruediv__")) {
+        // __itruediv__ not added by .def( self /= double() ) above, which
+        // happens when building with python 2, but we need it to support
+        // "from __future__ import division". This is also a workaround for a 
+        // bug in the current version of pxr_boost::python that incorrectly wraps
+        // in-place division with __idiv__ when building with python 3.
+        cls.def("__itruediv__", __itruediv__, return_self<>());
+    }
 }

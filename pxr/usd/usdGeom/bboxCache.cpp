@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usdGeom/bboxCache.h"
@@ -34,17 +17,45 @@
 
 #include "pxr/usd/usd/modelAPI.h"
 #include "pxr/usd/usd/primRange.h"
+
 #include "pxr/base/trace/trace.h"
 
+#include "pxr/base/work/withScopedParallelism.h"
+
+#include "pxr/base/tf/hash.h"
 #include "pxr/base/tf/pyLock.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/token.h"
 
 #include <tbb/enumerable_thread_specific.h>
 #include <algorithm>
+#include <atomic>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+namespace {
+
+// For code that knows at compile time whether we need to apply a transform.
+// Such code is told through a template parameter TransformType whether to
+// apply a transform (TransformType = GfMatrix4d) or not (TransformType =
+// _IdentityTransform).
+class _IdentityTransform
+{
+};
+
+// Overloads to transform GfBBox3d.
+inline void
+_Transform(GfBBox3d * const bbox, const _IdentityTransform &m)
+{
+}
+
+inline void
+_Transform(GfBBox3d * const bbox, const GfMatrix4d &m)
+{
+    bbox->Transform(m);
+}
+
+}
 
 // Thread-local Xform cache.
 // This should be replaced with (TBD) multi-threaded XformCache::Prepopulate
@@ -72,122 +83,145 @@ public:
     explicit operator bool() const {
         return _owner;
     }
-    void operator()() {
+    void operator()() const {
         // Do not save state here; all state should be accumulated externally.
-        _owner->_ResolvePrim(this, _primContext, _inverseComponentCtm);
+        _owner->_ResolvePrim(const_cast<_BBoxTask const *>(this), _primContext, _inverseComponentCtm);
     }
-    _ThreadXformCache* GetXformCaches() { return _xfCaches; }
+    _ThreadXformCache* GetXformCaches() const { return _xfCaches; }
 };
 
 // -------------------------------------------------------------------------- //
-// _MasterBBoxResolver
+// _PrototypeBBoxResolver
 //
-// If a master prim has instances nested within it, resolving its bbox
-// will depend on the masters for those instances being resolved first.
-// These dependencies form an acyclic graph where a given master may depend
-// on and be a dependency for one or more masters.
+// If a prototype prim has instances nested within it, resolving its bbox
+// will depend on the prototypes for those instances being resolved first.
+// These dependencies form an acyclic graph where a given prototype may depend
+// on and be a dependency for one or more prototypes.
 //
 // This helper object tracks those dependencies as tasks are dispatched
 // and completed.
 // -------------------------------------------------------------------------- //
-class UsdGeomBBoxCache::_MasterBBoxResolver
+class UsdGeomBBoxCache::_PrototypeBBoxResolver
 {
 private:
     UsdGeomBBoxCache* _owner;
 
-    struct _MasterTask
+    struct _PrototypeTask
     {
-        _MasterTask() : numDependencies(0) { }
+        _PrototypeTask()
+            : numDependencies(0) { }
 
-        // Number of dependencies -- master prims that must be resolved
-        // before this master can be resolved.
-        tbb::atomic<size_t> numDependencies;
+        _PrototypeTask(const _PrototypeTask &other)
+            : dependentPrototypes(other.dependentPrototypes)
+        {
+            numDependencies.store(other.numDependencies.load());
+        }
 
-        // List of master prims that depend on this master.
-        std::vector<_PrimContext> dependentMasters;
+        _PrototypeTask(_PrototypeTask &&other)
+            : dependentPrototypes(std::move(other.dependentPrototypes))
+        {
+            numDependencies.store(other.numDependencies.load());
+        }
+
+        // Number of dependencies -- prototype prims that must be resolved
+        // before this prototype can be resolved.
+        std::atomic<size_t> numDependencies;
+
+        // List of prototype prims that depend on this prototype.
+        std::vector<_PrimContext> dependentPrototypes;
     };
 
-    typedef TfHashMap<_PrimContext, _MasterTask, _PrimContextHash>
-        _MasterTaskMap;
+    typedef TfHashMap<_PrimContext, _PrototypeTask, _PrimContextHash>
+        _PrototypeTaskMap;
 
 public:
-    _MasterBBoxResolver(UsdGeomBBoxCache* bboxCache)
+    _PrototypeBBoxResolver(UsdGeomBBoxCache* bboxCache)
         : _owner(bboxCache)
     {
     }
 
-    void Resolve(const std::vector<_PrimContext> &masterPrimContexts)
+    void Resolve(const std::vector<_PrimContext> &prototypePrimContexts)
     {
         TRACE_FUNCTION();
 
-        _MasterTaskMap masterTasks;
-        for (const auto& masterPrim : masterPrimContexts) {
-            _PopulateTasksForMaster(masterPrim, &masterTasks);
+        _PrototypeTaskMap prototypeTasks;
+        for (const auto& prototypePrim : prototypePrimContexts) {
+            _PopulateTasksForPrototype(prototypePrim, &prototypeTasks);
         }
 
         // Using the owner's xform cache won't provide a benefit
-        // because the masters are separate parts of the scenegraph
+        // because the prototypes are separate parts of the scenegraph
         // that won't be traversed when resolving other bounding boxes.
         _ThreadXformCache xfCache;
 
-        for (const auto& t : masterTasks) {
+        for (const auto& t : prototypeTasks) {
             if (t.second.numDependencies == 0) {
                 _owner->_dispatcher.Run(
-                    &_MasterBBoxResolver::_ExecuteTaskForMaster,
-                    this, t.first, &masterTasks, &xfCache, &_owner->_dispatcher);
+                    &_PrototypeBBoxResolver::_ExecuteTaskForPrototype,
+                    this, t.first, &prototypeTasks, &xfCache,
+                    &_owner->_dispatcher);
             }
         }
         _owner->_dispatcher.Wait();
     }
 
 private:
-    void _PopulateTasksForMaster(const _PrimContext& masterPrim,
-                                 _MasterTaskMap* masterTasks)
+    void _PopulateTasksForPrototype(const _PrimContext& prototypePrim,
+                                 _PrototypeTaskMap* prototypeTasks)
     {
-        std::pair<_MasterTaskMap::iterator, bool> masterTaskStatus =
-            masterTasks->insert(std::make_pair(masterPrim, _MasterTask()));
-        if (!masterTaskStatus.second) {
+        std::pair<_PrototypeTaskMap::iterator, bool> prototypeTaskStatus =
+            prototypeTasks->insert(std::make_pair(
+                    prototypePrim, _PrototypeTask()));
+        if (!prototypeTaskStatus.second) {
             return;
         }
 
-        std::vector<_PrimContext> requiredMasters;
-        _owner->_FindOrCreateEntriesForPrim(masterPrim, &requiredMasters);
+        std::vector<_PrimContext> requiredPrototypes;
+        _owner->_FindOrCreateEntriesForPrim(prototypePrim, &requiredPrototypes);
 
         {
-            // In order to resolve the bounding box for masterPrim, we need to
-            // compute the bounding boxes for all masters for nested instances.
-            _MasterTask& masterTaskData = masterTaskStatus.first->second;
-            masterTaskData.numDependencies = requiredMasters.size();
+            // In order to resolve the bounding box for prototypePrim, we need
+            // to compute the bounding boxes for all prototypes for nested
+            // instances.
+            _PrototypeTask& prototypeTaskData = 
+                prototypeTaskStatus.first->second;
+            prototypeTaskData.numDependencies = requiredPrototypes.size();
         }
 
-        // Recursively populate the task map for the masters needed for
+        // Recursively populate the task map for the prototypes needed for
         // nested instances.
-        for (const auto& reqMaster : requiredMasters) {
-            _PopulateTasksForMaster(reqMaster, masterTasks);
-            (*masterTasks)[reqMaster].dependentMasters.push_back(masterPrim);
+        for (const auto& reqPrototype : requiredPrototypes) {
+            _PopulateTasksForPrototype(reqPrototype, prototypeTasks);
+            (*prototypeTasks)[reqPrototype].dependentPrototypes.push_back(
+                prototypePrim);
         }
     }
 
-    void _ExecuteTaskForMaster(const _PrimContext& master,
-                               _MasterTaskMap* masterTasks,
+    void _ExecuteTaskForPrototype(const _PrimContext& prototype,
+                               _PrototypeTaskMap* prototypeTasks,
                                _ThreadXformCache* xfCaches,
-                               WorkArenaDispatcher* dispatcher)
+                               WorkDispatcher* dispatcher)
     {
         UsdGeomBBoxCache::_BBoxTask(
-            master, GfMatrix4d(1.0), _owner, xfCaches)();
+            prototype, GfMatrix4d(1.0), _owner, xfCaches)();
         
-        // Update all of the master prims that depended on the completed master
-        // and dispatch new tasks for those whose dependencies have been
-        // resolved.  We're guaranteed that all the entries were populated by
-        // _PopulateTasksForMaster, so we don't check the result of 'find()'.
-        const _MasterTask& masterData = masterTasks->find(master)->second;
-        for (const auto& dependentMaster : masterData.dependentMasters) {
-            _MasterTask& dependentMasterData =
-                masterTasks->find(dependentMaster)->second;
-            if (dependentMasterData.numDependencies.fetch_and_decrement() == 1){
+        // Update all of the prototype prims that depended on the completed
+        // prototype and dispatch new tasks for those whose dependencies have
+        // been resolved.  We're guaranteed that all the entries were populated
+        // by _PopulateTasksForPrototype, so we don't check the result of
+        // 'find()'.
+        const _PrototypeTask& prototypeData =
+            prototypeTasks->find(prototype)->second;
+        for (const auto& dependentPrototype : 
+                 prototypeData.dependentPrototypes) {
+            _PrototypeTask& dependentPrototypeData =
+                prototypeTasks->find(dependentPrototype)->second;
+            if (dependentPrototypeData.numDependencies
+                .fetch_sub(1) == 1){
                 dispatcher->Run(
-                    &_MasterBBoxResolver::_ExecuteTaskForMaster,
-                    this, dependentMaster, masterTasks, xfCaches, dispatcher);
+                    &_PrototypeBBoxResolver::_ExecuteTaskForPrototype,
+                    this, dependentPrototype, prototypeTasks, xfCaches,
+                    dispatcher);
             }
         }
     }
@@ -268,6 +302,7 @@ UsdGeomBBoxCache::UsdGeomBBoxCache(UsdGeomBBoxCache const &other)
     , _ctmCache(other._ctmCache)
     , _bboxCache(other._bboxCache)
     , _useExtentsHint(other._useExtentsHint)
+    , _ignoreVisibility(other._ignoreVisibility)
 {
 }
 
@@ -282,6 +317,7 @@ UsdGeomBBoxCache::operator=(UsdGeomBBoxCache const &other)
     _ctmCache = other._ctmCache;
     _bboxCache = other._bboxCache;
     _useExtentsHint = other._useExtentsHint;
+    _ignoreVisibility = other._ignoreVisibility;
     return *this;
 }
 
@@ -373,10 +409,12 @@ UsdGeomBBoxCache::ComputeUntransformedBound(const UsdPrim& prim)
     return _GetCombinedBBoxForIncludedPurposes(bboxes);
 }
 
+template<typename TransformType>
 GfBBox3d
-UsdGeomBBoxCache::ComputeUntransformedBound(
+UsdGeomBBoxCache::_ComputeBoundWithOverridesHelper(
     const UsdPrim &prim,
     const SdfPathSet &pathsToSkip,
+    const TransformType &primOverride,
     const TfHashMap<SdfPath, GfMatrix4d, SdfPath::Hash> &ctmOverrides)
 {
     GfBBox3d empty;
@@ -448,13 +486,14 @@ UsdGeomBBoxCache::ComputeUntransformedBound(
         GfBBox3d bbox;
         if (!foundAncestorWithOverride) {
             bbox = ComputeRelativeBound(p, prim);
+            _Transform(&bbox, primOverride);
         } else {
             // Compute bound relative to the path for which we know the
             // corrected prim-relative CTM.
             bbox = ComputeRelativeBound(p,
                 prim.GetStage()->GetPrimAtPath(overrideIter->first));
 
-            // The override CTM is already relative to the given prim.
+            // Apply the override CTM.
             const GfMatrix4d &overrideXform = overrideIter->second;
             bbox.Transform(overrideXform);
         }
@@ -466,6 +505,32 @@ UsdGeomBBoxCache::ComputeUntransformedBound(
     return result;
 }
 
+GfBBox3d
+UsdGeomBBoxCache::ComputeUntransformedBound(
+    const UsdPrim &prim,
+    const SdfPathSet &pathsToSkip,
+    const TfHashMap<SdfPath, GfMatrix4d, SdfPath::Hash> &ctmOverrides)
+{
+    return _ComputeBoundWithOverridesHelper(
+        prim,
+        pathsToSkip,
+        _IdentityTransform(),
+        ctmOverrides);
+}
+
+GfBBox3d
+UsdGeomBBoxCache::ComputeWorldBoundWithOverrides(
+    const UsdPrim &prim,
+    const SdfPathSet &pathsToSkip,
+    const GfMatrix4d &primOverride,
+    const TfHashMap<SdfPath, GfMatrix4d, SdfPath::Hash> &ctmOverrides)
+{
+    return _ComputeBoundWithOverridesHelper(
+        prim,
+        pathsToSkip,
+        primOverride,
+        ctmOverrides);
+}
 
 bool
 UsdGeomBBoxCache::_ComputePointInstanceBoundsHelper(
@@ -821,21 +886,22 @@ UsdGeomBBoxCache::_ComputePurposeInfo(
 
     const UsdPrim &prim = primContext.prim;
 
-    // Special case for master prims. Masters don't actually have their own
-    // purpose attribute. The prims that instance the master will provide its
-    // purpose. It's important that we apply the instancing prim's purpose to
-    // this master prim context so that the master's children can properly
-    // inherit the instancing prim's purpose if needed. Note that this only 
-    // applies if the instancing prim provides a purpose that is inheritable.
-    if (prim.IsMaster()) {
+    // Special case for prototype prims. Prototypes don't actually have their
+    // own purpose attribute. The prims that instance the prototype will provide
+    // its purpose. It's important that we apply the instancing prim's purpose
+    // to this prototype prim context so that the prototype's children can
+    // properly inherit the instancing prim's purpose if needed. Note that this
+    // only applies if the instancing prim provides a purpose that is
+    // inheritable.
+    if (prim.IsPrototype()) {
         if (primContext.instanceInheritablePurpose.IsEmpty()) {
             // If the instancing prim's purpose is not inheritable, this 
-            // master prim context won't provide an inheritable purpose to
+            // prototype prim context won't provide an inheritable purpose to
             // its children either.
             entry->purposeInfo = UsdGeomImageable::PurposeInfo(
                 UsdGeomTokens->default_, false);
         } else {
-            // Otherwise this master can provide the instancing prim's 
+            // Otherwise this prototype can provide the instancing prim's 
             // inheritable pupose to its children.
             entry->purposeInfo = UsdGeomImageable::PurposeInfo(
                 primContext.instanceInheritablePurpose, true);
@@ -849,7 +915,7 @@ UsdGeomBBoxCache::_ComputePurposeInfo(
             // the n^2 recursion which results from using the 
             // UsdGeomImageable::ComputePurpose() API directly.
             
-            // If this prim is in a master then its parent prim will be too. 
+            // If this prim is in a prototype then its parent prim will be too. 
             // The parent prim's context will have the same inheritable purpose
             // from the instance as this prim context does.
             _PrimContext parentPrimContext(
@@ -904,6 +970,12 @@ UsdGeomBBoxCache::_ShouldPruneChildren(const UsdPrim &prim,
         return true;
     }
 
+    // Check if prim is a UsdGeomBoundable. Boundables should always provide
+    // their own extent and do not require participation from descendants.
+    if (prim.IsA<UsdGeomBoundable>()) {
+        return true;
+    }
+        
     if (!_UseExtentsHintForPrim(prim)) {
         return false;
     }
@@ -918,7 +990,7 @@ UsdGeomBBoxCache::_ShouldPruneChildren(const UsdPrim &prim,
 UsdGeomBBoxCache::_Entry*
 UsdGeomBBoxCache::_FindOrCreateEntriesForPrim(
     const _PrimContext& primContext,
-    std::vector<_PrimContext> *masterPrimContexts)
+    std::vector<_PrimContext> *prototypePrimContexts)
 {
     // Add an entry for the prim to the cache and if the bound is already in 
     // the cache, return it.
@@ -948,7 +1020,7 @@ UsdGeomBBoxCache::_FindOrCreateEntriesForPrim(
     // may have authored extentsHints we can use; thus we can have bboxes in
     // model-hierarchy-only.
 
-    TfHashSet<_PrimContext, _PrimContextHash> seenMasterPrimContexts;
+    TfHashSet<_PrimContext, _PrimContextHash> seenPrototypePrimContexts;
 
     UsdPrimRange range(primContext.prim, 
         (UsdPrimIsActive && UsdPrimIsDefined && !UsdPrimIsAbstract));
@@ -956,20 +1028,20 @@ UsdGeomBBoxCache::_FindOrCreateEntriesForPrim(
         _PrimContext cachePrimContext(
             *it, primContext.instanceInheritablePurpose);
         _Entry *cacheEntry = _InsertEntry(cachePrimContext);
+        
         if (_ShouldPruneChildren(*it, cacheEntry)) {
             // The entry already exists and is complete, we don't need
             // the child entries for this query.
             it.PruneChildren();
         }
-
-        if (it->IsInstance()) {
-            // This prim is an instance, so we need to compute
-            // bounding boxes for the master prims.
-            const UsdPrim master = it->GetMaster();
+        else if (it->IsInstance()) {
+            // This prim is an instance without an extent or hint, so we need
+            // to compute bounding boxes for the prototype prims.
+            const UsdPrim prototype = it->GetPrototype();
             // We typically compute the purpose for prims later in _ResolvePrim,
             // but for an instance prim, we need to compute the purpose for this 
             // prim context now so that we can associate this instance's 
-            // inheritable purpose with the master. 
+            // inheritable purpose with the prototype. 
             // 
             // Note that we recursively cache the computed purposes of all 
             // cached ancestors of the prim here as we won't have necessarily
@@ -977,10 +1049,10 @@ UsdGeomBBoxCache::_FindOrCreateEntriesForPrim(
             // cache ancestors recursively as this code is not used in a 
             // multithreaded context.
             _ComputePurposeInfo<true>(cacheEntry, cachePrimContext);
-            _PrimContext masterPrimContext(
-                master, cacheEntry->purposeInfo.GetInheritablePurpose());
-            if (seenMasterPrimContexts.insert(masterPrimContext).second) {
-                masterPrimContexts->push_back(masterPrimContext);
+            _PrimContext prototypePrimContext(
+                prototype, cacheEntry->purposeInfo.GetInheritablePurpose());
+            if (seenPrototypePrimContexts.insert(prototypePrimContext).second) {
+                prototypePrimContexts->push_back(prototypePrimContext);
             }
             it.PruneChildren();
         }
@@ -1003,47 +1075,53 @@ UsdGeomBBoxCache::_Resolve(
     TF_PY_ALLOW_THREADS_IN_SCOPE();
 
     // If the bound is in the cache, return it.
-    std::vector<_PrimContext> masterPrimContexts;
+    std::vector<_PrimContext> prototypePrimContexts;
     _PrimContext primContext(prim);
     _Entry *entry = _FindOrCreateEntriesForPrim(primContext, 
-                                                &masterPrimContexts);
+                                                &prototypePrimContexts);
     if (entry && entry->isComplete) {
         *bboxes = entry->bboxes;
         return (!bboxes->empty());
     }
 
-    // Resolve all master prims first to avoid having to synchronize
-    // tasks that depend on the same master.
-    if (!masterPrimContexts.empty()) {
-        _MasterBBoxResolver bboxesForMasters(this);
-        bboxesForMasters.Resolve(masterPrimContexts);
-    }
+    WorkWithScopedParallelism([&]() {
+                        
+            // Resolve all prototype prims first to avoid having to synchronize
+            // tasks that depend on the same prototype.
+            if (!prototypePrimContexts.empty()) {
+                _PrototypeBBoxResolver bboxesForPrototypes(this);
+                bboxesForPrototypes.Resolve(prototypePrimContexts);
+            }
+            
+            // XXX: This swapping out is dubious... see XXX below.
+            _ThreadXformCache xfCaches;
+            xfCaches.local().Swap(_ctmCache);
+            
+            // Find the nearest ancestor prim that's a model or a subcomponent.
+            UsdPrim modelPrim = _GetNearestComponent(prim);
+            GfMatrix4d inverseComponentCtm = _ctmCache.GetLocalToWorldTransform(
+                modelPrim).GetInverse();
+            
+            _dispatcher.Run(
+                _BBoxTask(primContext, inverseComponentCtm, this, &xfCaches));
+            _dispatcher.Wait();
 
-    // XXX: This swapping out is dubious... see XXX below.
-    _ThreadXformCache xfCaches;
-    xfCaches.local().Swap(_ctmCache);
-
-    // Find the nearest ancestor prim that's a model or a subcomponent.
-    UsdPrim modelPrim = _GetNearestComponent(prim);
-    GfMatrix4d inverseComponentCtm = _ctmCache.GetLocalToWorldTransform(
-        modelPrim).GetInverse();
-
-    _dispatcher.Run(
-        _BBoxTask(primContext, inverseComponentCtm, this, &xfCaches));
-    _dispatcher.Wait();
-
-    // We save the result of one of the caches, but it might be interesting to
-    // merge them all here at some point.
-    // XXX: Is this valid?  This only makes sense if we're *100% certain* that
-    // rootTask above runs in this thread.  If it's picked up by another worker
-    // it won't populate the local xfCaches we're swapping with.
-    xfCaches.local().Swap(_ctmCache);
-
+            // We save the result of one of the caches, but it might be
+            // interesting to merge them all here at some point.  XXX: Is this
+            // valid?  This only makes sense if we're *100% certain* that
+            // rootTask above runs in this thread.  If it's picked up by another
+            // worker it won't populate the local xfCaches we're swapping with.
+            xfCaches.local().Swap(_ctmCache);
+        });
+    
     // Note: the map may contain unresolved entries, but future queries will
     // populate them.
-
+    
     // If the bound is in the cache, return it.
     entry = _FindEntry(primContext);
+    if (entry == nullptr) {
+        return false;
+    }
     *bboxes = entry->bboxes;
     return (!bboxes->empty());
 }
@@ -1089,32 +1167,8 @@ UsdGeomBBoxCache::_GetBBoxFromExtentsHint(
     return true;
 }
 
-bool
-UsdGeomBBoxCache::_ComputeExtent(const UsdGeomBoundable& boundableObj,
-                                 VtVec3fArray* extent) const
-{
-    // Display a message if the debug flag is enabled.
-    TF_DEBUG(USDGEOM_BBOX).Msg(
-        "[BBox Cache] WARNING: No valid extent authored for "
-        "<%s>. Computing a fallback value.",
-        boundableObj.GetPath().GetString().c_str());
-
-    // Create extent
-    bool successGettingExtent =
-        UsdGeomBoundable::ComputeExtentFromPlugins(
-            boundableObj, _time, extent);
-
-    if (!successGettingExtent) {
-        TF_DEBUG(USDGEOM_BBOX).Msg(
-            "[BBox Cache] WARNING: Unable to compute extent for "
-            "<%s>.", boundableObj.GetPath().GetString().c_str());
-    }
-
-    return successGettingExtent;
-}
-
 void
-UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
+UsdGeomBBoxCache::_ResolvePrim(const _BBoxTask* task,
                                const _PrimContext &primContext,
                                const GfMatrix4d &inverseComponentCtm)
 {
@@ -1153,7 +1207,7 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
     const UsdPrim &prim = primContext.prim;
     const bool useExtentsHintForPrim = _UseExtentsHintForPrim(prim);
 
-    boost::shared_array<UsdAttributeQuery> &queries = entry->queries;
+    std::shared_ptr<UsdAttributeQuery[]> &queries = entry->queries;
     if (!queries) {
         // If this cache doesn't use extents hints, we don't need the
         // corresponding query.
@@ -1207,119 +1261,63 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
     // incorporate the extent of all children, which are pruned from further
     // traversal.
     GfRange3d myRange;
-    bool pruneChildren = false;
 
     // Attempt to resolve a boundable prim's extent. If no extent is authored,
     // we attempt to create it for usdGeomPointBased and child classes. If
     // it cannot be created or found, the user is notified of an incorrect prim.
     if (UsdGeomBoundable boundableObj = UsdGeomBoundable(prim)) {
+        // UsdGeomBoundable::ComputeExtent checks to see if extent attr has an
+        // authored value and sets extent to that, if not it computes extent
+        // using intrinsic geometric parameters, provided ComputeExtentFunction
+        // is registered for this boundableObj.  If we successfully obtain an
+        // extent, create BBox for purpose.
         VtVec3fArray extent;
-        // Read the extent of the geometry, an axis-aligned bounding box in
-        // local space.
-        const UsdAttributeQuery& extentQuery =
-            _GetOrCreateExtentQuery(prim, &queries[Extent]);
-
-        // If some extent is authored, check validity
-        bool successGettingExtent = false;
-        if (extentQuery.Get(&extent, _time)) {
-
-            successGettingExtent = extent.size() == 2;
-            if (!successGettingExtent) {
-                TF_WARN("[BBox Cache] Extent for <%s> is of size %zu "
-                        "instead of 2.", primContext.ToString().c_str(),
-                        extent.size());
-            }
-        }
-
-        // If we failed to get extent, try to create it.
-        if (!successGettingExtent) {
-
-            // Try to calculate the extent.
-            if (UsdGeomPointBased pointBasedObj = UsdGeomPointBased(prim)) {
-
-                // XXX: We check if the points attribute is authored on the
-                // given prim. All we require from clients is that IF they
-                // author points, they MUST also author extent.
-                //
-                // If no extent is authored, but points has some value, we
-                // compute the extent and display a debug message.
-                //
-                // Otherwise, the client is consistent with our demands;
-                // no warning is issued, and no extent is computed.
-                //
-                // For more information, see bugzilla #115735
-
-                bool primHasAuthoredPoints =
-                    pointBasedObj.GetPointsAttr().HasAuthoredValue();
-
-                if (primHasAuthoredPoints) {
-                    successGettingExtent = _ComputeExtent(boundableObj, &extent);
-                }
-
-            } else {
-
-                successGettingExtent = _ComputeExtent(boundableObj, &extent);
-            }
-
-            if (successGettingExtent) {
-                // Extent computation reported success, but validate the result.
-                successGettingExtent = extent.size() == 2;
-                if (!successGettingExtent) {
-                    TF_WARN("[BBox Cache] Computed extent for <%s> is of size %zu "
-                            "instead of 2.", primContext.ToString().c_str(),
-                            extent.size());
-                }
-            }
-        }
-
-        // On Successful extent, create BBox for purpose.
-        if (successGettingExtent) {
-            pruneChildren = true;
+        if (boundableObj.ComputeExtent(_time, &extent)) {
             GfBBox3d &bboxForPurpose = (*bboxes)[entry->purposeInfo.purpose];
             bboxForPurpose.SetRange(GfRange3d(extent[0], extent[1]));
         }
     }
+    else {
+        // This is not a boundable, so descend to children.
 
-    // --
-    // NOTE: bbox is currently in its local space, the space in which
-    // we want to cache it.  If we need to merge in child bounds below,
-    // though, we will need to temporarily transform it into component space.
-    // --
-    bool bboxInComponentSpace = false;
+        // --
+        // NOTE: bbox is currently in its local space, the space in which
+        // we want to cache it.  If we need to merge in child bounds below,
+        // though, we will need to temporarily transform it into component space.
+        // --
+        bool bboxInComponentSpace = false;
 
-    // This will be computed below if the prim has children with bounds.
-    GfMatrix4d localToComponentXform(1.0);
-
-    // Accumulate child bounds:
-    //
-    //  1) Filter and queue up the children to be processed.
-    //  2) Spawn new child tasks and wait for them to complete.
-    //  3) Accumulate the results into this cache entry.
-    //
-
-    // Filter children and queue children.
-    if (!pruneChildren) {
+        // This will be computed below if the prim has children with bounds.
+        GfMatrix4d localToComponentXform(1.0);
+        
+        // Accumulate child bounds:
+        //
+        //  1) Filter and queue up the children to be processed.
+        //  2) Spawn new child tasks and wait for them to complete.
+        //  3) Accumulate the results into this cache entry.
+        //
+        
         // Compute the enclosing model's (or subcomponent's) inverse CTM.
         // This will be used to compute the child bounds in model-space.
         const GfMatrix4d &inverseEnclosingComponentCtm =
-                _IsComponentOrSubComponent(prim) ?
-                xfCache.GetLocalToWorldTransform(prim).GetInverse() :
-                inverseComponentCtm;
-
+            _IsComponentOrSubComponent(prim) ?
+            xfCache.GetLocalToWorldTransform(prim).GetInverse() :
+            inverseComponentCtm;
+        
         std::vector<std::pair<_PrimContext, _BBoxTask> > included;
         // See comment in _Resolve about unloaded prims
         UsdPrimSiblingRange children;
         TfToken childInheritableInstancePurpose;
-
+        
         const bool primIsInstance = prim.IsInstance();
         if (primIsInstance) {
-            const UsdPrim master = prim.GetMaster();
-            children = master.GetFilteredChildren(
+            const UsdPrim prototype = prim.GetPrototype();
+            children = prototype.GetFilteredChildren(
                 UsdPrimIsActive && UsdPrimIsDefined && !UsdPrimIsAbstract);
-            // Since we're using the master's children, we need to make sure we
-            // propagate this instance's inheritable purpose to the master's 
-            // children so they inherit the correct purpose for this instance
-            // if needed.
+            // Since we're using the prototype's children, we need to make sure
+            // we propagate this instance's inheritable purpose to the
+            // prototype's children so they inherit the correct purpose for this
+            // instance if needed.
             childInheritableInstancePurpose = 
                 entry->purposeInfo.GetInheritablePurpose();
         }
@@ -1328,17 +1326,18 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
                 UsdPrimIsActive && UsdPrimIsDefined && !UsdPrimIsAbstract);
             // Otherwise for standard children that are not across an instance
             // boundary, pass this prim's inheritable purpose along to its
-            // children.
-            // XXX: It's worth noting that if a child of a master has a purpose
-            // opinion, then that child (and its descendants) will have the same
-            // computed purpose regardless of the inheritable instance purpose
-            // of the master. Thus it's technically redundant to store multiple
-            // entries for these children per instance purpose. But the trade 
-            // off for this redundancy means that we don't have to worry about 
-            // different masters or siblings sharing child entries in the cache
-            // which would complicate the multithreaded way we resolve bboxes 
-            // for master and sibling prims. This may be something to 
-            // re-evaluate in the future. 
+            // children.  
+            // XXX: It's worth noting that if a child of a prototype
+            // has a purpose opinion, then that child (and its descendants) will
+            // have the same computed purpose regardless of the inheritable
+            // instance purpose of the prototype. Thus it's technically
+            // redundant to store multiple entries for these children per
+            // instance purpose. But the trade off for this redundancy means
+            // that we don't have to worry about different prototypes or
+            // siblings sharing child entries in the cache which would
+            // complicate the multithreaded way we resolve bboxes for prototype
+            // and sibling prims. This may be something to re-evaluate in the
+            // future.
             childInheritableInstancePurpose = 
                 primContext.instanceInheritablePurpose;
         }
@@ -1380,7 +1379,7 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
             // Queue up the child to be processed.
             if (primIsInstance) {
                 // If the prim we're processing is an instance, all of its
-                // child prims will come from its master prim. The bboxes
+                // child prims will come from its prototype prim. The bboxes
                 // for these prims should already have been computed in
                 // _Resolve, so we don't need to schedule an additional task.
                 included.push_back(std::make_pair(childPrimContext, 
@@ -1402,13 +1401,14 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
         // All the child bboxTasks will be NULL if the prim is an instance.
         //
         if (!primIsInstance) {
-            WorkArenaDispatcher wd;
-            for(const auto &childAndTask : included) {
-                if (childAndTask.second) {
-                    wd.Run(childAndTask.second);
-                }
-            }
-            wd.Wait();
+            WorkWithScopedParallelism([&]() {
+                    WorkDispatcher wd;
+                    for(auto &childAndTask : included) {
+                        if (childAndTask.second) {
+                            wd.Run(childAndTask.second);
+                        }
+                    }
+                });
 
             // We may have switched threads, grab the thread-local xfCache
             // again.
@@ -1480,18 +1480,18 @@ UsdGeomBBoxCache::_ResolvePrim(_BBoxTask* task,
                 }
             }
         }
-    }
-
-    // All prims must be cached in local space: convert bbox from component to
-    // local space.
-    if (bboxInComponentSpace) {
-        // When children are accumulated, the bbox range is in component space,
-        // so we must apply the inverse component-space transform
-        // (component-to-local) to move it to local space.
-        GfMatrix4d componentToLocalXform = localToComponentXform.GetInverse();
-        for (auto &purposeAndBBox : *bboxes) {
-            GfBBox3d &bbox = purposeAndBBox.second;
-            bbox.SetMatrix(componentToLocalXform);
+        // All prims must be cached in local space: convert bbox from component
+        // to local space.
+        if (bboxInComponentSpace) {
+            // When children are accumulated, the bbox range is in component
+            // space, so we must apply the inverse component-space transform
+            // (component-to-local) to move it to local space.
+            GfMatrix4d componentToLocalXform =
+                localToComponentXform.GetInverse();
+            for (auto &purposeAndBBox : *bboxes) {
+                GfBBox3d &bbox = purposeAndBBox.second;
+                bbox.SetMatrix(componentToLocalXform);
+            }
         }
     }
 
@@ -1523,13 +1523,4 @@ UsdGeomBBoxCache::_PrimContext::ToString() const {
     }
 }
 
-size_t hash_value(const UsdGeomBBoxCache::_PrimContext &key)
-{
-    size_t hash = hash_value(key.prim);
-    boost::hash_combine(hash, key.instanceInheritablePurpose.Hash());
-    return hash;
-}
-
-
 PXR_NAMESPACE_CLOSE_SCOPE
-

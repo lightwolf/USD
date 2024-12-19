@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_GLF_CONTEXT_CAPS_H
 #define PXR_IMAGING_GLF_CONTEXT_CAPS_H
@@ -62,7 +45,7 @@ public:
     /// InitInstance queries the GL context for its capabilities.
     /// It should be called by the application before using systems
     /// that depend on the caps, such as Hydra.  A good example would be
-    /// to pair the call to initialize after a call to GlfGlewInit().
+    /// to pair the call to initialize after a call to initialize GL
     GLF_API
     static void InitInstance();
 
@@ -72,8 +55,6 @@ public:
     GLF_API
     static const GlfContextCaps &GetInstance();
 
-
-
     // GL version
     int glVersion;                    // 400 (4.0), 410 (4.1), ...
 
@@ -82,31 +63,6 @@ public:
 
     // Max constants
     int maxArrayTextureLayers;
-    int maxUniformBlockSize;
-    int maxShaderStorageBlockSize;
-    int maxTextureBufferSize;
-    int uniformBufferOffsetAlignment;
-
-    // GL extensions (ordered by version)
-    bool arrayTexturesEnabled;        // EXT_texture_array                (3.0)
-    bool shaderStorageBufferEnabled;  // ARB_shader_storage_buffer_object (4.3)
-    bool bufferStorageEnabled;        // ARB_buffer_storage               (4.4)
-    bool directStateAccessEnabled;    // ARB_direct_state_access          (4.5)
-    bool multiDrawIndirectEnabled;    // ARB_multi_draw_indirect          (4.5)
-
-    bool bindlessTextureEnabled;      // ARB_bindless_texture
-    bool bindlessBufferEnabled;       // NV_shader_buffer_load
-
-    // GLSL version and extensions 
-    int glslVersion;                  // 400, 410, ...
-    bool explicitUniformLocation;     // ARB_explicit_uniform_location    (4.3)
-    bool shadingLanguage420pack;      // ARB_shading_language_420pack     (4.2)
-    bool shaderDrawParametersEnabled; // ARB_shader_draw_parameters       (4.5)
-
-    // workarounds for driver issues
-    bool copyBufferEnabled;
-
-    bool floatingPointBuffersEnabled;
 
 private:
     void _LoadCaps();

@@ -1,30 +1,15 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/base/tf/smallVector.h"
 #include "pxr/base/tf/iterator.h"
 #include "pxr/base/tf/regTest.h"
+
+#include "pxr/base/arch/defines.h"
 
 #include <algorithm>
 #include <array>
@@ -191,6 +176,84 @@ testConstructors()
                 TF_AXIOM(source[i] == vv[i]);
             }
         }
+    }
+
+    // Initializer List Construction
+    {
+        TfSmallVector<int, 5> il0 = {};
+        TF_AXIOM(il0.size() == 0);
+        TF_AXIOM(il0.capacity() == 5);
+
+        TfSmallVector<int, 5> il1 = {1, 2, 3};
+        TF_AXIOM(il1.size() == 3);
+        TF_AXIOM(il1.capacity() == 5);
+        TF_AXIOM(il1[0] = 1);
+        TF_AXIOM(il1[1] = 2);
+        TF_AXIOM(il1[2] = 3);
+
+        TfSmallVector<int, 5> il2 = {6, 5, 4, 3, 2, 1};
+        TF_AXIOM(il2.size() == 6);
+        TF_AXIOM(il2.capacity() == 6);
+        TF_AXIOM(il2[0] = 6);
+        TF_AXIOM(il2[1] = 5);
+        TF_AXIOM(il2[2] = 4);
+        TF_AXIOM(il2[3] = 3);
+        TF_AXIOM(il2[4] = 2);
+        TF_AXIOM(il2[5] = 1);
+    }
+
+    // Initializer List Assignment using operator=
+    {
+        TfSmallVector<int, 5> il0;
+        il0 = {};
+        TF_AXIOM(il0.size() == 0);
+        TF_AXIOM(il0.capacity() == 5);
+
+        TfSmallVector<int, 5> il1;
+        il1 = {1, 2, 3};
+        TF_AXIOM(il1.size() == 3);
+        TF_AXIOM(il1.capacity() == 5);
+        TF_AXIOM(il1[0] = 1);
+        TF_AXIOM(il1[1] = 2);
+        TF_AXIOM(il1[2] = 3);
+
+        TfSmallVector<int, 5> il2;
+        il2 = {6, 5, 4, 3, 2, 1};
+        TF_AXIOM(il2.size() == 6);
+        TF_AXIOM(il2.capacity() == 6);
+        TF_AXIOM(il2[0] = 6);
+        TF_AXIOM(il2[1] = 5);
+        TF_AXIOM(il2[2] = 4);
+        TF_AXIOM(il2[3] = 3);
+        TF_AXIOM(il2[4] = 2);
+        TF_AXIOM(il2[5] = 1);
+    }
+
+    // Initializer List Assignment using assign()
+    {
+        TfSmallVector<int, 5> il0;
+        il0.assign({});
+        TF_AXIOM(il0.size() == 0);
+        TF_AXIOM(il0.capacity() == 5);
+
+        TfSmallVector<int, 5> il1;
+        il1.assign({1, 2, 3});
+        TF_AXIOM(il1.size() == 3);
+        TF_AXIOM(il1.capacity() == 5);
+        TF_AXIOM(il1[0] = 1);
+        TF_AXIOM(il1[1] = 2);
+        TF_AXIOM(il1[2] = 3);
+
+        TfSmallVector<int, 5> il2;
+        il2.assign({6, 5, 4, 3, 2, 1});
+        TF_AXIOM(il2.size() == 6);
+        TF_AXIOM(il2.capacity() == 6);
+        TF_AXIOM(il2[0] = 6);
+        TF_AXIOM(il2[1] = 5);
+        TF_AXIOM(il2[2] = 4);
+        TF_AXIOM(il2[3] = 3);
+        TF_AXIOM(il2[4] = 2);
+        TF_AXIOM(il2[5] = 1);
     }
 }
 
@@ -598,6 +661,10 @@ testInsertNoMoveConstructor()
             return *this;
         }
 
+        bool operator==(_Foo const &other) const {
+            return i == other.i;
+        }
+
         // 32-bit size.
         int i;
 
@@ -616,15 +683,22 @@ testInsertNoMoveConstructor()
     su.push_back(f);
 
     // Grow via insertion.
-    TfSmallVector<_Foo, 1> v;
+    TfSmallVector<_Foo, 2> v;
+    TF_AXIOM(v.size() == 0);
     v.insert(v.begin(), f);
+    TF_AXIOM(v.size() == 1);
     v.insert(v.begin(), f);
+    TF_AXIOM(v.size() == 2);
     v.insert(v.begin(), f);
+    TF_AXIOM(v.size() == 3);
 
     std::vector<_Foo> sv;
     sv.insert(sv.begin(), f);
     sv.insert(sv.begin(), f);
     sv.insert(sv.begin(), f);
+
+    TF_AXIOM(v.size() == sv.size());
+    TF_AXIOM(std::equal(v.begin(), v.end(), sv.begin()));
 
     // Attempt to move between local storage by swapping.
     TfSmallVector<_Foo, 1> x;
@@ -906,7 +980,7 @@ testInsertionTrivial()
             if (a.capacity() > 4*numInsertedElems*(i+1)) {
                 TF_FATAL_ERROR(
                     "Capacity too large; after %d insertions of %zu elements, "
-                    "vector has size %u and capacity %u",
+                    "vector has size %zu and capacity %zu",
                     i+1, numInsertedElems, a.size(), a.capacity());
             }
         }
@@ -959,34 +1033,45 @@ testInsertion()
     // 
     // Test inserting to the back of an empty vector.
 
-    std::vector<TestStruct> sourceA;
-    sourceA.reserve(10);
-    sourceA.emplace_back(TestStruct(0));
-    sourceA.emplace_back(TestStruct(1));
-    sourceA.emplace_back(TestStruct(2));
-    sourceA.emplace_back(TestStruct(3));
-    sourceA.emplace_back(TestStruct(4));
-    sourceA.emplace_back(TestStruct(5));
-    sourceA.emplace_back(TestStruct(6));
-    sourceA.emplace_back(TestStruct(7));
-    sourceA.emplace_back(TestStruct(8));
-    sourceA.emplace_back(TestStruct(9));
+    const std::vector<TestStruct> sourceA = {
+        TestStruct(0),
+        TestStruct(1),
+        TestStruct(2),
+        TestStruct(3),
+        TestStruct(4),
+        TestStruct(5),
+        TestStruct(6),
+        TestStruct(7),
+        TestStruct(8),
+        TestStruct(9),
+    };
 
     TF_AXIOM(TestStruct::counter == 10);
 
-    std::vector<TestStruct> sourceB;
-    sourceB.push_back(TestStruct(999));
-    sourceB.push_back(TestStruct(998));
-    sourceB.push_back(TestStruct(997));
-    sourceB.push_back(TestStruct(996));
+    const std::initializer_list<TestStruct> ilistB = {
+        TestStruct(999),
+        TestStruct(998),
+        TestStruct(997),
+        TestStruct(996),
+    };
 
     TF_AXIOM(TestStruct::counter == 14);
 
+    const std::vector<TestStruct> sourceB(ilistB);
+
+    TF_AXIOM(TestStruct::counter == 18);
+
     // Local storage with enough space to absorb new entries
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 15> a(sourceA.begin(), sourceA.end());
 
-        a.insert(a.end(), sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.end(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.end(), ilistB);
+        }
 
         for (size_t i = 0; i < sourceA.size(); ++i) {
             TF_AXIOM(a[i] == sourceA[i]);
@@ -997,16 +1082,23 @@ testInsertion()
         TF_AXIOM(a[12] == sourceB[2]);
         TF_AXIOM(a[13] == sourceB[3]);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Remote storage with enough space to absorb new entries.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
         a.reserve(15);
-        a.insert(a.end(), sourceB.begin(), sourceB.end());
+
+        if (!useIlist) {
+            a.insert(a.end(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.end(), ilistB);
+        }
 
         for (size_t i = 0; i < sourceA.size(); ++i) {
             TF_AXIOM(a[i] == sourceA[i]);
@@ -1017,15 +1109,22 @@ testInsertion()
         TF_AXIOM(a[12] == sourceB[2]);
         TF_AXIOM(a[13] == sourceB[3]);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Local Growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
-        a.insert(a.end(), sourceB.begin(), sourceB.end());
+
+        if (!useIlist) {
+            a.insert(a.end(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.end(), ilistB);
+        }
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
@@ -1038,15 +1137,22 @@ testInsertion()
         TF_AXIOM(a[12] == sourceB[2]);
         TF_AXIOM(a[13] == sourceB[3]);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Remote Growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
-        a.insert(a.end(), sourceB.begin(), sourceB.end());
+
+        if (!useIlist) {
+            a.insert(a.end(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.end(), ilistB);
+        }
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
@@ -1059,19 +1165,25 @@ testInsertion()
         TF_AXIOM(a[12] == sourceB[2]);
         TF_AXIOM(a[13] == sourceB[3]);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Test inserting at the front.
     //
     // Local storage with enough space to absorb new entries
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 15> a(sourceA.begin(), sourceA.end());
 
         // Splice in B.
-        a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin(), ilistB);
+        }
 
         TF_AXIOM(a[0]  == 999);
         TF_AXIOM(a[1]  == 998);
@@ -1088,17 +1200,23 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Remote storage with enough space to absorb new entries.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
 
         // Splice in B.
-        a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin(), ilistB);
+        }
 
         TF_AXIOM(a[0]  == 999);
         TF_AXIOM(a[1]  == 998);
@@ -1115,18 +1233,24 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Local Growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 11> a(sourceA.begin(), sourceA.end());
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
-        a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin(), ilistB);
+        }
 
         TF_AXIOM(a[0]  == 999);
         TF_AXIOM(a[1]  == 998);
@@ -1143,18 +1267,24 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Remote Growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
-        a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin(), sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin(), ilistB);
+        }
 
         TF_AXIOM(a[0]  == 999);
         TF_AXIOM(a[1]  == 998);
@@ -1171,18 +1301,24 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Middle insertion case.
 
     // Local storage with space to absorb new entries.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 15> a(sourceA.begin(), sourceA.end());
 
-        a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin()+2, ilistB);
+        }
 
         TF_AXIOM(a[0] == 0);
         TF_AXIOM(a[1] == 1);
@@ -1201,17 +1337,23 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Remote storage with space to absorb new entries.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
         a.reserve(15);
 
-        a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin()+2, ilistB);
+        }
 
         TF_AXIOM(a[0] == 0);
         TF_AXIOM(a[1] == 1);
@@ -1230,18 +1372,24 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Local storage growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 11> a(sourceA.begin(), sourceA.end());
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
-        a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin()+2, ilistB);
+        }
 
         TF_AXIOM(a[0] == 0);
         TF_AXIOM(a[1] == 1);
@@ -1260,18 +1408,24 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 
     // Local storage growth case.
+    for (bool useIlist : {false, true})
     {
         TfSmallVector<TestStruct, 1> a(sourceA.begin(), sourceA.end());
 
         TF_AXIOM(a.capacity() < a.size() + sourceB.size());
 
-        a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        if (!useIlist) {
+            a.insert(a.begin()+2, sourceB.begin(), sourceB.end());
+        }
+        else {
+            a.insert(a.begin()+2, ilistB);
+        }
 
         TF_AXIOM(a[0] == 0);
         TF_AXIOM(a[1] == 1);
@@ -1290,10 +1444,10 @@ testInsertion()
         TF_AXIOM(a[12] == 8);
         TF_AXIOM(a[13] == 9);
 
-        TF_AXIOM(TestStruct::counter == 28);
+        TF_AXIOM(TestStruct::counter == 32);
     }
 
-    TF_AXIOM(TestStruct::counter == 14);
+    TF_AXIOM(TestStruct::counter == 18);
 }
 
 static void
@@ -1318,12 +1472,17 @@ testResize()
     // grow where T is trivial
     {
         TfSmallVector<int, 10> v;
-        v.insert(v.end(), sourceA.begin(), sourceA.end());
 
+        v.insert(v.end(), sourceA.begin(), sourceA.end());
         TF_AXIOM(v.size() == 100);
 
-        v.resize(150, 17);
+        // Shrink first -- this magically sidesteps a GCC bug (possibly this
+        // one, but there are other candidates too:
+        // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=89689)
+        v.resize(5, 17);
+        TF_AXIOM(v.size() == 5);
 
+        v.resize(150, 17);
         TF_AXIOM(v.size() == 150);
     }
 }

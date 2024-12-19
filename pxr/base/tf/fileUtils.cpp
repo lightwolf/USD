@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -34,9 +17,7 @@
 #include "pxr/base/arch/systemInfo.h"
 #include "pxr/base/arch/errno.h"
 
-#include <boost/assign.hpp>
-#include <boost/functional/hash.hpp>
-#include <boost/noncopyable.hpp>
+#include "pxr/base/tf/hash.h"
 #include "pxr/base/tf/hashset.h"
 
 #include <set>
@@ -78,14 +59,48 @@ Tf_HasAttribute(
         SetLastError(ERROR_SUCCESS);
         return false;
     }
-    const DWORD attribs = GetFileAttributes(path.c_str());
+
+    // On Linux, a trailing slash forces the resolution of symlinks
+    // (https://man7.org/linux/man-pages/man7/path_resolution.7.html).
+    // We need to provide the same behavior on Windows.
+    if (path.back() == '/' || path.back() == '\\')
+        resolveSymlinks = true;
+
+    std::wstring pathW = ArchWindowsUtf8ToUtf16(path);
+    DWORD attribs = GetFileAttributesW(pathW.c_str());
     if (attribs == INVALID_FILE_ATTRIBUTES) {
-        if (attribute == 0 && GetLastError() == ERROR_FILE_NOT_FOUND) {
+        if (attribute == 0 &&
+            (GetLastError() == ERROR_FILE_NOT_FOUND ||
+             GetLastError() == ERROR_PATH_NOT_FOUND)) {
             // Don't report an error if we're just testing existence.
             SetLastError(ERROR_SUCCESS);
         }
         return false;
     }
+
+    // Ignore reparse points on network volumes. They can't be resolved
+    // properly, so simply remove the reparse point attribute and treat
+    // it like a regular file/directory.
+    if ((attribs & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+        // Calling PathIsNetworkPath sometimes sets the "last error" to an
+        // error code indicating an incomplete overlapped I/O function. We
+        // want to ignore this error.
+        DWORD olderr = GetLastError();
+        if (PathIsNetworkPathW(pathW.c_str())) {
+            attribs &= ~FILE_ATTRIBUTE_REPARSE_POINT;
+        }
+        SetLastError(olderr);
+    }
+
+    // Because we remove the REPARSE_POINT attribute above for reparse points
+    // on network shares, the behavior of this bit of code will be slightly
+    // different than for reparse points on non-network volumes. We will not
+    // try to follow the link and get the attributes of the destination. This
+    // will result in a link to an invalid destination directory claiming that
+    // the directory exists. It might be possible to use some other function
+    // to test for the existence of the destination directory in this case
+    // (such as FindFirstFile), but doing this doesn't seem to be relevent
+    // to how USD uses this method.
     if (!resolveSymlinks || (attribs & FILE_ATTRIBUTE_REPARSE_POINT) == 0) {
         return attribute == 0 || (attribs & attribute) == expected;
     }
@@ -221,7 +236,7 @@ TfIsDirEmpty(string const& path)
     if (!TfIsDir(path))
         return false;
 #if defined(ARCH_OS_WINDOWS)
-    return PathIsDirectoryEmpty(path.c_str()) == TRUE;
+    return PathIsDirectoryEmptyW(ArchWindowsUtf8ToUtf16(path).c_str()) == TRUE;
 #else
     if (DIR *dirp = opendir(path.c_str()))
     {
@@ -246,8 +261,9 @@ bool
 TfSymlink(string const& src, string const& dst)
 {
 #if defined(ARCH_OS_WINDOWS)
-    if (CreateSymbolicLink(dst.c_str(), src.c_str(),
-                           TfIsDir(src) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0)) {
+    if (CreateSymbolicLinkW(ArchWindowsUtf8ToUtf16(dst).c_str(),
+                            ArchWindowsUtf8ToUtf16(src).c_str(),
+                            TfIsDir(src) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0)) {
         return true;
     }
 
@@ -279,7 +295,8 @@ bool
 TfMakeDir(string const& path, int mode)
 {
 #if defined(ARCH_OS_WINDOWS)
-    return CreateDirectory(path.c_str(), nullptr) == TRUE;
+    return CreateDirectoryW(
+        ArchWindowsUtf8ToUtf16(path).c_str(), nullptr) == TRUE;
 #else
     // Default mode is 0777
     if (mode == -1)
@@ -301,7 +318,7 @@ Tf_MakeDirsRec(string const& path, int mode, bool existOk)
     const string head = TfStringTrimRight(TfGetPathName(path), pathsep.c_str());
     const string tail = TfGetBaseName(path);
 
-    if (!head.empty() && !tail.empty() && !TfPathExists(head)) {
+    if (!head.empty() && !tail.empty() && !TfPathExists(head) && head != path) {
         if (!Tf_MakeDirsRec(head, mode, existOk)) {
 #if defined(ARCH_OS_WINDOWS)
             if (GetLastError() != ERROR_ALREADY_EXISTS)
@@ -339,13 +356,13 @@ TfReadDir(
     string *errMsg)
 {
 #if defined(ARCH_OS_WINDOWS)
-    char szPath[MAX_PATH];
-    WIN32_FIND_DATA fdFile;
+    wchar_t szPath[MAX_PATH];
+    WIN32_FIND_DATAW fdFile;
     HANDLE hFind = NULL;
 
-    PathCombine(szPath, dirPath.c_str(), "*.*");
+    PathCombineW(szPath, ArchWindowsUtf8ToUtf16(dirPath).c_str(), L"*.*");
 
-    if((hFind = FindFirstFile(szPath, &fdFile)) == INVALID_HANDLE_VALUE)
+    if((hFind = FindFirstFileW(szPath, &fdFile)) == INVALID_HANDLE_VALUE)
     {
         if (errMsg) {
             *errMsg = TfStringPrintf("Path not found: %s", szPath);
@@ -356,22 +373,26 @@ TfReadDir(
     {
         do
         {
-            if(strcmp(fdFile.cFileName, ".") != 0
-                && strcmp(fdFile.cFileName, "..") != 0)
+            if(wcscmp(fdFile.cFileName, L".") != 0
+                && wcscmp(fdFile.cFileName, L"..") != 0)
             {
                 if(fdFile.dwFileAttributes &FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    if (dirnames)
-                        dirnames->push_back(fdFile.cFileName);
+                    if (dirnames) {
+                        dirnames->push_back(
+                            ArchWindowsUtf16ToUtf8(fdFile.cFileName));
+                    }
                 }
                 else
                 {
-                    if (filenames)
-                        filenames->push_back(fdFile.cFileName);
+                    if (filenames) {
+                        filenames->push_back(
+                            ArchWindowsUtf16ToUtf8(fdFile.cFileName));
+                    }
                 }
             }
         }
-        while (FindNextFile(hFind, &fdFile));
+        while (FindNextFileW(hFind, &fdFile));
 
         FindClose(hFind);
 
@@ -476,13 +497,10 @@ struct Tf_FileId {
 };
 
 static size_t hash_value(const Tf_FileId& fileId) {
-    size_t seed = 0;
-    boost::hash_combine(seed, fileId.dev);
-    boost::hash_combine(seed, fileId.ino);
-    return seed;
+    return TfHash::Combine(fileId.dev, fileId.ino);
 }
 
-typedef TfHashSet<Tf_FileId, boost::hash<Tf_FileId> > Tf_FileIdSet;
+typedef TfHashSet<Tf_FileId, TfHash> Tf_FileIdSet;
 
 static bool
 Tf_WalkDirsRec(
@@ -659,11 +677,12 @@ TfTouchFile(string const &fileName, bool create)
             return false;
         close(fd);
 #else
-        HANDLE fileHandle = ::CreateFile(fileName.c_str(),
+            HANDLE fileHandle =
+                ::CreateFileW(ArchWindowsUtf8ToUtf16(fileName).c_str(),
             GENERIC_WRITE,          // open for write
             0,                      // not for sharing
             NULL,                   // default security
-            CREATE_ALWAYS,          // overwrite existing
+            OPEN_ALWAYS,            // opens existing
             FILE_ATTRIBUTE_NORMAL,  //normal file
             NULL);                  // no template
 

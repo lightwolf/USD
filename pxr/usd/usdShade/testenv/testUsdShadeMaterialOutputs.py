@@ -2,25 +2,8 @@
 #                                                                                   
 # Copyright 2018 Pixar                                                              
 #                                                                                   
-# Licensed under the Apache License, Version 2.0 (the "Apache License")             
-# with the following modification; you may not use this file except in              
-# compliance with the Apache License and the following modification to it:          
-# Section 6. Trademarks. is deleted and replaced with:                              
-#                                                                                   
-# 6. Trademarks. This License does not grant permission to use the trade            
-#    names, trademarks, service marks, or product names of the Licensor             
-#    and its affiliates, except as required to comply with Section 4(c) of          
-#    the License and to reproduce the content of the NOTICE file.                   
-#                                                                                   
-# You may obtain a copy of the Apache License at                                    
-#                                                                                   
-#     http://www.apache.org/licenses/LICENSE-2.0                                    
-#                                                                                   
-# Unless required by applicable law or agreed to in writing, software               
-# distributed under the Apache License with the above modification is               
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY          
-# KIND, either express or implied. See the Apache License for the specific          
-# language governing permissions and limitations under the Apache License. 
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from pxr import Sdf, Usd, UsdShade
 import os, unittest
@@ -125,6 +108,45 @@ class TestUsdShadeMaterialOutputs(unittest.TestCase):
         self.assertEqual(riSurfSource[0].GetPath(), ngSurfShader.GetPath())
         self.assertEqual(riDispSource[0].GetPath(), ngDispShader.GetPath())
         self.assertEqual(riVolSource[0].GetPath(), ngVolShader.GetPath())
+
+        # Create a few more outputs to exercise the multi-renderContext
+        # terminal output getters.
+
+        # A deeply namespaced "surface" output.
+        mat.CreateSurfaceOutput(
+            renderContext=Sdf.Path.namespaceDelimiter.join(
+                ['deep', 'context']))
+
+        # A deeply namespaced, float3-typed "displacement" output.
+        mat.CreateOutput(
+            Sdf.Path.namespaceDelimiter.join(
+                ['deep', 'context', 'float', UsdShade.Tokens.displacement]),
+            Sdf.ValueTypeNames.Float3)
+
+        # A color-typed "volume" output.
+        mat.CreateOutput(
+            Sdf.Path.namespaceDelimiter.join(
+                ['colorRenderContext', UsdShade.Tokens.volume]),
+            Sdf.ValueTypeNames.Color3d)
+
+        # Arbitrary outputs that the getters should *not* return.
+        mat.CreateOutput('bogusOutput', Sdf.ValueTypeNames.Token)
+        mat.CreateOutput(
+            Sdf.Path.namespaceDelimiter.join(['bogusContext', 'randomOutput']),
+            Sdf.ValueTypeNames.Token)
+
+        outputBaseNames = [o.GetBaseName() for o in mat.GetSurfaceOutputs()]
+        self.assertEqual(outputBaseNames,
+            ['surface', 'deep:context:surface', 'ri:surface'])
+
+        outputBaseNames = [o.GetBaseName() for o in mat.GetDisplacementOutputs()]
+        self.assertEqual(outputBaseNames,
+            ['displacement', 'deep:context:float:displacement', 'ri:displacement'])
+
+        outputBaseNames = [o.GetBaseName() for o in mat.GetVolumeOutputs()]
+        self.assertEqual(outputBaseNames,
+            ['volume', 'colorRenderContext:volume', 'ri:volume'])
+
 
 if __name__ == "__main__":
     unittest.main()

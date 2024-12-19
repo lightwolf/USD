@@ -1,28 +1,9 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
-//
-#include "pxr/imaging/glf/glew.h"
-
 #include "pxr/imaging/plugin/hdEmbree/instancer.h"
 
 #include "pxr/imaging/plugin/hdEmbree/sampler.h"
@@ -40,9 +21,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 
 HdEmbreeInstancer::HdEmbreeInstancer(HdSceneDelegate* delegate,
-                                     SdfPath const& id,
-                                     SdfPath const &parentId)
-    : HdInstancer(delegate, id, parentId)
+                                     SdfPath const& id)
+    : HdInstancer(delegate, id)
 {
 }
 
@@ -55,46 +35,39 @@ HdEmbreeInstancer::~HdEmbreeInstancer()
 }
 
 void
-HdEmbreeInstancer::_SyncPrimvars()
+HdEmbreeInstancer::Sync(HdSceneDelegate* delegate,
+                        HdRenderParam* renderParam,
+                        HdDirtyBits* dirtyBits)
+{
+    _UpdateInstancer(delegate, dirtyBits);
+
+    if (HdChangeTracker::IsAnyPrimvarDirty(*dirtyBits, GetId())) {
+        _SyncPrimvars(delegate, *dirtyBits);
+    }
+}
+
+void
+HdEmbreeInstancer::_SyncPrimvars(HdSceneDelegate* delegate,
+                                 HdDirtyBits dirtyBits)
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    HdChangeTracker &changeTracker = 
-        GetDelegate()->GetRenderIndex().GetChangeTracker();
     SdfPath const& id = GetId();
 
-    // Use the double-checked locking pattern to check if this instancer's
-    // primvars are dirty.
-    int dirtyBits = changeTracker.GetInstancerDirtyBits(id);
-    if (HdChangeTracker::IsAnyPrimvarDirty(dirtyBits, id)) {
-        std::lock_guard<std::mutex> lock(_instanceLock);
+    HdPrimvarDescriptorVector primvars =
+        delegate->GetPrimvarDescriptors(id, HdInterpolationInstance);
 
-        dirtyBits = changeTracker.GetInstancerDirtyBits(id);
-        if (HdChangeTracker::IsAnyPrimvarDirty(dirtyBits, id)) {
-
-            // If this instancer has dirty primvars, get the list of
-            // primvar names and then cache each one.
-
-            TfTokenVector primvarNames;
-            HdPrimvarDescriptorVector primvars = GetDelegate()
-                ->GetPrimvarDescriptors(id, HdInterpolationInstance);
-
-            for (HdPrimvarDescriptor const& pv: primvars) {
-                if (HdChangeTracker::IsPrimvarDirty(dirtyBits, id, pv.name)) {
-                    VtValue value = GetDelegate()->Get(id, pv.name);
-                    if (!value.IsEmpty()) {
-                        if (_primvarMap.count(pv.name) > 0) {
-                            delete _primvarMap[pv.name];
-                        }
-                        _primvarMap[pv.name] =
-                            new HdVtBufferSource(pv.name, value);
-                    }
+    for (HdPrimvarDescriptor const& pv: primvars) {
+        if (HdChangeTracker::IsPrimvarDirty(dirtyBits, id, pv.name)) {
+            VtValue value = delegate->Get(id, pv.name);
+            if (!value.IsEmpty()) {
+                if (_primvarMap.count(pv.name) > 0) {
+                    delete _primvarMap[pv.name];
                 }
+                _primvarMap[pv.name] =
+                    new HdVtBufferSource(pv.name, value);
             }
-
-            // Mark the instancer as clean
-            changeTracker.MarkInstancerClean(id);
         }
     }
 }
@@ -105,12 +78,13 @@ HdEmbreeInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    _SyncPrimvars();
-
     // The transforms for this level of instancer are computed by:
     // foreach(index : indices) {
-    //     instancerTransform * translate(index) * rotate(index) *
-    //     scale(index) * instanceTransform(index)
+    //     instancerTransform
+    //     * hydra:instanceTranslations(index)
+    //     * hydra:instanceRotations(index)
+    //     * hydra:instanceScales(index)
+    //     * hydra:instanceTransforms(index)
     // }
     // If any transform isn't provided, it's assumed to be the identity.
 
@@ -124,10 +98,10 @@ HdEmbreeInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
         transforms[i] = instancerTransform;
     }
 
-    // "translate" holds a translation vector for each index.
-    if (_primvarMap.count(HdInstancerTokens->translate) > 0) {
+    // "hydra:instanceTranslations" holds a translation vector for each index.
+    if (_primvarMap.count(HdInstancerTokens->instanceTranslations) > 0) {
         HdEmbreeBufferSampler
-                sampler(*_primvarMap[HdInstancerTokens->translate]);
+                sampler(*_primvarMap[HdInstancerTokens->instanceTranslations]);
         for (size_t i = 0; i < instanceIndices.size(); ++i) {
             GfVec3f translate;
             if (sampler.Sample(instanceIndices[i], &translate)) {
@@ -138,23 +112,24 @@ HdEmbreeInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
         }
     }
 
-    // "rotate" holds a quaternion in <real, i, j, k> format for each index.
-    if (_primvarMap.count(HdInstancerTokens->rotate) > 0) {
-        HdEmbreeBufferSampler sampler(*_primvarMap[HdInstancerTokens->rotate]);
+    // "hydra:instanceRotations" holds a quaternion in <real, i, j, k>
+    // format for each index.
+    if (_primvarMap.count(HdInstancerTokens->instanceRotations) > 0) {
+        HdEmbreeBufferSampler sampler(*_primvarMap[HdInstancerTokens->instanceRotations]);
         for (size_t i = 0; i < instanceIndices.size(); ++i) {
             GfVec4f quat;
             if (sampler.Sample(instanceIndices[i], &quat)) {
                 GfMatrix4d rotateMat(1);
-                rotateMat.SetRotate(GfRotation(GfQuaternion(
-                    quat[0], GfVec3d(quat[1], quat[2], quat[3]))));
+                rotateMat.SetRotate(GfQuatd(
+                    quat[0], quat[1], quat[2], quat[3]));
                 transforms[i] = rotateMat * transforms[i];
             }
         }
     }
 
-    // "scale" holds an axis-aligned scale vector for each index.
-    if (_primvarMap.count(HdInstancerTokens->scale) > 0) {
-        HdEmbreeBufferSampler sampler(*_primvarMap[HdInstancerTokens->scale]);
+    // "hydra:instanceScales" holds an axis-aligned scale vector for each index.
+    if (_primvarMap.count(HdInstancerTokens->instanceScales) > 0) {
+        HdEmbreeBufferSampler sampler(*_primvarMap[HdInstancerTokens->instanceScales]);
         for (size_t i = 0; i < instanceIndices.size(); ++i) {
             GfVec3f scale;
             if (sampler.Sample(instanceIndices[i], &scale)) {
@@ -165,10 +140,10 @@ HdEmbreeInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId)
         }
     }
 
-    // "instanceTransform" holds a 4x4 transform matrix for each index.
-    if (_primvarMap.count(HdInstancerTokens->instanceTransform) > 0) {
+    // "hydra:instanceTransforms" holds a 4x4 transform matrix for each index.
+    if (_primvarMap.count(HdInstancerTokens->instanceTransforms) > 0) {
         HdEmbreeBufferSampler
-                sampler(*_primvarMap[HdInstancerTokens->instanceTransform]);
+                sampler(*_primvarMap[HdInstancerTokens->instanceTransforms]);
         for (size_t i = 0; i < instanceIndices.size(); ++i) {
             GfMatrix4d instanceTransform;
             if (sampler.Sample(instanceIndices[i], &instanceTransform)) {

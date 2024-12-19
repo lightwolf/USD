@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 // Wrap one of various unordered map implementations.  The exposed API
 // is similar to std::unordered_map but is missing some methods and
@@ -358,8 +341,8 @@ template<class Key, class Mapped, class HashFn = std::hash<Key>,
 	 class EqualKey = std::equal_to<Key>,
          class Alloc = std::allocator<std::pair<const Key, Mapped> > >
 class TfHashMultiMap :
-    private std::unordered_map<Key, Mapped, HashFn, EqualKey, Alloc> {
-    typedef std::unordered_map<Key, Mapped, HashFn, EqualKey, Alloc> _Base;
+    private std::unordered_multimap<Key, Mapped, HashFn, EqualKey, Alloc> {
+    typedef std::unordered_multimap<Key, Mapped, HashFn, EqualKey, Alloc> _Base;
 public:
     typedef typename _Base::key_type key_type;
     typedef typename _Base::mapped_type mapped_type;
@@ -419,7 +402,7 @@ public:
     using _Base::find;
     using _Base::get_allocator;
     using _Base::hash_function;
-    std::pair<iterator, bool> insert(const value_type& v) {
+    iterator insert(const value_type& v) {
         return _Base::insert(v);
     }
     iterator insert(const_iterator hint, const value_type& v) {

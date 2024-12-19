@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_ZIP_FILE_H
 #define PXR_USD_USD_ZIP_FILE_H
@@ -98,6 +81,9 @@ public:
         /// size of the file as stored in the zip archive.
         size_t uncompressedSize = 0;
 
+        /// CRC-32 value of the uncompressed file.
+        size_t crc = 0;
+
         /// Compression method for this file. See section 4.4.5 of the zip
         /// file specification for valid values. In particular, a value of 0
         /// means this file is stored with no compression.
@@ -111,13 +97,9 @@ public:
     /// Iterator for traversing and inspecting the contents of the zip archive.
     class Iterator 
     {
-    public:
-        USD_API
-        Iterator();
-
         // Proxy type for operator->(), needed since this iterator's value
         // is generated on the fly.
-        class _ArrowProxy 
+        class _ArrowProxy
         {
         public:
             explicit _ArrowProxy(const std::string& s) : _s(s) { }
@@ -125,6 +107,25 @@ public:
         private:
             std::string _s;
         };
+
+    public:
+        USD_API
+        Iterator();
+
+        USD_API
+        ~Iterator();
+
+        USD_API
+        Iterator(const Iterator& rhs);
+
+        USD_API
+        Iterator(Iterator&& rhs);
+
+        USD_API
+        Iterator& operator=(const Iterator& rhs);
+
+        USD_API
+        Iterator& operator=(Iterator&& rhs);
 
         using difference_type = std::ptrdiff_t;
         using value_type = std::string;
@@ -166,10 +167,10 @@ public:
 
     private:
         friend class UsdZipFile;
-        Iterator(const _Impl* impl);
+        Iterator(const _Impl* impl, size_t offset = 0);
 
-        const _Impl* _impl;
-        size_t _offset;
+        class _IteratorData;
+        std::unique_ptr<_IteratorData> _data;
     };
 
     /// Returns iterator pointing to the first file in the zip archive.

@@ -1,31 +1,15 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_TYPES_H
 #define PXR_IMAGING_HD_TYPES_H
 
 #include "pxr/pxr.h"
 #include "pxr/imaging/hd/api.h"
+#include "pxr/imaging/hd/enums.h"
 #include "pxr/imaging/hd/version.h"
 #include "pxr/base/vt/value.h"
 #include <algorithm>
@@ -34,6 +18,124 @@
 #include <cstdint>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+/// \enum HdWrap
+///
+/// Enumerates wrapping attributes type values.
+///
+/// <ul>
+///     <li>\b HdWrapClamp               Clamp coordinate to range [1/(2N),1-1/(2N)] where N is the size of the texture in the direction of clamping</li>
+///     <li>\b HdWrapRepeat              Creates a repeating pattern</li>
+///     <li>\b HdWrapBlack               Clamp coordinate to range [-1/(2N),1+1/(2N)] where N is the size of the texture in the direction of clamping</li>
+///     <li>\b HdWrapMirror              Creates a mirrored repeating pattern.</li>
+///     <li>\b HdWrapNoOpinion           No opinion. The data texture can define its own wrap mode that we can use instead. Fallback to HdWrapBlack</li>
+///     <li>\b HdWrapLegacyNoOpinionFallbackRepeat  (deprecated) Similar to HdWrapNoOpinon but fallback to HdWrapRepeat</li>
+///     <li>\b HdWrapUseMetadata         (deprecated) Alias for HdWrapNoOpinion</li>
+///     <li>\b HdWrapLegacy              (deprecated) Alias for HdWrapLegacyNoOpinionFallbackRepeat</li>
+/// </ul>
+///
+enum HdWrap 
+{
+    HdWrapClamp,
+    HdWrapRepeat,
+    HdWrapBlack,
+    HdWrapMirror,
+
+    HdWrapNoOpinion,
+    HdWrapLegacyNoOpinionFallbackRepeat, // deprecated
+
+    HdWrapUseMetadata = HdWrapNoOpinion, // deprecated alias
+    HdWrapLegacy = HdWrapLegacyNoOpinionFallbackRepeat // deprecated alias
+};
+
+/// \enum HdMinFilter
+///
+/// Enumerates minFilter attribute type values.
+///
+/// <ul>
+///     <li>\b HdMinFilterNearest                Nearest to center of the pixel</li>
+///     <li>\b HdMinFilterLinear                 Weighted average od the four texture elements closest to the pixel</li>
+///     <li>\b HdMinFilterNearestMipmapNearest   Nearest to center of the pixel from the nearest mipmaps</li>
+///     <li>\b HdMinFilterLinearMipmapNeares     Weighted average using texture elements from the nearest mipmaps</li>
+///     <li>\b HdMinFilterNearestMipmapLinear    Weighted average of the nearest pixels from the two nearest mipmaps</li>
+///     <li>\b HdMinFilterLinearMipmapLinear     WeightedAverage of the weighted averages from the nearest mipmaps</li>
+/// </ul>
+///
+enum HdMinFilter 
+{
+    HdMinFilterNearest,
+    HdMinFilterLinear,
+    HdMinFilterNearestMipmapNearest,
+    HdMinFilterLinearMipmapNearest,
+    HdMinFilterNearestMipmapLinear,
+    HdMinFilterLinearMipmapLinear,
+};
+
+/// \enum HdMagFilter
+///
+/// Enumerates magFilter attribute type values.
+///
+/// <ul>
+///     <li>HdFilterNearest       Nearest to center of the pixel</li>
+///     <li>HdFilterLinear        Weighted average of the four texture elements closest to the pixel</li>
+/// </ul>
+///
+enum HdMagFilter 
+{
+    HdMagFilterNearest,
+    HdMagFilterLinear,
+};
+
+/// \enum HdBorderColor
+///
+/// Border color to use for clamped texture values.
+///
+/// <ul>
+///     <li>HdBorderColorTransparentBlack</li>
+///     <li>HdBorderColorOpaqueBlack</li>
+///     <li>HdBorderColorOpaqueWhite</li>
+/// </ul>
+///
+enum HdBorderColor 
+{
+    HdBorderColorTransparentBlack,
+    HdBorderColorOpaqueBlack,
+    HdBorderColorOpaqueWhite,
+};
+
+/// \class HdSamplerParameters
+///
+/// Collection of standard parameters such as wrap modes to sample a texture.
+///
+class HdSamplerParameters {
+public:
+    HdWrap wrapS;
+    HdWrap wrapT;
+    HdWrap wrapR;
+    HdMinFilter minFilter;
+    HdMagFilter magFilter;
+    HdBorderColor borderColor;
+    bool enableCompare;
+    HdCompareFunction compareFunction;
+    uint32_t maxAnisotropy;
+
+    HD_API
+    HdSamplerParameters();   
+
+    HD_API
+    HdSamplerParameters(HdWrap wrapS, HdWrap wrapT, HdWrap wrapR, 
+        HdMinFilter minFilter, HdMagFilter magFilter,
+        HdBorderColor borderColor=HdBorderColorTransparentBlack,
+        bool enableCompare=false, 
+        HdCompareFunction compareFunction=HdCmpFuncNever,
+        uint32_t maxAnisotropy=16);
+
+    HD_API 
+    bool operator==(const HdSamplerParameters &other) const;
+
+    HD_API
+    bool operator!=(const HdSamplerParameters &other) const;
+};
 
 ///
 /// Type representing a set of dirty bits.
@@ -231,6 +333,8 @@ enum HdType
     /// Corresponds to GL_INT_2_10_10_10_REV.
     /// \see HdVec4f_2_10_10_10_REV
     HdTypeInt32_2_10_10_10_REV,
+
+    HdTypeCount
 };
 
 /// HdTupleType represents zero, one, or more values of the same HdType.
@@ -250,6 +354,14 @@ struct HdTupleType {
         return !(*this == rhs);
     }
 };
+
+// Support TfHash.
+template <class HashState>
+void
+TfHashAppend(HashState &h, HdTupleType const &tt)
+{
+    h.Append(tt.type, tt.count);
+}
 
 /// Returns a direct pointer to the data held by a VtValue.
 /// Returns nullptr if the VtValue is empty or holds a type unknown to Hd.
@@ -323,11 +435,26 @@ enum HdFormat
     HdFormatFloat32Vec3,
     HdFormatFloat32Vec4,
 
+    // Int16 - a 2-byte signed integer
+    HdFormatInt16,
+    HdFormatInt16Vec2,
+    HdFormatInt16Vec3,
+    HdFormatInt16Vec4,
+
+    // UInt16 - a 2-byte unsigned integer
+    HdFormatUInt16,
+    HdFormatUInt16Vec2,
+    HdFormatUInt16Vec3,
+    HdFormatUInt16Vec4,
+
     // Int32 - a 4-byte signed integer
     HdFormatInt32,
     HdFormatInt32Vec2,
     HdFormatInt32Vec3,
     HdFormatInt32Vec4,
+
+    // Depth-stencil format
+    HdFormatFloat32UInt8,
 
     HdFormatCount
 };
@@ -344,6 +471,11 @@ size_t HdGetComponentCount(HdFormat f);
 /// For block formats, this will return 0.
 HD_API
 size_t HdDataSizeOfFormat(HdFormat f);
+
+///
+/// Type representing a depth-stencil value.
+///
+using HdDepthStencilType = std::pair<float, uint32_t>;
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

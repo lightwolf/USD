@@ -1,30 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
 
-#include "pxr/imaging/glf/glew.h"
 #include "pxr/usdImaging/usdImagingGL/unitTestGLDrawing.h"
 
 #include "pxr/base/arch/systemInfo.h"
@@ -51,8 +33,6 @@
 
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 
-#include <boost/shared_ptr.hpp>
-
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -60,7 +40,7 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
-typedef boost::shared_ptr<class UsdImagingGLEngine> UsdImagingGLEngineSharedPtr;
+using UsdImagingGLEngineSharedPtr = std::shared_ptr<class UsdImagingGLEngine>;
 
 class My_TestGLDrawing : public UsdImagingGL_UnitTestGLDrawing {
 public:
@@ -91,36 +71,30 @@ private:
     bool _mouseButton[3];
 };
 
-GLuint vao;
-
 void
 My_TestGLDrawing::InitTest()
 {
     TRACE_FUNCTION();
     
     std::cout << "My_TestGLDrawing::InitTest()\n";
-    _stage = UsdStage::Open(GetStageFilePath());
-    SdfPathVector excludedPaths;
+    _stage = UsdStage::Open(GetStageFilePath(),
+        IsEnabledUnloadedAsBounds() ? UsdStage::LoadNone : UsdStage::LoadAll);
 
-    if (UsdImagingGLEngine::IsHydraEnabled()) {
-        std::cout << "Using HD Renderer.\n";
-        _engine.reset(new UsdImagingGLEngine(
-            _stage->GetPseudoRoot().GetPath(), excludedPaths));
-        if (!_GetRenderer().IsEmpty()) {
-            if (!_engine->SetRendererPlugin(_GetRenderer())) {
-                std::cerr << "Couldn't set renderer plugin: " <<
-                    _GetRenderer().GetText() << std::endl;
-                exit(-1);
-            } else {
-                std::cout << "Renderer plugin: " << _GetRenderer().GetText()
-                    << std::endl;
-            }
+    UsdImagingGLEngine::Parameters parameters;
+    parameters.rootPath = _stage->GetPseudoRoot().GetPath();
+    parameters.displayUnloadedPrimsWithBounds = IsEnabledUnloadedAsBounds();
+
+    _engine = std::make_shared<UsdImagingGLEngine>(parameters);
+
+    if (!_GetRenderer().IsEmpty()) {
+        if (!_engine->SetRendererPlugin(_GetRenderer())) {
+            std::cerr << "Couldn't set renderer plugin: " <<
+                _GetRenderer().GetText() << std::endl;
+            exit(-1);
+        } else {
+            std::cout << "Renderer plugin: " << _GetRenderer().GetText()
+                << std::endl;
         }
-    } else{
-        std::cout << "Using Reference Renderer.\n"; 
-        _engine.reset(
-            new UsdImagingGLEngine(_stage->GetPseudoRoot().GetPath(), 
-                    excludedPaths));
     }
 
     for (const auto &renderSetting : GetRenderSettings()) {
@@ -128,14 +102,18 @@ My_TestGLDrawing::InitTest()
                                     renderSetting.second);
     }
 
-    std::cout << glGetString(GL_VENDOR) << "\n";
-    std::cout << glGetString(GL_RENDERER) << "\n";
-    std::cout << glGetString(GL_VERSION) << "\n";
-
     if (_ShouldFrameAll()) {
         TfTokenVector purposes;
         purposes.push_back(UsdGeomTokens->default_);
-        purposes.push_back(UsdGeomTokens->proxy);
+        if (IsShowGuides()) {
+            purposes.push_back(UsdGeomTokens->guide);
+        }
+        if (IsShowProxy()) {
+            purposes.push_back(UsdGeomTokens->proxy);
+        }
+        if (IsShowRender()) {
+            purposes.push_back(UsdGeomTokens->render);
+        }
 
         // Extent hints are sometimes authored as an optimization to avoid
         // computing bounds, they are particularly useful for some tests where
@@ -168,43 +146,31 @@ My_TestGLDrawing::InitTest()
     }
 
     if(IsEnabledTestLighting()) {
-        if(UsdImagingGLEngine::IsHydraEnabled()) {
-            // set same parameter as GlfSimpleLightingContext::SetStateFromOpenGL
-            // OpenGL defaults
-            _lightingContext = GlfSimpleLightingContext::New();
-            if (!IsEnabledSceneLights()) {
-                GlfSimpleLight light;
-                if (IsEnabledCameraLight()) {
-                    light.SetPosition(GfVec4f(_translate[0], _translate[2], _translate[1], 0));
-                } else {
-                    light.SetPosition(GfVec4f(0, -.5, .5, 0));
-                }
-                light.SetDiffuse(GfVec4f(1,1,1,1));
-                light.SetAmbient(GfVec4f(0,0,0,1));
-                light.SetSpecular(GfVec4f(1,1,1,1));
-                GlfSimpleLightVector lights;
-                lights.push_back(light);
-                _lightingContext->SetLights(lights);
-            }
-
-            GlfSimpleMaterial material;
-            material.SetAmbient(GfVec4f(0.2, 0.2, 0.2, 1.0));
-            material.SetDiffuse(GfVec4f(0.8, 0.8, 0.8, 1.0));
-            material.SetSpecular(GfVec4f(0,0,0,1));
-            material.SetShininess(0.0001f);
-            _lightingContext->SetMaterial(material);
-            _lightingContext->SetSceneAmbient(GfVec4f(0.2,0.2,0.2,1.0));
-        } else {
-            glEnable(GL_LIGHTING);
-            glEnable(GL_LIGHT0);
+        _lightingContext = GlfSimpleLightingContext::New();
+        // set same parameter as GlfSimpleLightingContext::SetStateFromOpenGL
+        // OpenGL defaults
+        if (!IsEnabledSceneLights()) {
+            GlfSimpleLight light;
             if (IsEnabledCameraLight()) {
-                float position[4] = {_translate[0], _translate[2], _translate[1], 0};
-                glLightfv(GL_LIGHT0, GL_POSITION, position);
+                light.SetPosition(GfVec4f(_translate[0], _translate[2], _translate[1], 0));
             } else {
-                float position[4] = {0,-.5,.5,0};
-                glLightfv(GL_LIGHT0, GL_POSITION, position);
+                light.SetPosition(GfVec4f(0, -.5, .5, 0));
             }
+            light.SetDiffuse(GfVec4f(1,1,1,1));
+            light.SetAmbient(GfVec4f(0,0,0,1));
+            light.SetSpecular(GfVec4f(1,1,1,1));
+            GlfSimpleLightVector lights;
+            lights.push_back(light);
+            _lightingContext->SetLights(lights);
         }
+
+        GlfSimpleMaterial material;
+        material.SetAmbient(GfVec4f(0.2, 0.2, 0.2, 1.0));
+        material.SetDiffuse(GfVec4f(0.8, 0.8, 0.8, 1.0));
+        material.SetSpecular(GfVec4f(0,0,0,1));
+        material.SetShininess(0.0001f);
+        _lightingContext->SetMaterial(material);
+        _lightingContext->SetSceneAmbient(GfVec4f(0.2,0.2,0.2,1.0));
     }
 }
 
@@ -234,8 +200,6 @@ My_TestGLDrawing::DrawTest(bool offscreen)
     const int width = GetWidth();
     const int height = GetHeight();
 
-    GfVec4d viewport(0, 0, width, height);
-
     if (GetCameraPath().empty()) {
         GfMatrix4d viewMatrix(1.0);
         viewMatrix *= GfMatrix4d().SetRotate(GfRotation(GfVec3d(0, 1, 0), _rotate[0]));
@@ -259,51 +223,50 @@ My_TestGLDrawing::DrawTest(bool offscreen)
     } else {
         _engine->SetCameraPath(SdfPath(GetCameraPath()));
     }
-    _engine->SetRenderViewport(viewport);
- 
-    TF_FOR_ALL(timeIt, GetTimes()) {
-        UsdTimeCode time = *timeIt;
-        if (*timeIt == -999) {
+
+    _engine->SetOverrideWindowPolicy(GetWindowPolicy());
+
+    const CameraUtilFraming framing(
+        GetDisplayWindow(), GetDataWindow(), GetPixelAspectRatio());
+    if (framing.IsValid()) {
+        _engine->SetRenderBufferSize(GfVec2i(width, height));
+        _engine->SetFraming(framing);
+    } else {
+        const GfVec4d viewport(0, 0, width, height);
+        _engine->SetRenderViewport(viewport);
+    }
+
+    UsdImagingGLRenderParams params;
+    params.drawMode = GetDrawMode();
+    params.enableLighting = IsEnabledTestLighting();
+    params.enableIdRender = IsEnabledIdRender();
+    params.enableSceneMaterials = IsEnabledSceneMaterials();
+    params.complexity = _GetComplexity();
+    params.cullStyle = GetCullStyle();
+    params.showGuides = IsShowGuides();
+    params.showRender = IsShowRender();
+    params.showProxy = IsShowProxy();
+    params.clearColor = GetClearColor();
+
+    _engine->SetRendererAov(GetRendererAov());
+
+    if(IsEnabledTestLighting()) {
+        _engine->SetLightingState(_lightingContext);
+    }
+
+    if (PresentDisabled()) {
+        _engine->SetEnablePresentation(false);
+    }
+
+    params.clipPlanes = GetClipPlanes();
+
+    for (double const &t : GetTimes()) {
+        UsdTimeCode time = t;
+        if (t == -999) {
             time = UsdTimeCode::Default();
         }
-        UsdImagingGLRenderParams params;
-        params.drawMode = GetDrawMode();
-        params.enableLighting = IsEnabledTestLighting();
-        params.enableIdRender = IsEnabledIdRender();
+
         params.frame = time;
-        params.complexity = _GetComplexity();
-        params.cullStyle = IsEnabledCullBackfaces() ?
-                            UsdImagingGLCullStyle::CULL_STYLE_BACK :
-                            UsdImagingGLCullStyle::CULL_STYLE_NOTHING;
-        params.showGuides = IsShowGuides();
-        params.showRender = IsShowRender();
-        params.showProxy = IsShowProxy();
-
-        glViewport(0, 0, width, height);
-
-        glEnable(GL_DEPTH_TEST);
-
-        if (!GetRendererAov().IsEmpty()) {
-            _engine->SetRendererAov(GetRendererAov());
-        }
-
-        if(IsEnabledTestLighting()) {
-            if(UsdImagingGLEngine::IsHydraEnabled()) {
-                _engine->SetLightingState(_lightingContext);
-            } else {
-                _engine->SetLightingStateFromOpenGL();
-            }
-        }
-
-        if (!GetClipPlanes().empty()) {
-            params.clipPlanes = GetClipPlanes();
-            for (size_t i=0; i<GetClipPlanes().size(); ++i) {
-                glEnable(GL_CLIP_PLANE0 + i);
-            }
-        }
-
-        GfVec4f const &clearColor = GetClearColor();
-        GLfloat clearDepth[1] = { 1.0f };
 
         // Make sure we render to convergence.
         TfErrorMark mark;
@@ -318,9 +281,7 @@ My_TestGLDrawing::DrawTest(bool offscreen)
                 TRACE_FUNCTION_SCOPE("iteration render convergence");
                 
                 convergenceIterations++;
-                glClearBufferfv(GL_COLOR, 0, clearColor.data());
-                glClearBufferfv(GL_DEPTH, 0, clearDepth);
-                
+
                 _engine->Render(_stage->GetPseudoRoot(), params);
             } while (!_engine->IsConverged());
         
@@ -346,7 +307,7 @@ My_TestGLDrawing::DrawTest(bool offscreen)
                 imageFilePath = TfStringReplace(imageFilePath, ".png", suffix.str());
             }
             std::cout << imageFilePath << "\n";
-            WriteToFile("color", imageFilePath);
+            WriteToFile(_engine.get(), HdAovTokens->color, imageFilePath);
         }
     }
 
@@ -365,7 +326,6 @@ void
 My_TestGLDrawing::ShutdownTest()
 {
     std::cout << "My_TestGLDrawing::ShutdownTest()\n";
-    _engine->InvalidateBuffers();
 }
 
 void

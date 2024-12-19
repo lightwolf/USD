@@ -1,32 +1,15 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_INTERPOLATORS_H
 #define PXR_USD_USD_INTERPOLATORS_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/common.h"
-#include "pxr/usd/usd/clip.h"
+#include "pxr/usd/usd/clipSet.h"
 #include "pxr/usd/usd/valueUtils.h"
 #include "pxr/usd/sdf/layer.h"
 #include "pxr/base/gf/math.h"
@@ -48,7 +31,7 @@ public:
         const SdfLayerRefPtr& layer, const SdfPath& path,
         double time, double lower, double upper) = 0;
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
         double time, double lower, double upper) = 0;
 };
 
@@ -69,8 +52,8 @@ public:
     }
 
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
-        double time, double lower, double upper) final
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
+        double time, double lower, double upper)
     {
         return false;
     }
@@ -99,7 +82,7 @@ public:
         double time, double lower, double upper) final;
 
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
         double time, double lower, double upper) final;
 
 private:
@@ -140,10 +123,10 @@ public:
     }
 
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
         double time, double lower, double upper) final
     {
-        return clip->QueryTimeSample(path, lower, this, _result);
+        return clipSet->QueryTimeSample(path, lower, this, _result);
     }
 
 private:
@@ -200,10 +183,10 @@ public:
     }
 
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
         double time, double lower, double upper) final
     {
-        return _Interpolate(clip, path, time, lower, upper);
+        return _Interpolate(clipSet, path, time, lower, upper);
     }
 
 private:
@@ -260,10 +243,10 @@ public:
     }
 
     virtual bool Interpolate(
-        const Usd_ClipRefPtr& clip, const SdfPath& path,
+        const Usd_ClipSetRefPtr& clipSet, const SdfPath& path,
         double time, double lower, double upper) final
     {
-        return _Interpolate(clip, path, time, lower, upper);
+        return _Interpolate(clipSet, path, time, lower, upper);
     }
 
 private:
@@ -291,30 +274,35 @@ private:
             upperValue = lowerValue;
         }
 
-        _result->swap(lowerValue);
 
         // Fall back to held interpolation (_result is set to lowerValue above)
         // if sizes don't match. We don't consider this an error because
         // that would be too restrictive. Consumers will be responsible for
         // implementing their own interpolation in cases where this occurs
         // (e.g. meshes with varying topology)
-        if (_result->size() != upperValue.size()) {
+        if (lowerValue.size() != upperValue.size()) {
+            _result->swap(lowerValue);
             return true;
         }
 
         const double parametricTime = (time - lower) / (upper - lower);
         if (parametricTime == 0.0) {
-            // do nothing.
+            // just swap the lower value in.
+            _result->swap(lowerValue);
         }
         else if (parametricTime == 1.0) {
             // just swap the upper value in.
             _result->swap(upperValue);
         }
         else {
+            _result->resize(lowerValue.size());
+
             // must actually calculate interpolated values.
-            T *rptr = _result->data();
+            const T *lower = lowerValue.cdata();
+            const T* upper=  upperValue.cdata();
+            T* result = _result->data();
             for (size_t i = 0, j = _result->size(); i != j; ++i) {
-                rptr[i] = Usd_Lerp(parametricTime, rptr[i], upperValue[i]);
+                result[i] = Usd_Lerp(parametricTime, lower[i], upper[i]);
             }
         }
 

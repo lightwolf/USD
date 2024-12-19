@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_MESH_TOPOLOGY_H
 #define PXR_IMAGING_HD_ST_MESH_TOPOLOGY_H
@@ -48,7 +31,7 @@ using HdBufferSourceSharedPtr =
 using HdBufferArrayRangeSharedPtr =
     std::shared_ptr<class HdBufferArrayRange>;
 
-using HdComputationSharedPtr = std::shared_ptr<class HdComputation>;
+using HdStComputationSharedPtr = std::shared_ptr<class HdStComputation>;
 
 using HdSt_AdjacencyBuilderComputationPtr = 
     std::weak_ptr<class HdSt_AdjacencyBuilderComputation>;
@@ -74,10 +57,24 @@ public:
         RefineModePatches
     };
 
+    /// Specifies whether quads are triangulated or untriangulated.
+    enum QuadsMode {
+        QuadsTriangulated = 0,
+        QuadsUntriangulated
+    };
+
+    /// Specifies type of interpolation to use in refinement
+    enum Interpolation {
+        INTERPOLATE_VERTEX,
+        INTERPOLATE_VARYING,
+        INTERPOLATE_FACEVARYING,
+    };
+
     static HdSt_MeshTopologySharedPtr New(
         const HdMeshTopology &src,
         int refineLevel,
-        RefineMode refineMode = RefineModeUniform);
+        RefineMode refineMode = RefineModeUniform,
+        QuadsMode quadsMode = QuadsUntriangulated);
 
     virtual ~HdSt_MeshTopology();
 
@@ -102,6 +99,16 @@ public:
     /// \name Quadrangulation
     /// @{
 
+    /// Returns the quads mode (triangulated or untriangulated).
+    QuadsMode GetQuadsMode() const {
+        return _quadsMode;
+    }
+
+    /// Helper function returns whether quads are triangulated.
+    bool TriangulateQuads() const {
+        return _quadsMode == QuadsTriangulated;
+    }
+
     /// Returns the quadinfo computation for the use of primvar
     /// quadrangulation.
     /// If gpu is true, the quadrangulate table will be transferred to GPU
@@ -118,7 +125,7 @@ public:
         HdBufferSourceSharedPtr const &source, SdfPath const &id);
 
     /// Returns the GPU quadrangulate computation.
-    HdComputationSharedPtr GetQuadrangulateComputationGPU(
+    HdStComputationSharedPtr GetQuadrangulateComputationGPU(
         TfToken const &name, HdType dataType, SdfPath const &id);
 
     /// Returns the CPU face-varying quadrangulate computation
@@ -141,7 +148,7 @@ public:
 
     /// Returns the quadrangulation struct.
     HdQuadInfo const *GetQuadInfo() const {
-        return _quadInfo;
+        return _quadInfo.get();
     }
 
     /// @}
@@ -162,12 +169,12 @@ public:
 
     /// Returns the subdivision struct.
     HdSt_Subdivision const *GetSubdivision() const {
-        return _subdivision;
+        return _subdivision.get();
     }
 
     /// Returns the subdivision struct (non-const).
     HdSt_Subdivision *GetSubdivision() {
-        return _subdivision;
+        return _subdivision.get();
     }
 
     /// Returns true if the subdivision on this mesh produces
@@ -186,23 +193,91 @@ public:
     HdBufferSourceSharedPtr GetOsdTopologyComputation(SdfPath const &debugId);
 
     /// Returns the refined indices builder computation.
-    /// this just returns index and primitive buffer, and should be preceded by
+    /// This just returns index and primitive buffer, and should be preceded by
     /// topology computation.
     HdBufferSourceSharedPtr GetOsdIndexBuilderComputation();
 
+    /// Returns the refined face-varying indices builder computation.
+    /// This just returns the index and patch param buffer for a face-varying
+    /// channel, and should be preceded by topology computation.
+    HdBufferSourceSharedPtr GetOsdFvarIndexBuilderComputation(int channel);
+
     /// Returns the subdivision primvar refine computation on CPU.
     HdBufferSourceSharedPtr GetOsdRefineComputation(
-        HdBufferSourceSharedPtr const &source, bool varying);
+        HdBufferSourceSharedPtr const &source, 
+        Interpolation interpolation,
+        int fvarChannel = 0);
 
     /// Returns the subdivision primvar refine computation on GPU.
-    HdComputationSharedPtr GetOsdRefineComputationGPU(
-        TfToken const &name, HdType dataType);
+    HdStComputationSharedPtr GetOsdRefineComputationGPU(
+        TfToken const &name,
+        HdType dataType,
+        HdStResourceRegistry *resourceRegistry,
+        Interpolation interpolation,
+        int fvarChannel = 0);
+
+    /// Returns the mapping from base face to refined face indices.
+    HdBufferSourceSharedPtr GetOsdBaseFaceToRefinedFacesMapComputation(
+        HdStResourceRegistry *resourceRegistry);
+
+    /// @}
+
+    ///
+    /// \name Geom Subsets
+    /// @{
+    
+    /// Processes geom subsets to remove those with empty indices or empty 
+    /// material id. Will initialize _nonSubsetFaces if there are geom subsets.
+    void SanitizeGeomSubsets();
+
+    /// Returns the indices subset computation for unrefined indices.
+    HdBufferSourceSharedPtr GetIndexSubsetComputation(
+        HdBufferSourceSharedPtr indexBuilderSource, 
+        HdBufferSourceSharedPtr faceIndicesSource);
+
+    /// Returns the indices subset computation for refined indices.
+    HdBufferSourceSharedPtr GetRefinedIndexSubsetComputation(
+        HdBufferSourceSharedPtr indexBuilderSource, 
+        HdBufferSourceSharedPtr faceIndicesSource);
+    
+    /// Returns the triangulated/quadrangulated face indices computation.
+    HdBufferSourceSharedPtr GetGeomSubsetFaceIndexBuilderComputation(
+        HdBufferSourceSharedPtr geomSubsetFaceIndexHelperSource, 
+        VtIntArray const &faceIndices);
+
+    /// Returns computation creating buffer sources used in mapping authored 
+    /// face indices to triangulated/quadrangulated face indices.
+    HdBufferSourceSharedPtr GetGeomSubsetFaceIndexHelperComputation(
+        bool refined, 
+        bool quadrangulated);
+
+    /// @}
+
+    ///
+    /// \name Face-varying Topologies
+    /// @{
+    /// Returns the face indices of faces not used in any geom subsets.
+    std::vector<int> const *GetNonSubsetFaces() const {
+        return _nonSubsetFaces.get();
+    }
+
+    /// Sets the face-varying topologies.
+    void SetFvarTopologies(std::vector<VtIntArray> const &fvarTopologies) {
+        _fvarTopologies = fvarTopologies;
+    }
+
+    /// Returns the face-varying topologies.
+    std::vector<VtIntArray> const & GetFvarTopologies()  {
+        return _fvarTopologies;
+    }
 
     /// @}
 
 private:
+    QuadsMode _quadsMode;
+
     // quadrangulation info on CPU
-    HdQuadInfo const *_quadInfo;
+    std::unique_ptr<HdQuadInfo const> _quadInfo;
 
     // quadrangulation info on GPU
     HdBufferArrayRangeSharedPtr _quadrangulateTableRange;
@@ -211,14 +286,22 @@ private:
 
     // OpenSubdiv
     RefineMode _refineMode;
-    HdSt_Subdivision *_subdivision;
+    std::unique_ptr<HdSt_Subdivision> _subdivision;
     HdBufferSourceWeakPtr _osdTopologyBuilder;
+    HdBufferSourceWeakPtr _osdBaseFaceToRefinedFacesMap;
+
+    std::vector<VtIntArray> _fvarTopologies;
+
+    // When using geom subsets, the indices of faces that are not contained
+    // within the geom subsets. Populated by SanitizeGeomSubsets().
+    std::unique_ptr<std::vector<int>> _nonSubsetFaces;
 
     // Must be created through factory
     explicit HdSt_MeshTopology(
         const HdMeshTopology &src,
         int refineLevel,
-        RefineMode refineMode);
+        RefineMode refineMode,
+        QuadsMode quadsMode);
 
     // No default construction or copying.
     HdSt_MeshTopology()                                      = delete;

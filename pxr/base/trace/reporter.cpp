@@ -1,63 +1,34 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/base/trace/reporter.h"
 
 #include "pxr/pxr.h"
 #include "pxr/base/trace/aggregateTree.h"
-#include "pxr/base/trace/collection.h"
-#include "pxr/base/trace/collectionNotice.h"
-#include "pxr/base/trace/eventNode.h"
-#include "pxr/base/trace/eventTreeBuilder.h"
+#include "pxr/base/trace/collector.h"
+#include "pxr/base/trace/eventTree.h"
 #include "pxr/base/trace/reporterDataSourceCollector.h"
 #include "pxr/base/trace/threads.h"
-#include "pxr/base/trace/trace.h"
 
-#include "pxr/base/tf/enum.h"
-#include "pxr/base/tf/instantiateSingleton.h"
 #include "pxr/base/tf/mallocTag.h"
-#include "pxr/base/tf/scoped.h"
 #include "pxr/base/tf/stringUtils.h"
-#include "pxr/base/arch/demangle.h"
-#include "pxr/base/arch/symbols.h"
-#include "pxr/base/arch/systemInfo.h"
 #include "pxr/base/arch/timing.h"
 #include "pxr/base/js/json.h"
 
-#include <math.h>
-#include <iostream>
-#include <numeric>
+#include <algorithm>
 #include <map>
-#include <stack>
+#include <ostream>
+#include <regex>
+#include <string>
 #include <vector>
+#include <stack>
 
-using std::map;
-using std::multimap;
 using std::ostream;
-using std::pair;
 using std::string;
-using std::vector;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -72,7 +43,8 @@ TraceReporter::TraceReporter(const string& label,
     TraceReporterBase(std::move(dataSource)),
     _label(label),
     _groupByFunction(true),
-    _foldRecursiveCalls(false)
+    _foldRecursiveCalls(false),
+    _shouldAdjustForOverheadAndNoise(true)
 {
     _aggregateTree = TraceAggregateTree::New();
     _eventTree = TraceEventTree::New();
@@ -96,10 +68,16 @@ _IndentString(int indent)
     return s;
 }
 
-void
-TraceReporter::_PrintLineTimes(ostream &s, double inclusive, double exclusive,
-                               int count, const string& label, int indent,
-                               bool recursive_node, int iterationCount)
+static std::string
+_GetKeyName(const TfToken& key)
+{
+    return key.GetString();
+}
+
+static void
+_PrintLineTimes(ostream &s, double inclusive, double exclusive,
+                int count, const string& label, int indent,
+                bool recursive_node, int iterationCount)
 {
     string inclusiveStr = TfStringPrintf("%9.3f ms ",
             ArchTicksToSeconds( uint64_t(inclusive * 1e3) / iterationCount ));
@@ -136,9 +114,11 @@ TraceReporter::_PrintLineTimes(ostream &s, double inclusive, double exclusive,
     s << label << "\n";
 }
 
-void
-TraceReporter::_PrintRecursionMarker(ostream &s, const std::string &label, 
-                                     int indent)
+static void
+_PrintRecursionMarker(
+    ostream &s,
+    const std::string &label, 
+    int indent)
 {
     string inclusiveStr(13, ' ');
     string exclusiveStr(13, ' ');
@@ -152,18 +132,12 @@ TraceReporter::_PrintRecursionMarker(ostream &s, const std::string &label,
 
 }
 
-#define _SORT 0
-
-// Used by std::sort
-static bool
-_InclusiveGreater(const TraceAggregateNodeRefPtr &a, const TraceAggregateNodeRefPtr &b)
-{
-    return (a->GetInclusiveTime() > b->GetInclusiveTime());
-}
-
-void
-TraceReporter::_PrintNodeTimes(ostream &s, TraceAggregateNodeRefPtr node, int indent, 
-                               int iterationCount)
+static void
+_PrintNodeTimes(
+    ostream &s,
+    TraceAggregateNodeRefPtr node,
+    int indent, 
+    int iterationCount)
 {
     // The root of the tree has id == -1, no useful stats there.
 
@@ -186,40 +160,15 @@ TraceReporter::_PrintNodeTimes(ostream &s, TraceAggregateNodeRefPtr node, int in
         sortedKids.push_back(it);
     }
     
-    if (_SORT) {
-        std::sort(sortedKids.begin(), sortedKids.end(), _InclusiveGreater);
-    }
-
     for (const TraceAggregateNodeRefPtr& it : sortedKids) {
         _PrintNodeTimes(s, it, indent+2, iterationCount);
     }
 }
 
 void
-TraceReporter::_PrintLineCalls(ostream &s, int count, int exclusiveCount,
-                               int totalCount, const string& label, int indent)
-{
-    string inclusiveStr =
-        TfStringPrintf("%9d (%6.2f%%) ",
-                       count,
-                       100.0 * count / totalCount);
-
-    string exclusiveStr =
-        TfStringPrintf("%9d (%6.2f%%) ",
-                       exclusiveCount,
-                       100.0 * exclusiveCount / totalCount);
-
-    s << inclusiveStr << exclusiveStr << " ";
-
-    s << _IndentString(indent);
-
-    s << label << "\n";
-}
-
-void
 TraceReporter::_PrintTimes(ostream &s)
 {
-    using SortedTimes = multimap<TimeStamp, TfToken>;
+    using SortedTimes = std::multimap<TimeStamp, TfToken>;
 
     SortedTimes sortedTimes;
     for (const TraceAggregateTree::EventTimes::value_type& it
@@ -233,13 +182,6 @@ TraceReporter::_PrintTimes(ostream &s)
     }
 }
 
-std::string
-TraceReporter::_GetKeyName(const TfToken& key) const
-{
-    return key.GetString();
-}
-
-
 void
 TraceReporter::Report(
     std::ostream &s,
@@ -251,7 +193,14 @@ TraceReporter::Report(
         iterationCount = 1;
     }
 
-    UpdateAggregateTree();
+    UpdateTraceTrees();
+
+    // Adjust for overhead.
+    if (ShouldAdjustForOverheadAndNoise()) {
+        _aggregateTree->GetRoot()->AdjustForOverheadAndNoise(
+            TraceCollector::GetInstance().GetScopeOverhead(),
+            ArchGetTickQuantum());
+    }
 
     // Fold recursive calls if we need to.
     if (GetFoldRecursiveCalls()) {
@@ -273,10 +222,157 @@ TraceReporter::Report(
     s << "\n";
 }
 
+/* static */ std::vector<TraceReporter::ParsedTree> 
+TraceReporter::LoadReport(
+    std::istream &stream)
+{
+    // Regular expression for the reported number of iterations.
+    static const std::regex itCountRE(R"(Number of iterations: (\d+))");
+
+    // Every report has this header.
+    static const std::string treeHeader("Tree view  ==============");
+
+    // Regular expression for each trace line in a report.
+    static const auto traceRowRE = std::invoke([]() -> std::regex {
+        // Note that the expression we build will have exactly 5 capture groups:
+        // 
+        // 1. The inclusive time entry (may be empty)
+        // 
+        // 2. The exclusive time entry (may also be empty)
+        //
+        // 3. The sample count (required)
+        //
+        // 4. The indentation string (e.g., "| | ", may be empty)
+        //
+        // 5. The tag
+
+        // Match time entries:
+        //
+        // - Time entries are in milliseconds and always rounded to 1000ths 
+        //   place, so expect exactly 3 digits after the decimal.
+        //
+        // - Trace Reporter will either output 0, 1, or 2 time entries.
+        //
+        // - The first entry, if present, is always the inclusive time entry.
+        //
+        // Note: This is structured this way to maintain compatibility with 
+        // Windows. For some reason, if we just have two optional time entry 
+        // patterns, and if only one has match, Linux and Windows will disagree
+        // on whether the matched entry belongs to the first or second capture
+        // group. To work around this, we nest the expression to match either:
+        //
+        // - Required time entry followed by an optional time entry
+        //
+        // - or an empty group.
+        //
+        const std::string msEntryPattern = R"((?:(\d+\.\d{3}) ms))";
+        const std::string msPattern = TfStringPrintf(R"(%s\s+%s?\s+)", 
+            msEntryPattern.c_str(), msEntryPattern.c_str());
+        const std::string msPatternOptional = TfStringPrintf(
+            R"((?:%s|(?:)\s+))", msPattern.c_str());
+
+        // Match sample entry
+        // - Can be either an integer or a floating point number (for traces
+        //   with iterations)
+        const std::string samplePattern = R"((\d+|\d+\.\d{3}) samples\s+)";
+
+        // Match indentation string
+        const std::string indentPattern = R"(([ |]+))";
+
+        // Match tag
+        const std::string tagPattern = R"((.*))";
+
+        return std::regex(R"(\s*)" + msPatternOptional + samplePattern 
+            + indentPattern + tagPattern);
+    });
+
+    // Current state of the parser. 
+    enum class State {
+        // Tree view header not yet found
+        FindingTree,
+        // Found Tree view header, searching for others
+        ReadingTree
+    } state = State::FindingTree;
+
+    std::cmatch match;
+
+    TraceAggregateTreeRefPtr currentTree;
+
+    // By default assume 1 iteration. Only trees with non-1 iteration counts
+    // have the the iteration count line.
+    int currentIters = 1;
+
+    std::vector<ParsedTree> result;
+    std::stack<TraceAggregateNodePtr> stack;
+    for (std::string line; std::getline(stream, line);) {
+        // When finding the tree, only parse for the tree header and the 
+        // iteration count.
+        if (state == State::FindingTree) {
+            if (line == treeHeader) {
+                state = State::ReadingTree;
+                currentTree = TraceAggregateTree::New();
+                stack.push(currentTree->GetRoot());
+
+                // By this point we've already seen the iteration count for this
+                // tree.
+                result.push_back({currentTree, currentIters});
+                continue;
+            }
+
+            if (std::regex_match(line.c_str(), match, itCountRE)) {
+                currentIters = std::stoi(match[1]);
+            }
+
+            continue;
+        }
+
+        if (!TF_VERIFY(state == State::ReadingTree)) {
+            // If we're not finding a tree, we should be reading a tree.
+            break;
+        }
+
+        // When we see an empty line, that means we've gotten a full tree. Clear
+        // the stack and switch back to tree finding.
+        if (TfStringTrim(line).empty()) {
+            state = State::FindingTree;
+            stack = {};
+            currentIters = 1;
+            continue;
+        }
+
+        if (!std::regex_match(line.c_str(), match, traceRowRE)) {
+            continue;
+        }
+
+        // The indentation string always has a size of 2x the depth.
+        //
+        // Determine the depth and then pop the stack until we have the parent
+        // node.
+        const size_t depth = match[4].length() / 2;
+        while (stack.size() > depth+1) {
+            stack.pop();
+        }
+        TraceAggregateNodePtr &parent = stack.top();
+
+        // Add a new node.
+        // Sample count may be a double if there's >1 iterations.
+        const int samples = std::round(currentIters*TfStringToDouble(match[3]));
+        stack.push(parent->Append(
+            TraceReporter::CreateValidEventId(),
+            /* key */ TfToken(match[5].str()),
+            /* timestamp */ ArchSecondsToTicks(
+                currentIters*TfStringToDouble(match[1])/1000.0),
+            /* count */ samples,
+            /* exclusiveCount */ samples));
+    }
+
+    return result;
+}
+
 void
 TraceReporter::ReportTimes(std::ostream &s)
 {
-    UpdateAggregateTree();
+    UpdateTraceTrees();
 
     s << "\nTotal time for each key ==============\n";
     _PrintTimes(s);
@@ -286,7 +382,7 @@ TraceReporter::ReportTimes(std::ostream &s)
 void 
 TraceReporter::ReportChromeTracing(std::ostream &s)
 {
-    UpdateEventTree();
+    UpdateTraceTrees();
 
     JsWriter w(s);
     _eventTree->WriteChromeTraceObject(w);
@@ -317,17 +413,10 @@ TraceReporter::_RebuildEventAndAggregateTrees()
 }
 
 void
-TraceReporter::UpdateAggregateTree()
+TraceReporter::UpdateTraceTrees()
 {
     _RebuildEventAndAggregateTrees();
 }
-
-void
-TraceReporter::UpdateEventTree()
-{
-    _RebuildEventAndAggregateTrees();
-}
-
 
 void 
 TraceReporter::ClearTree() 
@@ -398,6 +487,18 @@ TraceReporter::GetFoldRecursiveCalls() const
     return _foldRecursiveCalls;
 }
 
+void
+TraceReporter::SetShouldAdjustForOverheadAndNoise(bool shouldAdjust)
+{
+    _shouldAdjustForOverheadAndNoise = shouldAdjust;
+}
+
+bool
+TraceReporter::ShouldAdjustForOverheadAndNoise() const
+{
+    return _shouldAdjustForOverheadAndNoise;
+}
+
 /* static */
 TraceAggregateNode::Id
 TraceReporter::CreateValidEventId() 
@@ -422,31 +523,16 @@ TraceReporter::_ProcessCollection(
     }
 }
 
-namespace {
-class _GlobalReporterHolder {
-public:
-    /// Returns the singleton instance.
-    static _GlobalReporterHolder &GetInstance() {
-        return TfSingleton<_GlobalReporterHolder>::GetInstance();
-    }
-
-    _GlobalReporterHolder() {
-        _globalReporter =
-            TraceReporter::New("Trace global reporter",
-                TraceReporterDataSourceCollector::New());
-
-    }
-
-    TraceReporterRefPtr _globalReporter;
-};
-}
-
-TF_INSTANTIATE_SINGLETON(_GlobalReporterHolder);
-
 TraceReporterPtr 
 TraceReporter::GetGlobalReporter()
 {
-    return _GlobalReporterHolder::GetInstance()._globalReporter;
+    // Note that, like TfSingleton, the global reporter instance is not freed
+    // at shutdown.
+    static const TraceReporterPtr globalReporter(
+        new TraceReporter(
+            "Trace global reporter",
+            TraceReporterDataSourceCollector::New()));
+    return globalReporter;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

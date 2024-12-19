@@ -1,30 +1,17 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
-#
+
+# pylint: disable=dict-keys-not-iterating
+
 from __future__ import print_function
 
 from pxr import Tf
 
+from .common import DefaultFontFamily
 from .qt import QtCore, QtGui, QtWidgets
 from .usdviewApi import UsdviewApi
 
@@ -77,20 +64,13 @@ class _Completer(object):
         Return a list of all keywords, built-in functions and names
         currently defines in __main__ that match.
         """
-        builtin_mod = None
 
-        if sys.version_info.major >= 3:
-            import builtins
-            builtin_mod = builtins
-        else:
-            import __builtin__
-            builtin_mod = __builtin__
-
+        import builtins
         import __main__
 
         matches = set()
         n = len(text)
-        for l in [keyword.kwlist,builtin_mod.__dict__.keys(),
+        for l in [keyword.kwlist,builtins.__dict__.keys(),
                   __main__.__dict__.keys(), self.locals.keys()]:
             for word in l:
                 if word[:n] == text and word != "__builtins__":
@@ -315,9 +295,14 @@ class Controller(QtCore.QObject):
         # various startup scripts, so that they can access the location from
         # which they are being run.
         # also, update the globals dict after we exec the file (bug 9529)
-        self.interpreter.runsource( 'g = dict(globals()); g["__file__"] = ' +
-                                    '"%s"; execfile("%s", g);' % (path, path) +
-                                    'del g["__file__"]; globals().update(g);' )
+        self.interpreter.runsource( 
+            'g = dict(globals());' 
+            'g["__file__"] = "{0}";'
+            'f = open("{0}", "rb");'
+            'exec(compile(f.read(), "{0}", "exec"), g);'
+            'f.close();'
+            'del g["__file__"];'
+            'globals().update(g);'.format(path))
         self.SetInputStart()
         self.lines = []
 
@@ -431,7 +416,7 @@ class Controller(QtCore.QObject):
     def _GetStringLengthInPixels(cf, string):
         font = cf.font()
         fm = QtGui.QFontMetrics(font)
-        strlen = fm.width(string)
+        strlen = fm.horizontalAdvance(string)
         return strlen
 
     def _CompleteSlot(self):
@@ -659,7 +644,6 @@ class View(QtWidgets.QTextEdit):
         self.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
         self.tripleClickTimer = QtCore.QBasicTimer()
         self.tripleClickPoint = QtCore.QPoint()
-        self._ignoreKeyPresses = True
         self.ResetCharFormat()
 
     def SetStartOfInput(self, position):
@@ -670,7 +654,7 @@ class View(QtWidgets.QTextEdit):
 
     def ResetCharFormat(self):
         charFormat = QtGui.QTextCharFormat()
-        charFormat.setFontFamily('monospace')
+        charFormat.setFontFamily(DefaultFontFamily.MONOSPACE_FONT_FAMILY)
         self.setCurrentCharFormat(charFormat)
 
     def _PositionInInputArea(self, position):
@@ -755,20 +739,6 @@ class View(QtWidgets.QTextEdit):
         else:
             super(View, self).timerEvent(e)
 
-    def enterEvent(self, e):
-        self._ignoreKeyPresses = False
-
-    def leaveEvent(self, e):
-        self._ignoreKeyPresses = True
-
-    def dragEnterEvent(self, e):
-        self._ignoreKeyPresses = False
-        super(View, self).dragEnterEvent(e)
-
-    def dragLeaveEvent(self, e):
-        self._ignoreKeyPresses = True
-        super(View, self).dragLeaveEvent(e)
-
     def insertFromMimeData(self, source):
         if not self._CursorIsInInputArea():
             self._MoveCursorToEndOfInput()
@@ -792,10 +762,6 @@ class View(QtWidgets.QTextEdit):
         """
         Handle user input a key at a time.
         """
-
-        if (self._ignoreKeyPresses):
-            e.ignore()
-            return
 
         key = e.key()
 

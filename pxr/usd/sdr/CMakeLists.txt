@@ -8,16 +8,13 @@ pxr_library(sdr
         ar
         ndr
         sdf
-        ${Boost_PYTHON_LIBRARY}
-
-    INCLUDE_DIRS
-        ${Boost_INCLUDE_DIRS}
 
     PUBLIC_HEADERS
         api.h
         declare.h
 
     PUBLIC_CLASSES
+        debugCodes
         registry
         shaderMetadataHelpers
         shaderNode
@@ -35,6 +32,9 @@ pxr_library(sdr
     PYMODULE_FILES
         __init__.py
         shaderParserTestUtils.py
+
+    DOXYGEN_FILES
+        overview.dox
 )
 
 pxr_test_scripts(
@@ -42,7 +42,6 @@ pxr_test_scripts(
 )
 
 pxr_build_test_shared_lib(TestSdrRegistry
-    CREATE_FRAMEWORK
     INSTALL_PREFIX SdrPlugins
     LIBRARIES
         tf

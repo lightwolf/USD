@@ -1,31 +1,14 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_IMAGING_USD_SKEL_IMAGING_SKELETON_ADAPTER_H
 #define PXR_USD_IMAGING_USD_SKEL_IMAGING_SKELETON_ADAPTER_H
 
 #include "pxr/pxr.h"
-#include "pxr/usdImaging/usdImaging/primAdapter.h"
+#include "pxr/usdImaging/usdImaging/instanceablePrimAdapter.h"
 #include "pxr/usdImaging/usdSkelImaging/api.h"
 
 #include "pxr/imaging/hd/meshTopology.h"
@@ -36,7 +19,6 @@
 #include "pxr/usd/usdSkel/skeleton.h"
 #include "pxr/usd/usdSkel/skeletonQuery.h"
 
-#include <boost/unordered_map.hpp>
 #include <unordered_map>
 
 
@@ -47,9 +29,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 /// Support for drawing bones of a UsdSkelSkeleton.  
 ///
-class UsdSkelImagingSkeletonAdapter : public UsdImagingPrimAdapter {
+class UsdSkelImagingSkeletonAdapter : public UsdImagingInstanceablePrimAdapter 
+{
 public:
-    using BaseAdapter = UsdImagingPrimAdapter;
+    using BaseAdapter = UsdImagingInstanceablePrimAdapter;
 
     UsdSkelImagingSkeletonAdapter()
         : BaseAdapter()
@@ -151,7 +134,7 @@ public:
     /// \name Computation API
     // ---------------------------------------------------------------------- //
     USDSKELIMAGING_API
-    void InvokeComputation(SdfPath const& computationPath,
+    void InvokeComputation(SdfPath const& cachePath,
                            HdExtComputationContext* context) override;
 
     // ---------------------------------------------------------------------- //
@@ -170,6 +153,96 @@ public:
                                   SdfPath const& cachePath,
                                   UsdTimeCode time) const override;
 
+    USDSKELIMAGING_API
+    VtValue GetTopology(UsdPrim const& prim,
+                        SdfPath const& cachePath,
+                        UsdTimeCode time) const override;
+
+    USDSKELIMAGING_API
+    GfRange3d GetExtent(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+    USDSKELIMAGING_API
+    TfToken GetPurpose(UsdPrim const& prim,
+                       SdfPath const& cachePath,
+                       TfToken const& instanceInheritablePurpose) 
+                                                                const override;
+
+    USDSKELIMAGING_API
+    bool GetDoubleSided(UsdPrim const& prim, 
+                        SdfPath const& cachePath, 
+                        UsdTimeCode time) const override;
+
+
+    USDSKELIMAGING_API
+    SdfPath GetMaterialId(UsdPrim const& prim, 
+                          SdfPath const& cachePath, 
+                          UsdTimeCode time) const override;
+
+
+    USDSKELIMAGING_API
+    const TfTokenVector &GetExtComputationSceneInputNames(
+        SdfPath const& cachePath) const override;
+
+    USDSKELIMAGING_API
+    HdExtComputationInputDescriptorVector
+    GetExtComputationInputs(UsdPrim const& prim,
+                            SdfPath const& cachePath,
+                            const UsdImagingInstancerContext *instancerContext) 
+                                        const override;
+
+    USDSKELIMAGING_API
+    HdExtComputationOutputDescriptorVector
+    GetExtComputationOutputs(UsdPrim const& prim,
+                             SdfPath const& cachePath,
+                             const UsdImagingInstancerContext* instancerContext)
+                                    const override;
+
+    USDSKELIMAGING_API
+    HdExtComputationPrimvarDescriptorVector
+    GetExtComputationPrimvars(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            HdInterpolation interpolation,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+    USDSKELIMAGING_API
+    VtValue 
+    GetExtComputationInput(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+    USDSKELIMAGING_API
+    size_t
+    SampleExtComputationInput(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext,
+            size_t maxSampleCount,
+            float *sampleTimes,
+            VtValue *sampleValues) override;
+
+    USDSKELIMAGING_API
+    std::string 
+    GetExtComputationKernel(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            const UsdImagingInstancerContext* instancerContext) const override;
+
+
+    USDSKELIMAGING_API
+    VtValue Get(UsdPrim const& prim,
+                SdfPath const& cachePath,
+                TfToken const& key,
+                UsdTimeCode time,
+                VtIntArray *outIndices) const override;
+
 protected:
     // ---------------------------------------------------------------------- //
     /// \name Change Processing API (protected)
@@ -182,11 +255,6 @@ private:
     /// Handlers for the Bone Mesh
     // ---------------------------------------------------------------------- //
     bool _IsCallbackForSkeleton(const UsdPrim& prim) const;
-    
-    /// Note: Methods below have been lifted from GprimAdapter.
-    /// Reads the extent from the given prim. If the extent is not authored,
-    /// an empty GfRange3d is returned, the extent will not be computed.
-    GfRange3d _GetExtent(const UsdPrim& prim, UsdTimeCode time) const;
 
     /// Returns a value holding color for \p prim,
     /// taking into account explicitly authored color on the prim.
@@ -239,20 +307,6 @@ private:
     VtVec3fArray _GetSkinnedPrimPoints(const UsdPrim& skinnedPrim,
                                        const SdfPath& skinnedPrimCachePath,
                                        UsdTimeCode time) const;
-
-    void _UpdateSkinningComputationForTime(
-            const UsdPrim& skinnedPrim,
-            const SdfPath& computationPath, 
-            UsdTimeCode time,
-            HdDirtyBits requestedBits,
-            const UsdImagingInstancerContext* instancerContext=nullptr) const;
-
-    void _UpdateSkinningInputAggregatorComputationForTime(
-            const UsdPrim& skinnedPrim,
-            const SdfPath& computationPath, 
-            UsdTimeCode time,
-            HdDirtyBits requestedBits,
-            const UsdImagingInstancerContext* instancerContext=nullptr) const;
     
     SdfPath _GetSkinningComputationPath(const SdfPath& skinnedPrimPath) const;
 
@@ -261,11 +315,14 @@ private:
 
     // Static helper methods
     static
-    std::string _LoadSkinningComputeKernel();
+    std::string _LoadSkinningComputeKernel(const TfToken& kernelKey);
 
     static
-    const std::string& _GetSkinningComputeKernel();
- 
+    const std::string& _GetLBSSkinningComputeKernel();
+
+    static
+    const std::string& _GetDQSSkinningComputeKernel();
+
     // ---------------------------------------------------------------------- //
     /// Handlers for the skinned prim
     // ---------------------------------------------------------------------- //
@@ -285,6 +342,48 @@ private:
             HdDirtyBits requestedBits,
             const UsdImagingInstancerContext* instancerContext=nullptr) const;
 
+    // ---------------------------------------------------------------------- //
+    /// GetExtComputationInput() helpers
+    // ---------------------------------------------------------------------- //
+
+    VtValue 
+    _GetExtComputationInputForSkinningComputation(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext) const;
+
+    VtValue 
+    _GetExtComputationInputForInputAggregator(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext) const;
+
+    size_t
+    _SampleExtComputationInputForSkinningComputation(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext,
+            size_t maxSampleCount,
+            float *sampleTimes,
+            VtValue *sampleValues);
+
+    size_t
+    _SampleExtComputationInputForInputAggregator(
+            UsdPrim const& prim,
+            SdfPath const& cachePath,
+            TfToken const& name,
+            UsdTimeCode time,
+            const UsdImagingInstancerContext* instancerContext,
+            size_t maxSampleCount,
+            float *sampleTimes,
+            VtValue *sampleValues);
+
 
     // ---------------------------------------------------------------------- //
     /// Populated skeleton state
@@ -302,6 +401,8 @@ private:
         /// Compute animated  bone mesh points.
         VtVec3fArray ComputePoints(UsdTimeCode time) const;
 
+        /// Returns the purpose opinion authored on the skeleton prim or its
+        /// ancestors. If none exists, returns an empty token.
         TfToken ComputePurpose() const;
 
     private:
@@ -322,13 +423,18 @@ private:
     // Data for each skinned prim.
     struct _SkinnedPrimData {
         _SkinnedPrimData() = default;
-        _SkinnedPrimData(const UsdSkelSkeletonQuery& skelQuery,
+        
+        /// Construct skinned prim, referencing the skeleton at \p skelPath.
+        /// XXX: We cannot extract the skel path from the skelQuery because
+        /// the skelQuery might refer to a prim within an instance master.
+        _SkinnedPrimData(const SdfPath& skelPath,
+                         const UsdSkelSkeletonQuery& skelQuery,
                          const UsdSkelSkinningQuery& skinningQuery,
                          const SdfPath& skelRootPath);
 
         std::shared_ptr<UsdSkelBlendShapeQuery> blendShapeQuery;
-        UsdSkelAnimMapper jointMapper;
-        UsdSkelAnimMapper blendShapeMapper;
+        UsdSkelSkinningQuery skinningQuery;
+        UsdSkelAnimQuery animQuery;
         SdfPath skelPath, skelRootPath;
         bool hasJointInfluences = false;
     };

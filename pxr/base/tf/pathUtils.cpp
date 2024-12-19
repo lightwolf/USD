@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -66,14 +49,23 @@ _ExpandSymlinks(const std::string& path)
     // and the remaining part of the path.
     std::string::size_type i = path.find_first_of("/\\");
     while (i != std::string::npos) {
-        const std::string prefix = path.substr(0, i);
+        std::string prefix = path.substr(0, i);
+        // If the prefix is "X:", this will access the "current" directory on
+        // drive X, when what we really want is the root of drive X, so append
+        // a backslash. Also check that i>0. An i==0 value can happen if the
+        // passed in path is a non-canonical Windows path such as "/tmp/foo".
+        if (i > 0 && prefix.at(i-1) == ':') {
+            prefix.push_back('\\');
+        }
         if (TfIsLink(prefix)) {
-            // Expand the link and repeat with the new path.
-            return _ExpandSymlinks(TfReadLink(prefix) + path.substr(i));
+            // Expand the link and repeat with the new path if the path changed.
+            // The path may remain unchanged or be empty if the link type is
+            // unsupported or the mount destination is not available.
+            auto newPrefix = TfReadLink(prefix);
+            if (!newPrefix.empty() && newPrefix != prefix)
+                return _ExpandSymlinks(newPrefix + path.substr(i));
         }
-        else {
-            i = path.find_first_of("/\\", i + 1);
-        }
+        i = path.find_first_of("/\\", i + 1);
     }
 
     // No ancestral symlinks.
@@ -145,12 +137,6 @@ TfRealPath(string const& path, bool allowInaccessibleSuffix, string* error)
     }
     std::string resolved = _ExpandSymlinks(prefix);
 
-    // Make sure drive letters are always lower-case out of TfRealPath on
-    // Windows -- this is so that we can be sure we can reliably use the
-    // paths as keys in tables, etc.
-    if (resolved[0] && resolved[1] == ':') {
-        resolved[0] = tolower(resolved[0]);
-    }
     return TfAbsPath(resolved + suffix);
 #else
     char resolved[ARCH_PATH_MAX];
@@ -275,7 +261,8 @@ bool TfIsRelativePath(std::string const& path)
 {
 #if defined(ARCH_OS_WINDOWS)
     return path.empty() ||
-        (PathIsRelative(path.c_str()) && path[0] != '/' && path[0] != '\\');
+        (PathIsRelativeW(ArchWindowsUtf8ToUtf16(path).c_str()) &&
+         path[0] != '/' && path[0] != '\\');
 #else
     return path.empty() || path[0] != '/';
 #endif
@@ -331,7 +318,8 @@ Tf_Glob(
         // Conveniently GetFileAttributes() works on paths with a trailing
         // backslash.
         string path = prefix + pattern;
-        const DWORD attributes = GetFileAttributes(path.c_str());
+            const DWORD attributes =
+                GetFileAttributesW(ArchWindowsUtf8ToUtf16(path).c_str());
         if (attributes != INVALID_FILE_ATTRIBUTES) {
             // File exists.
 
@@ -364,14 +352,16 @@ Tf_Glob(
         const string leftmostDir = TfGetPathName(leftmostPattern);
 
         // Glob the leftmost pattern.
-        WIN32_FIND_DATA data;
-        HANDLE find = FindFirstFile(leftmostPattern.c_str(), &data);
+        WIN32_FIND_DATAW data;
+            HANDLE find = FindFirstFileW(
+                ArchWindowsUtf8ToUtf16(leftmostPattern).c_str(), &data);
         if (find != INVALID_HANDLE_VALUE) {
             do {
                 // Recurse with next pattern.
-                Tf_Glob(result, leftmostDir + data.cFileName,
+                Tf_Glob(result,
+                        leftmostDir + ArchWindowsUtf16ToUtf8(data.cFileName),
                         remainingPattern, flags);
-            } while (FindNextFile(find, &data));
+            } while (FindNextFileW(find, &data));
             FindClose(find);
         }
     }

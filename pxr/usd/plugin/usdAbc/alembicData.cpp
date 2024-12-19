@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 /// \file alembicData.cpp
 
@@ -94,9 +77,9 @@ using namespace UsdAbc_AlembicUtil;
 TF_DEFINE_ENV_SETTING(USD_ABC_EXPAND_INSTANCES, false,
                       "Force Alembic instances to be expanded.");
 TF_DEFINE_ENV_SETTING(USD_ABC_DISABLE_INSTANCING, false,
-                      "Disable instancing on masters created from Alembic.");
+                      "Disable instancing on prototypes created from Alembic.");
 TF_DEFINE_ENV_SETTING(USD_ABC_PARENT_INSTANCES, true,
-                      "Make parent of instance source into master where possible.");
+                      "Make parent of instance source into prototype where possible.");
 
 // The SdfAbstractData time samples type.
 // XXX: SdfAbstractData should typedef this.
@@ -136,11 +119,11 @@ UsdAbc_AlembicData::Open(const std::string& filePath)
     if (TfGetEnvSetting(USD_ABC_EXPAND_INSTANCES)) {
         _reader->SetFlag(UsdAbc_AlembicContextFlagNames->expandInstances);
     }
-    // Create instances but disallow instancing on the master.
+    // Create instances but disallow instancing on the prototype.
     if (TfGetEnvSetting(USD_ABC_DISABLE_INSTANCING)) {
         _reader->SetFlag(UsdAbc_AlembicContextFlagNames->disableInstancing);
     }
-    // Use the parent of instance sources as the Usd master prim, where
+    // Use the parent of instance sources as the Usd prototype prim, where
     // possible.
     if (TfGetEnvSetting(USD_ABC_PARENT_INSTANCES)) {
         _reader->SetFlag(UsdAbc_AlembicContextFlagNames->promoteInstances);

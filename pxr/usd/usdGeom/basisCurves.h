@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USDGEOM_GENERATED_BASISCURVES_H
 #define USDGEOM_GENERATED_BASISCURVES_H
@@ -102,7 +85,7 @@ class SdfAssetPath;
 /// the behavior of cubic Bspline and Catmull-Rom curves. To evaluate or render
 /// pinned curves, a client must effectively add 'phantom points' at the 
 /// beginning and end of every curve in a batch.  These phantom points
-/// are injected to ensure that the inteprolated curve begins at P[0] and
+/// are injected to ensure that the interpolated curve begins at P[0] and
 /// ends at P[n-1].
 /// 
 /// For a curve with initial point P[0] and last point P[n-1], the phantom
@@ -242,7 +225,7 @@ class SdfAssetPath;
 /// \image html USDCurveHydra.png
 /// 
 /// The file used to generate these curves can be found in
-/// pxr/extras/examples/usdGeomExamples/basisCurves.usda.  It's provided
+/// extras/usd/examples/usdGeomExamples/basisCurves.usda.  It's provided
 /// as a reference on how to properly image both tubes and ribbons. The first
 /// row of curves are linear; the second are cubic bezier. (We aim in future
 /// releases of HdSt to fix the discontinuity seen with broken tangents to
@@ -265,8 +248,8 @@ class UsdGeomBasisCurves : public UsdGeomCurves
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::ConcreteTyped;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::ConcreteTyped;
 
     /// Construct a UsdGeomBasisCurves on UsdPrim \p prim .
     /// Equivalent to UsdGeomBasisCurves::Get(prim.GetStage(), prim.GetPath())
@@ -336,11 +319,11 @@ public:
     Define(const UsdStagePtr &stage, const SdfPath &path);
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -385,8 +368,7 @@ public:
     // --------------------------------------------------------------------- //
     /// The basis specifies the vstep and matrix used for cubic 
     /// interpolation.  \note The 'hermite' and 'power' tokens have been
-    /// marked as deprecated for the 20.05 release of USD and are targeted
-    /// for removal in the 20.08 release. We've provided UsdGeomHermiteCurves
+    /// removed. We've provided UsdGeomHermiteCurves
     /// as an alternative for the 'hermite' basis.
     ///
     /// | ||
@@ -395,7 +377,7 @@ public:
     /// | C++ Type | TfToken |
     /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
     /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdGeomTokens "Allowed Values" | bezier, bspline, catmullRom, hermite, power |
+    /// | \ref UsdGeomTokens "Allowed Values" | bezier, bspline, catmullRom |
     USDGEOM_API
     UsdAttribute GetBasisAttr() const;
 
@@ -483,6 +465,11 @@ public:
     /// efficient to use \c ComputeInterpolationForSize
     USDGEOM_API
     size_t ComputeVertexDataSize(const UsdTimeCode& timeCode) const;
+
+    /// Computes the segment counts of the curves based on their vertex counts
+    /// from the \c curveVertexCounts attribute.
+    USDGEOM_API
+    VtIntArray ComputeSegmentCounts(const UsdTimeCode& timeCode) const;
 
     /// \}
 };

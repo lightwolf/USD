@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_BASE_ARCH_STACK_TRACE_H
 #define PXR_BASE_ARCH_STACK_TRACE_H
@@ -38,19 +21,23 @@
 #include <vector>
 #include <string>
 #include <iosfwd>
+#include <ctime>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 /// \addtogroup group_arch_Diagnostics
 ///@{
 
-/// Dumps call-stack info to a file, and prints an informative message.
+/// Dumps call-stack info to a file, prints a message to the terminal, and 
+/// invokes crash handling script.
 ///
-/// The reason for the trace should be supplied in \p reason.  This routine
-/// can be slow and is intended to be called for a fatal error, such as a
-/// caught coredump signal, but may be called at any time.  An additional
+/// The reason for the trace should be supplied in \p reason. An additional
 /// message may be provided in \p message.  If \p reason is \c NULL then this
 /// function only writes \p message to the banner (if any).
+///
+/// This routine can be slow and is intended to be called for a fatal error, 
+/// such as a caught coredump signal. While it can theoretically be called at
+/// any time, \c ArchLogCurrentProcessState() should be used for nonfatal cases.
 ///
 /// This function is implemented by calling an external program.  This is
 /// suitable for times where the current process may be corrupted.  In other
@@ -61,31 +48,61 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// because we are trying to use only async-safe function from here on and
 /// malloc() is not async-safe.
 ARCH_API
-void ArchLogPostMortem(
-    const char* reason,
-    const char* message = nullptr,
-    const char* extraLogMsg = nullptr);
+void ArchLogFatalProcessState(const char* reason,
+                              const char* message = nullptr,
+                              const char* extraLogMsg = nullptr);
 
-/// Sets the command line that gathers call-stack info.
+/// Dumps call-stack info to a file, and prints an informative message.
+///
+/// The reason for the trace should be supplied in \p reason. An additional
+/// message may be provided in \p message.  If \p reason is \c NULL then this
+/// function only writes \p message to the banner (if any).
+///
+/// This function is nearly identical to ArchLogFatalProcessState, including 
+/// calling an external program. However, it is intended for cases that may
+/// simulate or require the output info from a full fatal crash, but are 
+/// not truly fatal errors. For cases where that is not necessary, 
+/// using \c ArchPrintStackTrace() or other related functions would be
+/// much faster.
+///
+/// Note the use of \c char* as opposed to \c string: this is intentional,
+/// because we are trying to use only async-safe function from here on and
+/// malloc() is not async-safe.
+ARCH_API
+void ArchLogCurrentProcessState(const char* reason,
+                                const char* message = nullptr,
+                                const char* extraLogMsg = nullptr);
+
+/// Sets command line that gets call-stack info and triggers crash handling
+/// script.
 ///
 /// This function sets the command line to execute to gather and log
-/// call-stack info.  \p argv must be NULL terminated.  \p command and/or \p
-/// argv may be NULL to suppress execution.  Otherwise argv[0] must be the
-/// full path to the program to execute, typically \p command or "$cmd" as
+/// call-stack info.  \p argv must be NULL terminated. If \p command and/or \p
+/// argv (or \p fatalArgv in the case of a fatal crash) are NULL, then 
+/// the command will not be executed. Otherwise argv[0] and fatalArgv[0] must be 
+/// the full path to the program to execute, typically \p command or "$cmd" as
 /// described below.
 ///
-/// \p command and \p argv are not copied and must remain valid until the next
-/// call to \c ArchSetPostMortem.
+/// \p command, \p argv, and \p fatalArgv are not copied and must remain valid 
+/// until the next call to \c ArchSetProcessStateLogCommand.
 ///
 /// Simple substitution is supported on argv elements:
 /// \li $cmd:      Substitutes the command pathname, or $ARCH_POSTMORTEM if set
 /// \li $pid:      Substitutes the process id
 /// \li $log:      Substitutes the log pathname
 /// \li $time:     Substitutes the user time (if available, else wall time)
+/// \li $reason:   Substitutes the reason string for the crash
 ///
-/// \sa ArchLogPostMortem
+/// \sa ArchLogFatalProcessState
 ARCH_API
-void ArchSetPostMortem(const char* command, const char *const argv[]);
+void ArchSetProcessStateLogCommand(const char* command, 
+                                   const char *const argv[],
+                                   const char* const fatalArgv[]);
+
+/// Returns true if the fatal signal handler ArchLogFatalProcessState
+/// has been invoked.
+ARCH_API
+bool ArchIsAppCrashing();
 
 /// Log session info.
 ///
@@ -266,6 +283,11 @@ std::vector<std::string> ArchGetStackTrace(size_t maxDepth);
 ARCH_API
 void ArchGetStackFrames(size_t maxDepth, std::vector<uintptr_t> *frames);
 
+/// Store at most \p maxDepth frames of the current stack into \p frames.
+/// Return the number of stack frames written to \p frames.
+ARCH_API
+size_t ArchGetStackFrames(size_t maxDepth, uintptr_t *frames);
+
 /// Save frames of current stack.
 ///
 /// This function saves at maximum \p maxDepth frames of the current stack
@@ -276,10 +298,19 @@ ARCH_API
 void ArchGetStackFrames(size_t maxDepth, size_t numFramesToSkipAtTop,
                         std::vector<uintptr_t> *frames);
 
+/// Store at most \p maxDepth frames of the current stack into \p frames,
+/// skipping the first \p numFramesToSkipAtTop frames.  Return the number of
+/// stack frames written to \p frames.
+ARCH_API
+size_t ArchGetStackFrames(size_t maxDepth, size_t numFramesToSkipAtTop,
+                          uintptr_t *frames);
+
+
 /// Print stack frames to the given ostream.
 ARCH_API
 void ArchPrintStackFrames(std::ostream& out,
-                          const std::vector<uintptr_t> &frames);
+                          const std::vector<uintptr_t> &frames,
+                          bool skipUnknownFrames = false);
 
 /// Callback for handling crashes.
 /// \see ArchCrashHandlerSystemv
@@ -302,16 +333,6 @@ ARCH_API
 int ArchCrashHandlerSystemv(const char* pathname, char *const argv[],
 			    int timeout, ArchCrashHandlerSystemCB callback, 
 			    void* userData);
-
-/// Crash, to test crash behavior.
-///
-/// This function causes the calling program to crash by doing bad malloc 
-/// and free things.  If \c spawnthread is true, it spawns a thread which 
-/// remains alive during the crash.  It aborts if it fails to crash.
-///
-/// \private
-ARCH_API
-void ArchTestCrash(bool spawnthread);
 
 #if defined(ARCH_OS_DARWIN)
 // macOS has no ETIME. ECANCELED seems to have about the closest meaning to

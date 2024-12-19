@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 // Reference.cpp
 //
@@ -47,7 +30,9 @@ SdfReference::SdfReference(
     const SdfPath &primPath,
     const SdfLayerOffset &layerOffset,
     const VtDictionary &customData) :
-    _assetPath(assetPath),
+    // Pass through SdfAssetPath() to issue an error and produce empty string if
+    // \p assetPath contains invalid characters.
+    _assetPath(SdfAssetPath(assetPath).GetAssetPath()),
     _primPath(primPath),
     _layerOffset(layerOffset),
     _customData(customData)
@@ -65,6 +50,12 @@ SdfReference::SetCustomData(const std::string &name, const VtValue &value)
 }
 
 bool
+SdfReference::IsInternal() const
+{
+    return _assetPath.empty();
+}
+
+bool
 SdfReference::operator==(const SdfReference &rhs) const
 {
     return _assetPath   == rhs._assetPath   &&
@@ -76,11 +67,14 @@ SdfReference::operator==(const SdfReference &rhs) const
 bool
 SdfReference::operator<(const SdfReference &rhs) const
 {
-    return (_assetPath   <  rhs._assetPath) || (
-           (_assetPath   == rhs._assetPath && _primPath    <rhs._primPath)    || (
-           (_primPath    == rhs._primPath  && _layerOffset <rhs._layerOffset) || (
-           (_layerOffset == rhs._layerOffset) &&
-               (_customData.size() < rhs._customData.size()))));
+    // XXX: This would be much cleaner and less error prone if we used 
+    // std::tie for comparison, however, it's not ideal given the awkward 
+    // (and not truly correct) comparison of customData size. If customData 
+    // is ever removed this should be updated to use the cleaner std::tie.
+    return (_assetPath < rhs._assetPath || (_assetPath == rhs._assetPath && 
+        (_primPath < rhs._primPath || (_primPath == rhs._primPath && 
+        (_layerOffset < rhs._layerOffset || (_layerOffset == rhs._layerOffset &&
+        (_customData.size() < rhs._customData.size())))))));
 }
 
 int

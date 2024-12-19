@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/base/tf/errorMark.h"
@@ -669,6 +652,33 @@ TestTfTouchFile()
 }
 
 static bool
+TestSymlinkBehavior()
+{
+    cout << "Testing symlink behavior" << endl;
+
+    (void) ArchUnlinkFile("junction");
+    (void) ArchRmDir("junction-target");
+
+    TF_AXIOM(TfMakeDir("junction-target"));
+#if defined(ARCH_OS_WINDOWS)
+    TF_AXIOM(system("mklink /j junction junction-target") == 0);
+#else
+    TF_AXIOM(TfSymlink("junction-target", "junction"));
+#endif
+    TF_AXIOM(TfIsLink("junction"));
+    TF_AXIOM(!TfIsDir("junction", false));
+    TF_AXIOM(TfIsDir("junction", true));
+    TF_AXIOM(TfIsDir("junction/", false));
+    TF_AXIOM(TfIsDir("junction/", true));
+    TF_AXIOM(TfTouchFile("junction/test-file"));
+    TF_AXIOM(TfIsFile("junction/test-file", false));
+    TF_AXIOM(TfIsFile("junction/test-file", true));
+    TF_AXIOM(TfDeleteFile("junction/test-file"));
+
+    return true;
+}
+
+static bool
 Test_TfFileUtils()
 {
     return Setup() &&
@@ -684,7 +694,8 @@ Test_TfFileUtils()
            TestTfWalkDirs() &&
            TestTfListDir() &&
            TestTfRmTree() &&
-           TestTfTouchFile()
+           TestTfTouchFile() &&
+           TestSymlinkBehavior()
            ;
 }
 

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/imaging/hd/rprimCollection.h"
 
@@ -28,8 +11,7 @@
 #include "pxr/imaging/hd/mesh.h"
 #include "pxr/imaging/hd/points.h"
 #include "pxr/imaging/hd/rprim.h"
-
-#include <boost/functional/hash.hpp>
+#include "pxr/base/tf/hash.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -164,18 +146,7 @@ HdRprimCollection::GetMaterialTag() const
 size_t
 HdRprimCollection::ComputeHash() const
 {
-    size_t h = _name.Hash();
-    boost::hash_combine(h, _reprSelector.Hash());
-    boost::hash_combine(h, _forcedRepr);
-    TF_FOR_ALL(pathIt, _rootPaths) {
-        boost::hash_combine(h, SdfPath::Hash()(*pathIt));
-    }
-    TF_FOR_ALL(pathIt, _excludePaths) {
-        boost::hash_combine(h, SdfPath::Hash()(*pathIt));
-    }
-
-    boost::hash_combine(h, _materialTag);
-    return h;
+    return TfHash()(*this);
 }
 
 bool HdRprimCollection::operator==(HdRprimCollection const & other) const 
@@ -199,7 +170,9 @@ bool HdRprimCollection::operator!=(HdRprimCollection const & other) const
 
 std::ostream& operator<<(std::ostream& out, HdRprimCollection const & v)
 {
-    out << v._name
+    out << "name: " << v._name
+        << ", repr sel: " << v._reprSelector
+        << ", mat tag: " << v._materialTag
         ;
     return out;
 }

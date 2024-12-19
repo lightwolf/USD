@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef USD_GENERATED_CLIPSAPI_H
 #define USD_GENERATED_CLIPSAPI_H
@@ -107,8 +90,8 @@ class UsdClipsAPI : public UsdAPISchemaBase
 public:
     /// Compile time constant representing what kind of schema this class is.
     ///
-    /// \sa UsdSchemaType
-    static const UsdSchemaType schemaType = UsdSchemaType::NonAppliedAPI;
+    /// \sa UsdSchemaKind
+    static const UsdSchemaKind schemaKind = UsdSchemaKind::NonAppliedAPI;
 
     /// Construct a UsdClipsAPI on UsdPrim \p prim .
     /// Equivalent to UsdClipsAPI::Get(prim.GetStage(), prim.GetPath())
@@ -153,11 +136,11 @@ public:
 
 
 protected:
-    /// Returns the type of schema this class belongs to.
+    /// Returns the kind of schema this class belongs to.
     ///
-    /// \sa UsdSchemaType
+    /// \sa UsdSchemaKind
     USD_API
-    UsdSchemaType _GetSchemaType() const override;
+    UsdSchemaKind _GetSchemaKind() const override;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -233,6 +216,23 @@ public:
     /// \sa GetClipSets
     USD_API
     bool SetClipSets(const SdfStringListOp& clipSets);
+
+    /// Computes and resolves the list of clip asset paths used by the
+    /// clip set named \p clipSet. This is the same list of paths that
+    /// would be used during value resolution.
+    ///
+    /// If the clip set is defined using template clip metadata, this
+    /// function will compute the asset paths based on the template
+    /// parameters. Otherwise this function will use the authored
+    /// clipAssetPaths.
+    USD_API
+    VtArray<SdfAssetPath>
+    ComputeClipAssetPaths(const std::string& clipSet) const;
+
+    /// \overload
+    /// This function operates on the default clip set.
+    USD_API
+    VtArray<SdfAssetPath> ComputeClipAssetPaths() const;
 
     /// List of asset paths to the clips in the clip set named \p clipSet.
     /// This list is unordered, but elements in this list are referred to 
@@ -345,9 +345,8 @@ public:
     /// The clip manifest indicates which attributes have time samples 
     /// authored in the clips specified on this prim. During value resolution, 
     /// clips will only be examined if the attribute exists and is declared 
-    /// as varying in the manifest. Note that the clip manifest is only 
-    /// consulted to check if an attribute exists and what its variability is. 
-    /// Other values and metadata authored in the manifest will be ignored.
+    /// as varying in the manifest. See \ref Usd_ValueClips_ClipManifest for
+    /// more details.
     ///
     /// For instance, if this prim's path is </Prim_1>, the clip prim path is
     /// </Prim>, and we want values for the attribute </Prim_1.size>, we will
@@ -372,6 +371,69 @@ public:
     /// \sa \ref UsdClipsAPISetNames
     USD_API
     bool SetClipManifestAssetPath(const SdfAssetPath& manifestAssetPath);
+
+    /// Create a clip manifest containing entries for all attributes in the
+    /// value clips for clip set \p clipSet. This returns an anonymous layer
+    /// that can be exported and reused (\see SetClipManifestAssetPath).
+    ///
+    /// If \p writeBlocksForClipsWithMissingValues is \c true, the generated
+    /// manifest will have value blocks authored for each attribute at the
+    /// activation times of clips that do not contain time samples for that 
+    /// attribute. This accelerates searches done when the interpolation of
+    /// missing clip values is enabled. See GetInterpolateMissingClipValues
+    /// and \ref Usd_ValueClips_ClipValueResolution_InterpolatingGaps for more
+    /// details.
+    ///
+    /// Returns an invalid SdfLayerRefPtr on failure.
+    USD_API
+    SdfLayerRefPtr GenerateClipManifest(
+        const std::string& clipSet,
+        bool writeBlocksForClipsWithMissingValues = false) const;
+
+    /// \overload
+    /// This function operates on the default clip set. 
+    /// \sa \ref UsdClipsAPISetNames
+    USD_API
+    SdfLayerRefPtr GenerateClipManifest(
+        bool writeBlocksForClipsWithMissingValues = false) const;
+
+    /// Create a clip manifest containing entries for all attributes in the
+    /// given \p clipLayers that belong to the prim at \p clipPrimPath and
+    /// all descendants. This returns an anonymous layer that can be exported
+    /// and reused (\see SetClipManifestAssetPath).
+    ///
+    /// Returns an invalid SdfLayerRefPtr on failure.
+    USD_API
+    static SdfLayerRefPtr 
+    GenerateClipManifestFromLayers(const SdfLayerHandleVector& clipLayers, 
+                                   const SdfPath& clipPrimPath);
+
+    // Flag indicating whether values for a clip that does not contain authored
+    // time samples are interpolated from surrounding clips.
+    //
+    // If this flag is set, values for clips that do not have authored time
+    // samples for an attribute that is declared in the manifest without a
+    // fallback value will be interpolated from values in surrounding clips.
+    // This is disabled by default.
+    USD_API
+    bool GetInterpolateMissingClipValues(bool* interpolate,
+                                         const std::string& clipSet) const;
+
+    /// \overload
+    /// This function operates on the default clip set.
+    USD_API
+    bool GetInterpolateMissingClipValues(bool* interpolate) const;
+
+    /// Set whether missing clip values are interpolated from surrounding
+    /// clips.
+    USD_API
+    bool SetInterpolateMissingClipValues(bool interpolate,
+                                         const std::string& clipSet);
+
+    /// \overload
+    /// This function operates on the default clip set.
+    USD_API
+    bool SetInterpolateMissingClipValues(bool interpolate);
 
     /// A template string representing a set of assets to be used as clips
     /// for the clip set named \p clipSet. This string can be of two forms: 
@@ -518,15 +580,6 @@ public:
     USD_API
     bool SetClipTemplateEndTime(const double clipTemplateEndTime);
 
-    /// Return true if the setter functions that do not take a clip set author
-    /// values to legacy metadata fields (e.g. clipAssetPaths, clipTimes, etc.),
-    /// or false if values are authored to the default clip set. 
-    ///
-    /// This is controlled by the USD_AUTHOR_LEGACY_CLIPS environment variable
-    /// and is intended to be an aid for transitioning.
-    USD_API
-    static bool IsAuthoringLegacyClipMetadata();
-
     /// @}
 
 };
@@ -535,6 +588,7 @@ public:
 #define USDCLIPS_INFO_KEYS  \
     (active)                \
     (assetPaths)            \
+    (interpolateMissingClipValues) \
     (manifestAssetPath)     \
     (primPath)              \
     (templateAssetPath)     \
@@ -563,6 +617,7 @@ public:
 /// \li <b>templateStride</b> - see UsdClipsAPI::GetClipTemplateStride
 /// \li <b>templateActiveOffset</b> - see UsdClipsAPI::GetClipTemplateActiveOffset
 /// \li <b>times</b> - see UsdClipsAPI::GetClipTimes
+/// \li <b>interpolateMissingClipValues</b> - see UsdClipsAPI::GetInterpolateMissingClipValues
 TF_DECLARE_PUBLIC_TOKENS(UsdClipsAPIInfoKeys, USD_API, USDCLIPS_INFO_KEYS);
 
 /// \hideinitializer

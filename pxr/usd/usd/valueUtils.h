@@ -1,37 +1,21 @@
 //
 // Copyright 2017 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_VALUE_UTILS_H
 #define PXR_USD_USD_VALUE_UTILS_H
 
 #include "pxr/pxr.h"
-#include "pxr/usd/usd/clip.h"
 #include "pxr/usd/usd/common.h"
 
 #include "pxr/usd/sdf/abstractData.h"
 #include "pxr/usd/sdf/layer.h"
 #include "pxr/usd/sdf/types.h"
 
+#include "pxr/base/ts/spline.h"
+#include "pxr/base/gf/interval.h"
 #include "pxr/base/vt/value.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -100,6 +84,82 @@ Usd_ClearValueIfBlocked(VtValue* value)
     return false;
 }
 
+/// Helper function for setting a value into an SdfAbstractDataValue
+/// for generic programming.
+template <class T>
+inline bool
+Usd_SetValue(SdfAbstractDataValue *dv, T const &val)
+{ 
+    return dv->StoreValue(val); 
+}
+
+/// \overload
+/// Helper function for setting a value into a VtValue
+/// for generic programming.
+template <class T>
+inline bool
+Usd_SetValue(VtValue *value, T const &val)
+{ 
+    *value = val; 
+    return true;
+}
+
+/// \overload
+/// Helper function for setting a value into a T* from a VtValue
+/// for generic programming.
+template <class T,
+          typename = std::enable_if_t<
+              !std::is_same<T, SdfAbstractDataValue>::value &&
+              !std::is_same<T, VtValue>::value>>
+inline bool
+Usd_SetValue(T* value, VtValue const &val)
+{
+    if (val.IsHolding<T>()) {
+        *value = val.UncheckedGet<T>();
+        return true;
+    }
+    return false;
+}
+
+enum class Usd_DefaultValueResult 
+{
+    None = 0,
+    Found,
+    Blocked,
+};
+
+template <class T, class Source>
+Usd_DefaultValueResult 
+Usd_HasDefault(const Source& source, const SdfPath& specPath, T* value)
+{
+
+    if (!value) {
+        // Caller is not interested in the value, so avoid fetching it.
+        std::type_info const &ti =
+            source->GetFieldTypeid(specPath, SdfFieldKeys->Default);
+        if (ti == typeid(void)) {
+            return Usd_DefaultValueResult::None;
+        }
+        else if (ti == typeid(SdfValueBlock)) {
+            return Usd_DefaultValueResult::Blocked;
+        }
+        else {
+            return Usd_DefaultValueResult::Found;
+        }
+    }
+    else {
+        // Caller requests the value.
+        if (source->HasField(specPath, SdfFieldKeys->Default, value)) {
+            if (Usd_ClearValueIfBlocked(value)) {
+                return Usd_DefaultValueResult::Blocked;
+            }
+            return Usd_DefaultValueResult::Found;
+        }
+        // fall-through
+    }
+    return Usd_DefaultValueResult::None;
+}
+
 template <class T>
 inline bool
 Usd_QueryTimeSample(
@@ -109,13 +169,22 @@ Usd_QueryTimeSample(
     return layer->QueryTimeSample(path, time, result);
 }
 
-template <class T>
-inline bool
-Usd_QueryTimeSample(
-    const Usd_ClipRefPtr& clip, const SdfPath& path,
-    double time, Usd_InterpolatorBase* interpolator, T* result)
+/// Appends time samples from \p samples in the given \p interval to
+/// \p output.
+inline void
+Usd_CopyTimeSamplesInInterval(
+    const std::set<double>& samples, const GfInterval& interval,
+    std::vector<double>* output)
 {
-    return clip->QueryTimeSample(path, time, interpolator, result);
+    const std::set<double>::iterator samplesBegin = interval.IsMinOpen() ?
+        samples.upper_bound(interval.GetMin()) : 
+        samples.lower_bound(interval.GetMin());
+
+    const std::set<double>::iterator samplesEnd = interval.IsMaxOpen() ?
+        samples.lower_bound(interval.GetMax()) :
+        samples.upper_bound(interval.GetMax());
+
+    output->insert(output->end(), samplesBegin, samplesEnd);
 }
 
 /// Merges sample times in \p additionalTimeSamples into the vector pointed to 
@@ -248,6 +317,15 @@ Usd_ApplyLayerOffsetToValue(SdfTimeSampleMap *value,
         // The value may also have be mapped if it is time mappable.
         Usd_ApplyLayerOffsetToValue(&newSample, offset);
     }
+}
+
+inline void
+Usd_ApplyLayerOffsetToValue(
+    TsSpline *spline, const SdfLayerOffset &offset)
+{
+    // Splines have their own optimized method.
+    Ts_SplineOffsetAccess::ApplyOffsetAndScale(
+        spline, offset.GetOffset(), offset.GetScale());
 }
 
 /// \overload

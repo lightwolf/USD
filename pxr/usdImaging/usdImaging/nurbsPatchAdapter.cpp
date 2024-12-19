@@ -1,28 +1,12 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usdImaging/usdImaging/nurbsPatchAdapter.h"
 
+#include "pxr/usdImaging/usdImaging/dataSourceNurbsPatch.h"
 #include "pxr/usdImaging/usdImaging/delegate.h"
 #include "pxr/usdImaging/usdImaging/indexProxy.h"
 #include "pxr/usdImaging/usdImaging/tokens.h"
@@ -47,9 +31,7 @@ TF_REGISTRY_FUNCTION(TfType)
     t.SetFactory< UsdImagingPrimAdapterFactory<Adapter> >();
 }
 
-UsdImagingNurbsPatchAdapter::~UsdImagingNurbsPatchAdapter() 
-{
-}
+UsdImagingNurbsPatchAdapter::~UsdImagingNurbsPatchAdapter() = default;
 
 bool
 UsdImagingNurbsPatchAdapter::IsSupported(
@@ -87,42 +69,32 @@ UsdImagingNurbsPatchAdapter::TrackVariability(UsdPrim const& prim,
                UsdImagingTokens->usdVaryingPrimvar,
                timeVaryingBits,
                /*isInherited*/false);
-
-    // Discover time-varying topology.
-    _IsVarying(prim, UsdGeomTokens->curveVertexCounts,
-                       HdChangeTracker::DirtyTopology,
-                       UsdImagingTokens->usdVaryingTopology,
-                       timeVaryingBits,
-                       /*isInherited*/false);
-}
-
-// Thread safe.
-//  * Populate dirty bits for the given \p time.
-void 
-UsdImagingNurbsPatchAdapter::UpdateForTime(UsdPrim const& prim,
-                               SdfPath const& cachePath, 
-                               UsdTimeCode time,
-                               HdDirtyBits requestedBits,
-                               UsdImagingInstancerContext const* 
-                                   instancerContext) const
-{
-    BaseAdapter::UpdateForTime(
-        prim, cachePath, time, requestedBits, instancerContext);
-    UsdImagingValueCache* valueCache = _GetValueCache();
-
-    if (requestedBits & HdChangeTracker::DirtyTopology) {
-        valueCache->GetTopology(cachePath) = GetMeshTopology(prim, time);
-    }
 }
 
 /*virtual*/
 VtValue
 UsdImagingNurbsPatchAdapter::GetPoints(UsdPrim const& prim,
-                                       SdfPath const& cachePath,
                                        UsdTimeCode time) const
 {
-    TF_UNUSED(cachePath);
     return GetMeshPoints(prim, time);   
+}
+
+HdDirtyBits
+UsdImagingNurbsPatchAdapter::ProcessPropertyChange(UsdPrim const& prim,
+                                                SdfPath const& cachePath,
+                                                TfToken const& propertyName)
+{
+    if (propertyName == UsdGeomTokens->points) {
+        return HdChangeTracker::DirtyPoints;
+    }
+
+    if (propertyName == UsdGeomTokens->uVertexCount ||
+        propertyName == UsdGeomTokens->vVertexCount ||
+        propertyName == UsdGeomTokens->orientation) {
+        return HdChangeTracker::DirtyTopology;
+    }
+
+    return BaseAdapter::ProcessPropertyChange(prim, cachePath, propertyName);
 }
 
 // -------------------------------------------------------------------------- //
@@ -146,7 +118,7 @@ UsdImagingNurbsPatchAdapter::GetMeshPoints(UsdPrim const& prim,
 /*static*/
 VtValue
 UsdImagingNurbsPatchAdapter::GetMeshTopology(UsdPrim const& prim, 
-                                       UsdTimeCode time)
+                                             UsdTimeCode time)
 {
     UsdGeomNurbsPatch nurbsPatch(prim);
 
@@ -209,7 +181,7 @@ UsdImagingNurbsPatchAdapter::GetMeshTopology(UsdPrim const& prim,
 
     // Create the mesh topology
     HdMeshTopology topo = HdMeshTopology(
-        PxOsdOpenSubdivTokens->catmark, 
+        PxOsdOpenSubdivTokens->catmullClark, 
         orientation,
         vertsPerFace,
         indices);
@@ -217,5 +189,61 @@ UsdImagingNurbsPatchAdapter::GetMeshTopology(UsdPrim const& prim,
     return VtValue(topo);
 }
 
-PXR_NAMESPACE_CLOSE_SCOPE
+/*virtual*/ 
+VtValue
+UsdImagingNurbsPatchAdapter::GetTopology(UsdPrim const& prim,
+                                         SdfPath const& cachePath,
+                                         UsdTimeCode time) const
+{
+    HD_TRACE_FUNCTION();
+    HF_MALLOC_TAG_FUNCTION();
 
+    return GetMeshTopology(prim, time);
+}
+
+TfTokenVector
+UsdImagingNurbsPatchAdapter::GetImagingSubprims(UsdPrim const& prim)
+{
+    return { TfToken() };
+}
+
+TfToken
+UsdImagingNurbsPatchAdapter::GetImagingSubprimType(
+        UsdPrim const& prim,
+        TfToken const& subprim)
+{
+    if (subprim.IsEmpty()) {
+        return HdPrimTypeTokens->nurbsPatch;
+    }
+    return TfToken();
+}
+
+HdContainerDataSourceHandle
+UsdImagingNurbsPatchAdapter::GetImagingSubprimData(
+        UsdPrim const& prim,
+        TfToken const& subprim,
+        const UsdImagingDataSourceStageGlobals &stageGlobals)
+{
+    if (subprim.IsEmpty()) {
+        return UsdImagingDataSourceNurbsPatchPrim::New(
+            prim.GetPath(), prim, stageGlobals);
+    }
+    return nullptr;
+}
+
+HdDataSourceLocatorSet
+UsdImagingNurbsPatchAdapter::InvalidateImagingSubprim(
+        UsdPrim const& prim,
+        TfToken const& subprim,
+        TfTokenVector const& properties,
+        UsdImagingPropertyInvalidationType invalidationType)
+{
+    if (subprim.IsEmpty()) {
+        return UsdImagingDataSourceNurbsPatchPrim::Invalidate(
+            prim, subprim, properties, invalidationType);
+    }
+
+    return HdDataSourceLocatorSet();
+}
+
+PXR_NAMESPACE_CLOSE_SCOPE

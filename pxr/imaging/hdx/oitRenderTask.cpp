@@ -1,65 +1,56 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
-//
-#include "pxr/imaging/glf/glew.h"
-
-#include "pxr/imaging/hdx/package.h"
 #include "pxr/imaging/hdx/oitRenderTask.h"
+#include "pxr/imaging/hdx/package.h"
 #include "pxr/imaging/hdx/oitBufferAccessor.h"
-#include "pxr/imaging/hdx/tokens.h"
-#include "pxr/imaging/hdx/debugCodes.h"
 
-#include "pxr/imaging/hd/perfLog.h"
 #include "pxr/imaging/hd/renderDelegate.h"
 #include "pxr/imaging/hd/renderIndex.h"
-#include "pxr/imaging/hd/renderPass.h"
-#include "pxr/imaging/hd/renderPassState.h"
 #include "pxr/imaging/hd/rprimCollection.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 
-#include "pxr/imaging/hdSt/lightingShader.h"
 #include "pxr/imaging/hdSt/renderPassShader.h"
 
+#include "pxr/imaging/glf/diagnostic.h"
+
 PXR_NAMESPACE_OPEN_SCOPE
+
+static const HioGlslfxSharedPtr &
+_GetRenderPassOitGlslfx()
+{
+    static const HioGlslfxSharedPtr glslfx =
+        std::make_shared<HioGlslfx>(HdxPackageRenderPassOitShader());
+    return glslfx;
+}
+
+static const HioGlslfxSharedPtr &
+_GetRenderPassOitOpaqueGlslfx()
+{
+    static const HioGlslfxSharedPtr glslfx =
+        std::make_shared<HioGlslfx>(HdxPackageRenderPassOitOpaqueShader());
+    return glslfx;
+}
 
 HdxOitRenderTask::HdxOitRenderTask(HdSceneDelegate* delegate, SdfPath const& id)
     : HdxRenderTask(delegate, id)
     , _oitTranslucentRenderPassShader(
-        boost::make_shared<HdStRenderPassShader>(
-            HdxPackageRenderPassOitShader()))
+        std::make_shared<HdStRenderPassShader>(
+            _GetRenderPassOitGlslfx()))
     , _oitOpaqueRenderPassShader(
-        boost::make_shared<HdStRenderPassShader>(
-            HdxPackageRenderPassOitOpaqueShader()))
+        std::make_shared<HdStRenderPassShader>(
+            _GetRenderPassOitOpaqueGlslfx()))
     , _isOitEnabled(HdxOitBufferAccessor::IsOitEnabled())
 {
 }
 
-HdxOitRenderTask::~HdxOitRenderTask()
-{
-}
+HdxOitRenderTask::~HdxOitRenderTask() = default;
 
 void
-HdxOitRenderTask::Sync(
+HdxOitRenderTask::_Sync(
     HdSceneDelegate* delegate,
     HdTaskContext* ctx,
     HdDirtyBits* dirtyBits)
@@ -68,7 +59,7 @@ HdxOitRenderTask::Sync(
     HF_MALLOC_TAG_FUNCTION();
 
     if (_isOitEnabled) {
-        HdxRenderTask::Sync(delegate, ctx, dirtyBits);
+        HdxRenderTask::_Sync(delegate, ctx, dirtyBits);
     }
 }
 
@@ -78,15 +69,12 @@ HdxOitRenderTask::Prepare(HdTaskContext* ctx,
 {
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
-
-    if (_isOitEnabled) {
+ 
+    // OIT buffers take up significant GPU resources. Skip if there are no
+    // oit draw items (i.e. no translucent draw items)
+    if (_isOitEnabled && HdxRenderTask::_HasDrawItems()) {
         HdxRenderTask::Prepare(ctx, renderIndex);
-
-        // OIT buffers take up significant GPU resources. Skip if there are no
-        // oit draw items (i.e. no translucent or volumetric draw items)
-        if (_GetDrawItemCount() > 0) {
-            HdxOitBufferAccessor(ctx).RequestOitBuffers();
-        }
+        HdxOitBufferAccessor(ctx).RequestOitBuffers();
     }
 }
 
@@ -96,16 +84,27 @@ HdxOitRenderTask::Execute(HdTaskContext* ctx)
     HD_TRACE_FUNCTION();
     HF_MALLOC_TAG_FUNCTION();
 
-    if (!_isOitEnabled) return;
-    if (_GetDrawItemCount() == 0) return;
+    GLF_GROUP_FUNCTION();
 
+    if (!_isOitEnabled || !HdxRenderTask::_HasDrawItems()) {
+        return;
+    }
+    
     //
     // Pre Execute Setup
     //
+    {
+        HdxOitBufferAccessor oitBufferAccessor(ctx);
 
-    HdxOitBufferAccessor oitBufferAccessor(ctx);
-
-    oitBufferAccessor.InitializeOitBuffersIfNecessary();
+        oitBufferAccessor.RequestOitBuffers();
+        oitBufferAccessor.InitializeOitBuffersIfNecessary(_GetHgi());
+        if (!oitBufferAccessor.AddOitBufferBindings(
+                _oitTranslucentRenderPassShader)) {
+            TF_CODING_ERROR(
+                "No OIT buffers allocated but needed by OIT render task");
+            return;
+        }
+    }
 
     HdRenderPassStateSharedPtr renderPassState = _GetRenderPassState(ctx);
     if (!TF_VERIFY(renderPassState)) return;
@@ -116,63 +115,45 @@ HdxOitRenderTask::Execute(HdTaskContext* ctx)
         return;
     }
 
-    extendedState->SetOverrideShader(HdStShaderCodeSharedPtr());
-
-    if (!oitBufferAccessor.AddOitBufferBindings(
-            _oitTranslucentRenderPassShader)) {
-        TF_CODING_ERROR(
-            "No OIT buffers allocated but needed by OIT render task");
-        return;
-    }
-    
-    // We render into a SSBO -- not MSSA compatible
-    bool oldMSAA = glIsEnabled(GL_MULTISAMPLE);
-    glDisable(GL_MULTISAMPLE);
-    // XXX When rendering HdStPoints we set GL_POINTS and assume that
-    //     GL_POINT_SMOOTH is enabled by default. This renders circles instead
-    //     of squares. However, when toggling MSAA off (above) we see GL_POINTS
-    //     start to render squares (driver bug?).
-    //     For now we always enable GL_POINT_SMOOTH. 
-    // XXX Switch points rendering to emit quad with FS that draws circle.
-    bool oldPointSmooth = glIsEnabled(GL_POINT_SMOOTH);
-    glEnable(GL_POINT_SMOOTH);
-
-    // XXX HdxRenderTask::Prepare calls HdStRenderPassState::Prepare.
-    // This sets the cullStyle for the render pass shader.
-    // Since Oit uses a custom render pass shader, we must manually
-    // set cullStyle.
-    _oitOpaqueRenderPassShader->SetCullStyle(
-        extendedState->GetCullStyle());
-    _oitTranslucentRenderPassShader->SetCullStyle(
-        extendedState->GetCullStyle());
-
-    //
-    // Opaque pixels pass
-    // These pixels are rendered to FB instead of OIT buffers
-    //
-    extendedState->SetRenderPassShader(_oitOpaqueRenderPassShader);
-    renderPassState->SetEnableDepthMask(true);
-    renderPassState->SetColorMask(HdRenderPassState::ColorMaskRGBA);
-    HdxRenderTask::Execute(ctx);
-
-    //
-    // Translucent pixels pass
-    //
-    extendedState->SetRenderPassShader(_oitTranslucentRenderPassShader);
-    renderPassState->SetEnableDepthMask(false);
-    renderPassState->SetColorMask(HdRenderPassState::ColorMaskNone);
-    HdxRenderTask::Execute(ctx);
-
-    //
-    // Post Execute Restore
-    //
-
-    if (oldMSAA) {
-        glEnable(GL_MULTISAMPLE);
+    // Render pass state overrides
+    {
+        extendedState->SetUseSceneMaterials(true);
+        // blending is relevant only for the oitResolve task.
+        extendedState->SetBlendEnabled(false);
+        extendedState->SetAlphaToCoverageEnabled(false);
+        extendedState->SetAlphaThreshold(0.f);
     }
 
-    if (!oldPointSmooth) {
-        glDisable(GL_POINT_SMOOTH);
+    // We render into an SSBO -- not MSAA compatible
+    renderPassState->SetMultiSampleEnabled(false);
+
+    //
+    // 1. Opaque pixels pass
+    // 
+    // Fragments that are opaque (alpha > 1.0) are rendered to the active
+    // framebuffer. Translucent fragments are discarded.
+    // This can reduce the data written to the OIT SSBO buffers because of
+    // improved depth testing.
+    //
+    {
+        extendedState->SetRenderPassShader(_oitOpaqueRenderPassShader);
+        renderPassState->SetEnableDepthMask(true);
+        renderPassState->SetColorMaskUseDefault(false);
+        renderPassState->SetColorMasks({HdRenderPassState::ColorMaskRGBA});
+
+        HdxRenderTask::Execute(ctx);
+    }
+
+    //
+    // 2. Translucent pixels pass
+    //
+    // Fill OIT SSBO buffers for the translucent fragments.  
+    //
+    {
+        extendedState->SetRenderPassShader(_oitTranslucentRenderPassShader);
+        renderPassState->SetEnableDepthMask(false);
+        renderPassState->SetColorMasks({HdRenderPassState::ColorMaskNone});
+        HdxRenderTask::Execute(ctx);
     }
 }
 

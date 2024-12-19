@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usdGeom/primvar.h"
@@ -28,16 +11,17 @@
 #include "pxr/usd/usd/pyConversions.h"
 #include "pxr/base/tf/pyResultConversions.h"
 
-#include <boost/python/class.hpp>
-#include <boost/python/operators.hpp>
-#include <boost/python/implicit.hpp>
+#include "pxr/external/boost/python/class.hpp"
+#include "pxr/external/boost/python/operators.hpp"
+#include "pxr/external/boost/python/implicit.hpp"
 
 #include <vector>
 
-using namespace boost::python;
 using std::vector;
 
 PXR_NAMESPACE_USING_DIRECTIVE
+
+using namespace pxr_boost::python;
 
 namespace {
 
@@ -100,7 +84,7 @@ _GetTimeSamplesInInterval(const UsdGeomPrimvar &self,
     return result;
 }
 
-static size_t __hash__(const UsdGeomPrimvar &self) { return hash_value(self); }
+static size_t __hash__(const UsdGeomPrimvar &self) { return TfHash{}(self); }
 
 // We override __getattribute__ for UsdGeomPrimvar to check object validity
 // and raise an exception instead of crashing from Python.
@@ -114,7 +98,7 @@ static object
 __getattribute__(object selfObj, const char *name) {
 
     // Allow attribute lookups if the attribute name starts with '__', or
-    // if the object's prim and attribute are both valid, or whitelist a few
+    // if the object's prim and attribute are both valid, or allow a few
     // methods if just the prim is valid, or an even smaller subset if neither
     // are valid.
     if ((name[0] == '_' && name[1] == '_') ||
@@ -123,8 +107,7 @@ __getattribute__(object selfObj, const char *name) {
          extract<UsdGeomPrimvar &>(selfObj)().GetAttr().GetPrim().IsValid()) ||
         // prim is valid, but attr is invalid, let a few things through.
         (extract<UsdGeomPrimvar &>(selfObj)().GetAttr().GetPrim().IsValid() &&
-         (strcmp(name, "IsDefined") == 0 ||
-          strcmp(name, "HasValue") == 0 ||
+         (strcmp(name, "HasValue") == 0 ||
           strcmp(name, "HasAuthoredValue") == 0 ||
           strcmp(name, "GetName") == 0 ||
           strcmp(name, "GetPrimvarName") == 0 ||
@@ -133,6 +116,7 @@ __getattribute__(object selfObj, const char *name) {
           strcmp(name, "GetNamespace") == 0 ||
           strcmp(name, "SplitName") == 0)) ||
         // prim and attr are both invalid, let almost nothing through.
+        strcmp(name, "IsDefined") == 0 ||
         strcmp(name, "GetAttr") == 0) {
         // Dispatch to object's __getattribute__.
         return (*_object__getattribute__)(selfObj, name);
@@ -171,6 +155,13 @@ void wrapUsdGeomPrimvar()
 
         .def("IsPrimvar", Primvar::IsPrimvar, arg("attr"))
         .staticmethod("IsPrimvar")
+
+        .def("IsValidPrimvarName", Primvar::IsValidPrimvarName, 
+                arg("name"))
+        .staticmethod("IsValidPrimvarName")
+        
+        .def("StripPrimvarsName", Primvar::StripPrimvarsName, arg("name"))
+        .staticmethod("StripPrimvarsName")
 
         .def("IsValidInterpolation", Primvar::IsValidInterpolation,
              arg("interpolation"))

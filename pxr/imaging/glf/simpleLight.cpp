@@ -1,31 +1,14 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 /// \file simpleLight.cpp
 
 #include "pxr/imaging/glf/simpleLight.h"
 
-#include "pxr/imaging/garch/gl.h"
+#include "pxr/imaging/garch/glApi.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -40,6 +23,7 @@ GlfSimpleLight::GlfSimpleLight(GfVec4f const & position) :
     _spotFalloff(0.0),
     _attenuation(1.0, 0.0, 0.0),
     _isCameraSpaceLight(false),
+    _hasIntensity(true),
     _hasShadow(false),
     _shadowResolution(512),
     _shadowBias(0.0),
@@ -49,16 +33,11 @@ GlfSimpleLight::GlfSimpleLight(GfVec4f const & position) :
     _transform(GfMatrix4d().SetIdentity()),
     _shadowMatrices(std::vector<GfMatrix4d>(1, GfMatrix4d().SetIdentity())),
     _isDomeLight(false),
-    _irradianceId(0),
-    _prefilterId(0),
-    _brdfId(0),
     _id()
 {
 }
 
-GlfSimpleLight::~GlfSimpleLight()
-{
-}
+GlfSimpleLight::~GlfSimpleLight() = default;
 
 GfMatrix4d const &
 GlfSimpleLight::GetTransform() const
@@ -168,6 +147,18 @@ void
 GlfSimpleLight::SetAttenuation(GfVec3f const & attenuation)
 {
     _attenuation = attenuation;
+}
+
+void
+GlfSimpleLight::SetHasIntensity(bool hasIntensity)
+{
+    _hasIntensity = hasIntensity;
+}
+
+bool
+GlfSimpleLight::HasIntensity() const
+{
+    return _hasIntensity;
 }
 
 bool
@@ -289,34 +280,45 @@ GlfSimpleLight::SetIsDomeLight(bool isDomeLight)
     _isDomeLight = isDomeLight;
 }
 
-uint32_t const & GlfSimpleLight::GetIrradianceId() const
+const SdfAssetPath &
+GlfSimpleLight::GetDomeLightTextureFile() const
 {
-    return _irradianceId;
+    return _domeLightTextureFile;
 }
 
-void GlfSimpleLight::SetIrradianceId(uint32_t const & irradianceId)
+void
+GlfSimpleLight::SetDomeLightTextureFile(const SdfAssetPath &path)
 {
-    _irradianceId = irradianceId;
+    _domeLightTextureFile = path;
 }
 
-uint32_t const & GlfSimpleLight::GetPrefilterId() const
+TfToken const &
+GlfSimpleLight::GetPostSurfaceIdentifier() const
 {
-    return _prefilterId;
+    return _postSurfaceIdentifier;
 }
 
-void GlfSimpleLight::SetPrefilterId(uint32_t const & prefilterId)
+std::string const &
+GlfSimpleLight::GetPostSurfaceShaderSource() const
 {
-    _prefilterId = prefilterId;
+    return _postSurfaceShaderSource;
 }
 
-uint32_t const & GlfSimpleLight::GetBrdfId() const
+
+VtUCharArray const &
+GlfSimpleLight::GetPostSurfaceShaderParams() const
 {
-    return _brdfId;
+    return _postSurfaceShaderParams;
 }
 
-void GlfSimpleLight::SetBrdfId(uint32_t const & brdfId)
+void
+GlfSimpleLight::SetPostSurfaceParams(TfToken const & identifier,
+                                     std::string const & shaderSource,
+                                     VtUCharArray const & shaderParams)
 {
-    _brdfId = brdfId;
+    _postSurfaceIdentifier = identifier;
+    _postSurfaceShaderSource = shaderSource;
+    _postSurfaceShaderParams = shaderParams;
 }
 
 // -------------------------------------------------------------------------- //
@@ -334,6 +336,7 @@ GlfSimpleLight::operator==(const GlfSimpleLight& other) const
         &&  _spotCutoff == other._spotCutoff
         &&  _spotFalloff == other._spotFalloff
         &&  _attenuation == other._attenuation
+        &&  _hasIntensity == other._hasIntensity
         &&  _hasShadow == other._hasShadow
         &&  _shadowResolution == other._shadowResolution
         &&  _shadowBias == other._shadowBias
@@ -344,9 +347,10 @@ GlfSimpleLight::operator==(const GlfSimpleLight& other) const
         &&  _shadowMatrices == other._shadowMatrices
         &&  _isCameraSpaceLight == other._isCameraSpaceLight
         &&  _isDomeLight == other._isDomeLight
-        &&  _irradianceId == other._irradianceId
-        &&  _prefilterId == other._prefilterId
-        &&  _brdfId == other._brdfId
+        &&  _domeLightTextureFile == other._domeLightTextureFile
+        &&  _postSurfaceIdentifier == other._postSurfaceIdentifier
+        &&  _postSurfaceShaderSource == other._postSurfaceShaderSource
+        &&  _postSurfaceShaderParams == other._postSurfaceShaderParams
         &&  _id == other._id;
 }
 
@@ -366,6 +370,7 @@ std::ostream& operator<<(std::ostream& out, const GlfSimpleLight& v)
         << v._spotCutoff
         << v._spotFalloff
         << v._attenuation
+        << v._hasIntensity
         << v._hasShadow
         << v._shadowResolution
         << v._shadowBias
@@ -375,9 +380,10 @@ std::ostream& operator<<(std::ostream& out, const GlfSimpleLight& v)
         << v._transform
         << v._isCameraSpaceLight
         << v._isDomeLight
-        << v._irradianceId
-        << v._prefilterId
-        << v._brdfId
+        << v._domeLightTextureFile
+        << v._postSurfaceIdentifier
+        << v._postSurfaceShaderSource
+        << v._postSurfaceShaderParams
         << v._id;
     for (auto const& m : v._shadowMatrices) {
         out << m;

@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_USD_PROPERTY_H
 #define PXR_USD_USD_PROPERTY_H
@@ -84,6 +67,24 @@ public:
     /// \sa UsdClipsAPI
     USD_API
     SdfPropertySpecHandleVector GetPropertyStack(
+        UsdTimeCode time = UsdTimeCode::Default()) const;
+
+    /// Returns a strength-ordered list of property specs that provide
+    /// opinions for this property paired with the cumulative layer offset from
+    /// the stage's root layer to the layer containing the property spec.
+    ///
+    /// This behaves exactly the same as UsdProperty::GetPropertyStack with the 
+    /// addition of providing the cumulative layer offset of each spec's layer.
+    ///
+    /// \note The results returned by this method are meant for debugging
+    /// and diagnostic purposes.  It is **not** advisable to retain a 
+    /// PropertyStack for the purposes of expedited value resolution for 
+    /// properties, since the makeup of an attribute's PropertyStack may
+    /// itself be time-varying.  To expedite repeated value resolution of
+    /// attributes, you should instead retain a \c UsdAttributeQuery .
+    USD_API
+    std::vector<std::pair<SdfPropertySpecHandle, SdfLayerOffset>> 
+    GetPropertyStackWithLayerOffsets(
         UsdTimeCode time = UsdTimeCode::Default()) const;
 
     /// Return this property's name with all namespace prefixes removed,
@@ -155,30 +156,6 @@ public:
     bool SetNestedDisplayGroups(
         const std::vector<std::string>& nestedGroups) const;
 
-    /// Return this property's display name (metadata).  This returns the
-    /// empty string if no display name has been set.
-    /// \sa SetDisplayName()
-    USD_API
-    std::string GetDisplayName() const;
-
-    /// Sets this property's display name (metadata).  Returns true on success.
-    ///
-    /// DisplayName is meant to be a descriptive label, not necessarily an
-    /// alternate identifier; therefore there is no restriction on which
-    /// characters can appear in it.
-    USD_API
-    bool SetDisplayName(const std::string& name) const;
-
-    /// Clears this property's display name (metadata) in the current EditTarget
-    /// (only).  Returns true on success.
-    USD_API
-    bool ClearDisplayName() const;
-
-    /// Returns true if displayName was explicitly authored and GetMetadata()
-    /// will return a meaningful value for displayName. 
-    USD_API
-    bool HasAuthoredDisplayName() const;
-
     /// Return true if this is a custom property (i.e., not part of a
     /// prim schema).
     ///
@@ -235,7 +212,10 @@ public:
     // --------------------------------------------------------------------- //
 
     /// Flattens this property to a property spec with the same name 
-    /// beneath the given \p parent prim in the current edit target.
+    /// beneath the given \p parent prim in the edit target of its owning stage.
+    ///
+    /// The \p parent prim may belong to a different stage than this property's 
+    /// owning stage.
     ///
     /// Flattening authors all authored resolved values and metadata for 
     /// this property into the destination property spec. If this property
@@ -256,15 +236,21 @@ public:
 
     /// \overload
     /// Flattens this property to a property spec with the given
-    /// \p propName beneath the given \p parent prim in the current
-    /// edit target.
+    /// \p propName beneath the given \p parent prim in the edit target of its 
+    /// owning stage.
+    ///
+    /// The \p parent prim may belong to a different stage than this property's 
+    /// owning stage.
     USD_API
     UsdProperty FlattenTo(const UsdPrim &parent,
                           const TfToken &propName) const;
 
     /// \overload
     /// Flattens this property to a property spec for the given
-    /// \p property in the current edit target.
+    /// \p property in the edit target of its owning prim's stage.
+    ///
+    /// The \p property owning prim may belong to a different stage than this 
+    /// property's owning stage.
     USD_API
     UsdProperty FlattenTo(const UsdProperty &property) const;
 
@@ -272,7 +258,11 @@ protected:
     template <class Derived>
     UsdProperty(_Null<Derived>) : UsdObject(_Null<Derived>()) {}
 
-    bool _GetTargets(SdfSpecType specType, SdfPathVector *out) const;
+    // Gets the targets of the given spec type. Returns true if an authored
+    // opinion is found and no composition errors occured. If foundErrors is
+    // provided, it will be set to true only if errors are encountered.
+    bool _GetTargets(SdfSpecType specType, SdfPathVector *out,
+                     bool *foundErrors = nullptr) const;
     
 private:
     friend class UsdAttribute;

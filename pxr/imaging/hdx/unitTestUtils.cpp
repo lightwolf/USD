@@ -1,25 +1,8 @@
 //
 // Copyright 2017 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 //
 #include "pxr/pxr.h"
@@ -29,7 +12,8 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hdx/selectionTracker.h"
 
-#include <boost/functional/hash.hpp>
+#include "pxr/base/tf/hash.h"
+
 #include <iostream>
 #include <unordered_map>
 #include <set>
@@ -51,15 +35,18 @@ _GetPartialHitHash(HdxPickHit const& hit)
 {
     size_t hash = 0;
 
-    boost::hash_combine(hash, hit.delegateId.GetHash());
-    boost::hash_combine(hash, hit.objectId.GetHash());
-    boost::hash_combine(hash, hit.instancerId.GetHash());
-    boost::hash_combine(hash, hit.instanceIndex);
+    hash = TfHash::Combine(
+        hash,
+        hit.delegateId.GetHash(),
+        hit.objectId.GetHash(),
+        hit.instancerId.GetHash(),
+        hit.instanceIndex
+    );
 
     return hash;
 }
 
-typedef std::unordered_map<size_t, AggregatedHit> AggregatedHits;
+using AggregatedHits = std::unordered_map<size_t, AggregatedHit>;
 
 // aggregates subprimitive hits to the same prim/instance
 static AggregatedHits
@@ -271,6 +258,8 @@ void
 Marquee::Draw(float width, float height, 
               GfVec2f const& startPos, GfVec2f const& endPos)
 {
+    glViewport(0, 0, width, height);
+
     glDisable(GL_DEPTH_TEST);
     glUseProgram(_program);
 

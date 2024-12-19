@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from __future__ import print_function
 
@@ -76,6 +59,14 @@ class TestPcpInstanceKey(unittest.TestCase):
         notAnInstanceKey = self._GetInstanceKey(cache, '/NotAnInstance')
         self.assertEqual(notAnInstanceKey, Pcp.InstanceKey())
 
+    def test_Hashing(self):
+        cache = self._LoadPcpCache("basic.sdf")
+
+        self.assertEqual(
+            hash(self._GetInstanceKey(cache, "/Set_1")),
+            hash(self._GetInstanceKey(cache, "/Set_1"))
+        )
+
     def test_Variants(self):
         """Test instance key functionality on asset
         structure involving references and variants."""
@@ -119,6 +110,67 @@ class TestPcpInstanceKey(unittest.TestCase):
         key1 = self._GetInstanceKey(cache, '/Set/SetA/Model')
         key2 = self._GetInstanceKey(cache, '/Set/SetB/Model')
         self.assertEqual(key1, key2)
+
+    def test_SubrootReferences(self):
+        """Test instance key functionality for subroot reference arcs, mainly
+        verifying that we incorporate nodes that are technically considered 
+        "ancestral" but must be considered as they are brought in through 
+        the subtree that is composed for direct subroot arc."""
+
+        cache = self._LoadPcpCache('subroot_arcs.sdf')
+
+        # For each instance it's useful to know the basic prim index graph
+        # ---> = direct reference
+        # -a-> = ancestral reference
+        # Paths in parentheses have no specs.
+        #
+        # Model_overrides/Looks is the spec that defines instanceable = true
+        # 
+        # Instances/Ref_Override_Looks 
+        #   ---> Model_overrides/Looks 
+        #     -a-> Model_source/Looks
+        key = self._GetInstanceKey(cache, '/Instances/Ref_Overrides_Looks')
+        # Instances/Ref_A_Looks 
+        #   ---> (Model_A/Looks) 
+        #     -a-> Model_overrides/Looks 
+        #       -a-> Model_source/Looks
+        keyA = self._GetInstanceKey(cache, '/Instances/Ref_A_Looks')
+        # Instances/Ref_B_Looks 
+        #   ---> Model_B/Looks 
+        #     -a-> Model_overrides/Looks 
+        #       -a-> Model_source/Looks
+        keyB = self._GetInstanceKey(cache, '/Instances/Ref_B_Looks')
+        # Instances/Ref_C_Looks 
+        #   ---> (Model_C/Looks) 
+        #     -a-> Model_B/Looks 
+        #       -a-> Model_overrides/Looks 
+        #         -a-> Model_source/Looks
+        keyC = self._GetInstanceKey(cache, '/Instances/Ref_C_Looks')
+
+        # The Ref_Override_Looks and Ref_A_Looks keys are the same because 
+        # Model_A/Looks provides no specs. The ancestral reference nodes are
+        # still accounted for because they're under a direct reference.
+        self.assertNotEqual(key, Pcp.InstanceKey())
+        self.assertEqual(key, keyA)
+
+        # The Ref_B_Looks and Ref_C_Looks keys are the same because 
+        # Model_C/Looks provides no specs but they differ from the Ref_A_Looks
+        # keys because Model_B/Looks does provide specs. The ancestral 
+        # reference nodes here are also under a direct reference and are 
+        # included.
+        self.assertNotEqual(keyB, Pcp.InstanceKey())
+        self.assertEqual(keyB, keyC)
+        self.assertNotEqual(keyA, keyB)
+
+        # Model_A/Looks
+        #   -a-> Model_overrides/Looks 
+        #     -a-> Model_source/Looks
+        notAnInstanceKey = self._GetInstanceKey(cache, '/Model_A/Looks')
+        # Verifying that Model_A/Looks itself is not even instanceable because
+        # its ancestral reference to Model_overrides/Looks is indeed ancestral
+        # only, so it is ignored for determining instanceable.
+        self.assertEqual(notAnInstanceKey, Pcp.InstanceKey())
+
 
 if __name__ == "__main__":
     unittest.main()

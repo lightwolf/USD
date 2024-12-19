@@ -2,25 +2,8 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 
 from __future__ import print_function
@@ -42,7 +25,7 @@ parser = argparse.ArgumentParser( \
 
 parser.add_argument('usdFiles', nargs='+')
 parser.add_argument('-o', '--out', action='store',
-                    help='specify the filename for the top-level result file, which also serves as base-name for the topology file.')
+                    help='specify the filename for the top-level result file, which also serves as base-name for the topology and manifest files.')
 parser.add_argument('-c', '--clipPath', action='store',
                     help='specify a prim path at which to begin stitching clip data.')
 parser.add_argument('-s', '--startTimeCode', action='store',
@@ -59,6 +42,10 @@ parser.add_argument('--clipSet', action='store',
                     help='specify a named clipSet in which to author clip metadata, so that multiple sets of clips can be applied on the same prim.')
 parser.add_argument('--activeOffset', action='store', required=False,
                     help='specify an offset for template-based clips, offsetting the frame number of each clip file.')
+parser.add_argument('--interpolateMissingClipValues', action='store_true',
+                    help=('specify whether values for clips without authored '
+                          'samples are interpolated from surrounding clips '
+                          'if no default value is authored in any clip.'))
 # useful for debugging with diffs
 parser.add_argument('-n', '--noComment', action='store_true',
                     help='do not write a comment specifying how the usd file was generated')
@@ -88,6 +75,12 @@ try:
         topologyLayerGenerated = True
         topologyLayer = Sdf.Layer.CreateNew(topologyLayerName)
 
+    manifestLayerName = UsdUtils.GenerateClipManifestName(results.out)
+    manifestLayer = Sdf.Layer.FindOrOpen(manifestLayerName)
+    if not manifestLayer:
+        manifestLayerGenerated = True
+        manifestLayer = Sdf.Layer.CreateNew(manifestLayerName)
+
     if results.startTimeCode:
         results.startTimeCode = float(results.startTimeCode)
 
@@ -112,14 +105,18 @@ try:
         _checkMissingTemplateArg('stride', results.stride)
 
         UsdUtils.StitchClipsTopology(topologyLayer, results.usdFiles)
+        UsdUtils.StitchClipsManifest(manifestLayer, topologyLayer, 
+                                     results.usdFiles, results.clipPath)
         UsdUtils.StitchClipsTemplate(outLayer, 
                                      topologyLayer,
+                                     manifestLayer,
                                      results.clipPath,
                                      results.templatePath,
                                      results.startTimeCode,
                                      results.endTimeCode,
                                      results.stride,
                                      results.activeOffset,
+                                     results.interpolateMissingClipValues,
                                      results.clipSet)
     else:
         if results.templatePath:
@@ -134,6 +131,7 @@ try:
 
         UsdUtils.StitchClips(outLayer, results.usdFiles, results.clipPath, 
                              results.startTimeCode, results.endTimeCode,
+                             results.interpolateMissingClipValues,
                              results.clipSet)
 
 
@@ -147,4 +145,6 @@ except Tf.ErrorException as e:
         os.remove(results.out)
     if topologyLayerGenerated and os.path.isfile(topologyLayerName):
         os.remove(topologyLayerName)
+    if manifestLayerGenerated and os.path.isfile(manifestLayerName):
+        os.remove(manifestLayerName)
     sys.exit(e)

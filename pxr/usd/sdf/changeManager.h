@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_SDF_CHANGE_MANAGER_H
 #define PXR_USD_SDF_CHANGE_MANAGER_H
@@ -32,7 +15,6 @@
 #include "pxr/usd/sdf/spec.h"
 #include "pxr/base/tf/singleton.h"
 
-#include <boost/noncopyable.hpp>
 #include <tbb/enumerable_thread_specific.h>
 #include <string>
 #include <vector>
@@ -41,6 +23,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 SDF_DECLARE_HANDLES(SdfLayer);
 
+class SdfChangeBlock;
 class SdfSpec;
 
 /// \class Sdf_ChangeManager
@@ -53,12 +36,24 @@ class SdfSpec;
 ///
 /// For now this class uses TfNotices to represent invalidations.
 ///
-class Sdf_ChangeManager : boost::noncopyable {
+class Sdf_ChangeManager {
+    Sdf_ChangeManager(const Sdf_ChangeManager&) = delete;
+    Sdf_ChangeManager& operator=(const Sdf_ChangeManager&) = delete;
 public:
     SDF_API
     static Sdf_ChangeManager& Get() {
         return TfSingleton<Sdf_ChangeManager>::GetInstance();
     }
+
+    /// Returns the current set of thread local changes that have been
+    /// collected by the change manager for \p layer. After this
+    /// function returns, the internal collection of changes for the layer
+    /// will be empty and no notifications for changes contained in the vector
+    /// returned by this function will be triggered when the outermost change
+    /// block goes out of scope. If there are no changes for \p layer the
+    /// returned changelist will be empty.
+    SDF_API
+    SdfChangeList ExtractLocalChanges(const SdfLayerHandle &layer);
 
     // Queue notifications.
     void DidReplaceLayerContent(const SdfLayerHandle &layer);
@@ -68,7 +63,7 @@ public:
     void DidChangeLayerResolvedPath(const SdfLayerHandle &layer);
     void DidChangeField(const SdfLayerHandle &layer,
                         const SdfPath & path, const TfToken &field,
-                        const VtValue & oldValue, const VtValue & newValue );
+                        VtValue && oldValue, const VtValue & newValue );
     void DidChangeAttributeTimeSamples(const SdfLayerHandle &layer,
                                        const SdfPath &attrPath);
 
@@ -81,33 +76,37 @@ public:
                        bool inert);
     void RemoveSpecIfInert(const SdfSpec&);
 
-    // Open/close change blocks. SdfChangeBlock provides stack-based management
-    // of change blocks and should be preferred over this API.
-    SDF_API
-    void OpenChangeBlock();
-    SDF_API
-    void CloseChangeBlock();
-
 private:
+    friend class SdfChangeBlock;
+    
+    struct _Data {
+        _Data();
+        SdfLayerChangeListVec changes;
+        SdfChangeBlock const *outermostBlock;
+        std::vector<SdfSpec> removeIfInert;
+    };
+
     Sdf_ChangeManager();
     ~Sdf_ChangeManager();
 
+    // Open a change block, and return a non-null pointer if this was the
+    // outermost change block.  The caller must only call _CloseChangeBlock if
+    // _OpenChangeBlock returned a non-null pointer, and pass it back.
+    SDF_API
+    void const *_OpenChangeBlock(SdfChangeBlock const *block);
+    SDF_API
+    void _CloseChangeBlock(SdfChangeBlock const *block, void const *openKey);
+
     void _SendNoticesForChangeList( const SdfLayerHandle & layer,
                                     const SdfChangeList & changeList );
-    void _SendNotices();
+    void _SendNotices(_Data *data);
 
-    void _ProcessRemoveIfInert();
+    void _ProcessRemoveIfInert(_Data *data);
 
     SdfChangeList &_GetListFor(SdfLayerChangeListVec &changeList,
                                SdfLayerHandle const &layer);
 
 private:
-    struct _Data {
-        _Data();
-        SdfLayerChangeListVec changes;
-        int changeBlockDepth;
-        std::vector<SdfSpec> removeIfInert;
-    };
 
     tbb::enumerable_thread_specific<_Data> _data;
 

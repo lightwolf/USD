@@ -2,25 +2,8 @@
 #
 # Copyright 2020 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 from __future__ import print_function
 
@@ -43,14 +26,9 @@ def _setRenderMode(appController, renderMode):
     appController._dataModel.viewSettings.renderMode = renderMode
     appController._stageView.updateView()
 
-# Take a shot of the viewport and save it to a file.
-def _takeShot(appController, fileName):
-    appController._stageView.updateView()
-    viewportShot = appController.GrabViewportShot()
-    viewportShot.save(fileName, "PNG")
-
 def _CreatePrimvar(prim, primvarName, primvarType, interpToken, value):
-    pv = prim.CreatePrimvar(primvarName, primvarType, interpToken)
+    pv = UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
+        primvarName, primvarType, interpToken)
     if not pv:
         print("Failed to create primvar", str(primvarName))
         return
@@ -62,7 +40,7 @@ def _RemovePrimvar(prim, primvarName):
 
 def _testAddRemovePrimvarUsedByMaterial(appController):
     _setRenderMode(appController, RenderModes.SMOOTH_SHADED)
-    _takeShot(appController, "start.png")
+    appController._takeShot("start.png")
     stage = appController._dataModel.stage
     prim = stage.GetPrimAtPath("/Scene/Geom/Plane")
     mesh = UsdGeom.Imageable(prim)
@@ -79,21 +57,21 @@ def _testAddRemovePrimvarUsedByMaterial(appController):
     # value (green) being used instead of the fallback (blue)
     _CreatePrimvar(mesh, 'myColor', Sdf.ValueTypeNames.Float3, 'constant',
         Gf.Vec3f(0.0, 1.0, 0.0))       
-    _takeShot(appController, "add_fallback_primvar_smooth.png")
+    appController._takeShot("add_fallback_primvar_smooth.png")
 
     # Change the display mode to ensure repr switching in Storm picks up the
     # primvar
     _setRenderMode(appController, RenderModes.FLAT_SHADED)
-    _takeShot(appController, "add_fallback_primvar_flat.png")
+    appController._takeShot("add_fallback_primvar_flat.png")
 
     # XXX Removing the primvar results in a resync in usdImaging, due to
     # limitations in Hydra Storm. This will change in the near future.
     # Removing the primvar should result in the fallback value being used (blue)
     _RemovePrimvar(prim, 'myColor')
-    _takeShot(appController, "remove_fallback_primvar_flat.png")
+    appController._takeShot("remove_fallback_primvar_flat.png")
 
     _setRenderMode(appController, RenderModes.WIREFRAME_ON_SURFACE)
-    _takeShot(appController, "remove_fallback_primvar_wireOnSurf.png")
+    appController._takeShot("remove_fallback_primvar_wireOnSurf.png")
 
 def _testAddRemovePrimvarNotUsedByMaterial(appController):
     _setRenderMode(appController, RenderModes.SMOOTH_SHADED)
@@ -112,11 +90,11 @@ def _testAddRemovePrimvarNotUsedByMaterial(appController):
     _CreatePrimvar(mesh, 'foo', Sdf.ValueTypeNames.Float, 'constant', 0.1)
     _CreatePrimvar(mesh, 'bar', Sdf.ValueTypeNames.Vector3fArray, 'vertex',
         Vt.Vec3fArray(8))
-    _takeShot(appController, "add_unused_primvars.png")
+    appController._takeShot("add_unused_primvars.png")
 
     _RemovePrimvar(prim, 'foo')
     _RemovePrimvar(prim, 'bar')
-    _takeShot(appController, "remove_unused_primvars.png")
+    appController._takeShot("remove_unused_primvars.png")
 
 # This test adds and removes primvars that are used/unused by the material.
 def testUsdviewInputFunction(appController):

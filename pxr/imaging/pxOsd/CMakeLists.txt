@@ -6,8 +6,7 @@ pxr_library(pxOsd
         tf
         gf
         vt
-        ${OPENSUBDIV_LIBRARIES}
-        ${Boost_PYTHON_LIBRARY}
+        ${OPENSUBDIV_OSDCPU_LIBRARY}
 
     INCLUDE_DIRS
         ${OPENSUBDIV_INCLUDE_DIR}
@@ -17,6 +16,7 @@ pxr_library(pxOsd
 
     PUBLIC_CLASSES
         meshTopology
+        meshTopologyValidation
         refinerFactory
         subdivTags
         tokens
@@ -27,7 +27,9 @@ pxr_library(pxOsd
     PYMODULE_CPPFILES
         module.cpp
         wrapMeshTopology.cpp
+        wrapMeshTopologyValidation.cpp
         wrapSubdivTags.cpp
+        wrapTokens.cpp
 
     PYMODULE_FILES
         __init__.py

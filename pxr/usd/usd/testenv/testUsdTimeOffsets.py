@@ -2,27 +2,11 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from __future__ import print_function
+from __future__ import division
 import sys, os, unittest
 from pxr import Sdf, Usd, Pcp, Vt, Tf, Gf
 
@@ -164,6 +148,14 @@ def BuildReferenceOffsets(rootLyr, testLyr, makePayloads=False):
                          makePayload=makePayloads)
                 for c in cases]
 
+    # If the layers have different tcps values, this will be factored in as an
+    # additional scale in the composed layer offset.
+    if rootLyr.timeCodesPerSecond != testLyr.timeCodesPerSecond:
+        tcpsScale = Sdf.LayerOffset(
+            scale=rootLyr.timeCodesPerSecond / testLyr.timeCodesPerSecond)
+        for p in adjPrims:
+            p.layerOffset = p.layerOffset * tcpsScale
+
     rootLyr.Save()
     testLyr.Save()
 
@@ -186,7 +178,11 @@ def BuildNestedReferenceOffsets(adjustedPrims, rootLyr, refLyr, makePayloads=Fal
         # ours so the verification code works. We're assuming that
         # SdLayerOffset operators are tested elsewhere.
         #
-        adjPrim.layerOffset = adjPrim.layerOffset * p.layerOffset
+        # If the layers have different tcps values, this will be factored in as
+        # an additional scale in the composed layer offset.
+        tcpsScale = Sdf.LayerOffset(
+            scale=rootLyr.timeCodesPerSecond / refLyr.timeCodesPerSecond)
+        adjPrim.layerOffset = adjPrim.layerOffset * tcpsScale * p.layerOffset
         adjPrims += [adjPrim]
 
     rootLyr.Save()
@@ -204,6 +200,7 @@ class TestUsdTimeOffsets(unittest.TestCase):
             testLyr = GenTestLayer("TestReferenceOffsets", fmt)
             rootLyr = Sdf.Layer.CreateNew("TestReferenceOffsets."+fmt)
             nestedRootLyr = Sdf.Layer.CreateNew("TestReferenceOffsetsNested."+fmt)
+            nestedRootLyr.timeCodesPerSecond = 48.0
 
             print("-"*80)
             print("Testing flat offsets:")
@@ -225,6 +222,7 @@ class TestUsdTimeOffsets(unittest.TestCase):
             testLyr = GenTestLayer("TestPayloadOffsets", fmt)
             rootLyr = Sdf.Layer.CreateNew("TestPayloadOffsets."+fmt)
             nestedRootLyr = Sdf.Layer.CreateNew("TestPayloadOffsetsNested."+fmt)
+            rootLyr.timeCodesPerSecond = 48.0
 
             print("-"*80)
             print("Testing flat offsets:")
@@ -274,9 +272,14 @@ class TestUsdTimeOffsets(unittest.TestCase):
             bazPayload = Sdf.PrimSpec(payloadLayer, 'Baz', Sdf.SpecifierDef)
 
             # make Foo reference Baz.
-            payloadOffset = Sdf.LayerOffset(scale=0.5, offset=-1.0)
+            payloadOffset = Sdf.LayerOffset(offset=-1.0)
             fooRoot.payloadList.Add(Sdf.Payload(payloadLayer.identifier,
                                                 bazPayload.path, payloadOffset))
+            # Set the payload layer to have a different tcps. The effective
+            # payloadOffset for verification below will have the effective scale
+            # from the tcps difference between layers.
+            payloadLayer.timeCodesPerSecond = 48.0
+            payloadOffset = payloadOffset * Sdf.LayerOffset(scale = 24.0 / 48.0)
 
             # Create a UsdStage, get 'Foo'.
             stage = Usd.Stage.Open(rootLayer)

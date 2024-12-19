@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_HD_ST_COMMAND_BUFFER_H
 #define PXR_IMAGING_HD_ST_COMMAND_BUFFER_H
@@ -29,27 +12,29 @@
 #include "pxr/imaging/hd/version.h"
 #include "pxr/imaging/hdSt/drawItemInstance.h"
 
-#include "pxr/base/gf/vec2f.h"
-#include "pxr/base/gf/matrix4f.h"
 #include "pxr/base/gf/matrix4d.h"
-
-#include <boost/shared_ptr.hpp>
 
 #include <memory>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-
+class HdRenderIndex;
 class HdStDrawItem;
 class HdStDrawItemInstance;
+class Hgi;
+class HgiGraphicsCmds;
 
 using HdStRenderPassStateSharedPtr = std::shared_ptr<class HdStRenderPassState>;
 using HdStResourceRegistrySharedPtr = 
         std::shared_ptr<class HdStResourceRegistry>;
 
-typedef boost::shared_ptr<class HdSt_DrawBatch> HdSt_DrawBatchSharedPtr;
-typedef std::vector<HdSt_DrawBatchSharedPtr> HdSt_DrawBatchSharedPtrVector;
+using HdDrawItemConstPtrVector = std::vector<class HdDrawItem const*>;
+using HdDrawItemConstPtrVectorSharedPtr
+    = std::shared_ptr<HdDrawItemConstPtrVector>;
+
+using HdSt_DrawBatchSharedPtr = std::shared_ptr<class HdSt_DrawBatch>;
+using HdSt_DrawBatchSharedPtrVector = std::vector<HdSt_DrawBatchSharedPtr>;
 
 /// \class HdStCommandBuffer
 ///
@@ -68,55 +53,65 @@ public:
 
     /// Prepare the command buffer for draw
     HDST_API
-    void PrepareDraw(HdStRenderPassStateSharedPtr const &renderPassState,
-                     HdStResourceRegistrySharedPtr const &resourceRegistry);
+    void PrepareDraw(HgiGraphicsCmds *gfxCmds,
+                     HdStRenderPassStateSharedPtr const &renderPassState,
+                     HdRenderIndex *renderIndex);
 
     /// Execute the command buffer
     HDST_API
-    void ExecuteDraw(HdStRenderPassStateSharedPtr const &renderPassState,
+    void ExecuteDraw(HgiGraphicsCmds *gfxCmds,
+                     HdStRenderPassStateSharedPtr const &renderPassState,
                      HdStResourceRegistrySharedPtr const &resourceRegistry);
-
-    /// Cull drawItemInstances based on passed in combined view and projection matrix
-    HDST_API
-    void FrustumCull(GfMatrix4d const &cullMatrix);
 
     /// Sync visibility state from RprimSharedState to DrawItemInstances.
     HDST_API
     void SyncDrawItemVisibility(unsigned visChangeCount);
-
-    /// Destructively swaps the contents of \p items with the internal list of
-    /// all draw items. Culling state is reset, with no items visible.
+ 
+    /// Sets the draw items to use for batching.
+    /// If the shared pointer or version is different, batches are rebuilt and
+    /// the batch version is updated.
     HDST_API
-    void SwapDrawItems(std::vector<HdStDrawItem const*>* items,
-                       unsigned currentBatchVersion);
+    void SetDrawItems(HdDrawItemConstPtrVectorSharedPtr const &drawItems,
+                      unsigned currentBatchVersion,
+                      Hgi const *hgi);
 
     /// Rebuild all draw batches if any underlying buffer array is invalidated.
     HDST_API
-    void RebuildDrawBatchesIfNeeded(unsigned currentBatchVersion);
+    void RebuildDrawBatchesIfNeeded(unsigned currentBatchVersion,
+                                    Hgi const *hgi);
 
     /// Returns the total number of draw items, including culled items.
-    size_t GetTotalSize() const { return _drawItems.size(); }
+    size_t GetTotalSize() const {
+        if (_drawItems) return _drawItems->size();
+        return 0;
+    }
 
     /// Returns the number of draw items, excluding culled items.
     size_t GetVisibleSize() const { return _visibleSize; }
 
     /// Returns the number of culled draw items.
-    size_t GetCulledSize() const { 
-        return _drawItems.size() - _visibleSize; 
+    size_t GetCulledSize() const {
+        if (_drawItems) {
+            return _drawItems->size() - _visibleSize; 
+        }
+        return 0;
     }
 
     HDST_API
     void SetEnableTinyPrimCulling(bool tinyPrimCulling);
 
 private:
-    void _RebuildDrawBatches();
+    void _RebuildDrawBatches(Hgi const *hgi);
+    
+    /// Cull drawItemInstances based on view frustum cull matrix
+    void _FrustumCullCPU(GfMatrix4d const &cullMatrix);
 
-    std::vector<HdStDrawItem const*> _drawItems;
+    HdDrawItemConstPtrVectorSharedPtr _drawItems;
     std::vector<HdStDrawItemInstance> _drawItemInstances;
     HdSt_DrawBatchSharedPtrVector _drawBatches;
     size_t _visibleSize;
-    unsigned _visChangeCount;
-    unsigned _batchVersion;
+    unsigned int _visChangeCount;
+    unsigned int _drawBatchesVersion;
 };
 
 

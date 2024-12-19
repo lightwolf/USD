@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdSkel/cacheImpl.h"
 
@@ -37,9 +20,7 @@
 #include "pxr/usd/usdSkel/root.h"
 #include "pxr/usd/usdSkel/utils.h"
 
-
 PXR_NAMESPACE_OPEN_SCOPE
-
 
 // ------------------------------------------------------------
 // UsdSkel_CacheImpl::WriteScope
@@ -76,21 +57,21 @@ UsdSkel_CacheImpl::ReadScope::FindOrCreateAnimQuery(const UsdPrim& prim)
 {
     TRACE_FUNCTION();
 
-    if(ARCH_UNLIKELY(!prim || !prim.IsActive()))
+    if (ARCH_UNLIKELY(!prim || !prim.IsActive()))
         return UsdSkelAnimQuery();
 
-    if(prim.IsInstanceProxy())
-        return FindOrCreateAnimQuery(prim.GetPrimInMaster());
+    if (prim.IsInstanceProxy())
+        return FindOrCreateAnimQuery(prim.GetPrimInPrototype());
 
     {
         _PrimToAnimMap::const_accessor a;
-        if(_cache->_animQueryCache.find(a, prim))
+        if (_cache->_animQueryCache.find(a, prim))
             return UsdSkelAnimQuery(a->second);
     }
 
     if (UsdSkelIsSkelAnimationPrim(prim)) {
         _PrimToAnimMap::accessor a;
-        if(_cache->_animQueryCache.insert(a, prim)) {
+        if (_cache->_animQueryCache.insert(a, prim)) {
             a->second = UsdSkel_AnimQueryImpl::New(prim);
         }
         return UsdSkelAnimQuery(a->second);
@@ -104,21 +85,21 @@ UsdSkel_CacheImpl::ReadScope::FindOrCreateSkelDefinition(const UsdPrim& prim)
 {
     TRACE_FUNCTION();
 
-    if(ARCH_UNLIKELY(!prim || !prim.IsActive()))
+    if (ARCH_UNLIKELY(!prim || !prim.IsActive()))
         return nullptr;
 
-    if(prim.IsInstanceProxy())
-        return FindOrCreateSkelDefinition(prim.GetPrimInMaster());
+    if (prim.IsInstanceProxy())
+        return FindOrCreateSkelDefinition(prim.GetPrimInPrototype());
 
     {
         _PrimToSkelDefinitionMap::const_accessor a;
-        if(_cache->_skelDefinitionCache.find(a, prim))
+        if (_cache->_skelDefinitionCache.find(a, prim))
             return a->second;
     }
 
-    if(prim.IsA<UsdSkelSkeleton>()) {
+    if (prim.IsA<UsdSkelSkeleton>()) {
         _PrimToSkelDefinitionMap::accessor a;
-        if(_cache->_skelDefinitionCache.insert(a, prim)) {
+        if (_cache->_skelDefinitionCache.insert(a, prim)) {
             a->second = UsdSkel_SkelDefinition::New(UsdSkelSkeleton(prim));
         }
         return a->second;
@@ -158,7 +139,7 @@ UsdSkelSkinningQuery
 UsdSkel_CacheImpl::ReadScope::GetSkinningQuery(const UsdPrim& prim) const
 {
     _PrimToSkinningQueryMap::const_accessor a;
-    if(_cache->_primSkinningQueryCache.find(a, prim))
+    if (_cache->_primSkinningQueryCache.find(a, prim))
         return a->second;
     return UsdSkelSkinningQuery();
 }
@@ -167,7 +148,7 @@ UsdSkel_CacheImpl::ReadScope::GetSkinningQuery(const UsdPrim& prim) const
 UsdSkelSkinningQuery
 UsdSkel_CacheImpl::ReadScope::_FindOrCreateSkinningQuery(
     const UsdPrim& skinnedPrim,
-    const SkinningQueryKey& key)
+    const _SkinningQueryKey& key)
 {
     UsdSkelSkeletonQuery skelQuery = FindOrCreateSkelQuery(key.skel);
     const UsdSkelAnimQuery& animQuery = skelQuery.GetAnimQuery();
@@ -178,13 +159,12 @@ UsdSkel_CacheImpl::ReadScope::_FindOrCreateSkinningQuery(
         skelQuery ? skelQuery.GetJointOrder() : VtTokenArray(),
         animQuery ? animQuery.GetBlendShapeOrder() : VtTokenArray(),
         key.jointIndicesAttr, key.jointWeightsAttr,
-        key.geomBindTransformAttr, key.jointsAttr,
+        key.skinningMethodAttr, key.geomBindTransformAttr, key.jointsAttr,
         key.blendShapesAttr, key.blendShapeTargetsRel);
 }
 
 
 namespace {
-
 
 /// Create a string representing an indent.
 std::string
@@ -193,12 +173,36 @@ _MakeIndent(size_t count, int indentSize=2)
     return std::string(count*indentSize, ' ');
 }
 
+/// If \p attr is an attribute on an instance proxy, return the attr on the
+/// instance prototype. Otherwise return the original attr.
+UsdAttribute
+_GetAttrInPrototype(const UsdAttribute& attr)
+{
+    if (attr && attr.GetPrim().IsInstanceProxy()) {
+        return attr.GetPrim().GetPrimInPrototype().GetAttribute(
+            attr.GetName());
+    }
+    return attr;
+}
+
+/// If \p rel is an attribute on an instance proxy, return the rel on the
+/// instance prototype. Otherwise return the original rel.
+UsdRelationship
+_GetRelInPrototype(const UsdRelationship& rel)
+{
+    if (rel && rel.GetPrim().IsInstanceProxy()) {
+        return rel.GetPrim().GetPrimInPrototype().GetRelationship(
+            rel.GetName());
+    }
+    return rel;
+}
 
 } // namespace
 
 
 bool
-UsdSkel_CacheImpl::ReadScope::Populate(const UsdSkelRoot& root)
+UsdSkel_CacheImpl::ReadScope::Populate(const UsdSkelRoot& root,
+                                       Usd_PrimFlagsPredicate predicate)
 {
     TRACE_FUNCTION();
 
@@ -210,15 +214,10 @@ UsdSkel_CacheImpl::ReadScope::Populate(const UsdSkelRoot& root)
         return false;
     }
 
-    std::vector<std::pair<SkinningQueryKey,UsdPrim> > stack(1);
+    std::vector<std::pair<_SkinningQueryKey,UsdPrim> > stack(1);
 
-    // TODO: Consider traversing instance proxies at this point.
-    // But when doing so, must ensure that UsdSkelBakeSkinning, et.al.,
-    // take instancing into account.
     const UsdPrimRange range =
-        UsdPrimRange::PreAndPostVisit(root.GetPrim(),
-                                      UsdPrimDefaultPredicate);
-                                      // UsdTraverseInstanceProxies());
+        UsdPrimRange::PreAndPostVisit(root.GetPrim(), predicate);
 
     for (auto it = range.begin(); it != range.end(); ++it) {
         
@@ -238,35 +237,79 @@ UsdSkel_CacheImpl::ReadScope::Populate(const UsdSkelRoot& root)
             it.PruneChildren();
             continue;
         }
-
-        // TODO: Consider testing whether or not the API has been applied first.
-        UsdSkelBindingAPI binding(*it);
-
-        SkinningQueryKey key(stack.back().first);
-
-        UsdSkelSkeleton skel;
-        if (binding.GetSkeleton(&skel))
-            key.skel = skel.GetPrim();
-
-        if (const UsdAttribute attr = binding.GetJointIndicesAttr())
-            key.jointIndicesAttr = attr;
-
-        if (const UsdAttribute attr = binding.GetJointWeightsAttr())
-            key.jointWeightsAttr = attr;
         
-        if (const UsdAttribute attr = binding.GetGeomBindTransformAttr())
-            key.geomBindTransformAttr = attr;
+        _SkinningQueryKey key(stack.back().first);
 
-        if (const UsdAttribute attr = binding.GetJointsAttr())
-            key.jointsAttr = attr;
+        // XXX: When looking for binding properties, only include
+        // properties that have an authored value. Properties with
+        // no authored value are treated as if they do not exist.
+        const bool hasSkelBindingAPI = it->HasAPI<UsdSkelBindingAPI>();
+        const bool isSkinnable = UsdSkelIsSkinnablePrim(*it);
+        
+        if (hasSkelBindingAPI) {
+            const UsdSkelBindingAPI binding(*it);
 
-        if (const UsdAttribute attr = binding.GetBlendShapesAttr())
-            key.blendShapesAttr = attr;
+            UsdSkelSkeleton skel;
+            if (binding.GetSkeleton(&skel)) {
+                key.skel = skel.GetPrim();
+            }
 
-        if (const UsdRelationship rel = binding.GetBlendShapeTargetsRel())
-            key.blendShapeTargetsRel = rel;
+            if (UsdAttribute attr = _GetAttrInPrototype(
+                    binding.GetJointIndicesAttr())) {
+                if (attr.HasAuthoredValue()) {
+                    key.jointIndicesAttr = std::move(attr);
+                }
+            }
 
-        if (UsdSkelIsSkinnablePrim(*it)) {
+            if (UsdAttribute attr = _GetAttrInPrototype(
+                    binding.GetJointWeightsAttr())) {
+                if (attr.HasAuthoredValue()) {
+                    key.jointWeightsAttr = std::move(attr);
+                }
+            }
+
+            if (UsdAttribute attr = binding.GetSkinningMethodAttr()) {
+                if (attr.HasAuthoredValue()) {
+                    key.skinningMethodAttr = std::move(attr);
+                }
+            }
+
+            if (UsdAttribute attr = _GetAttrInPrototype(
+                    binding.GetGeomBindTransformAttr())) {
+                if (attr.HasAuthoredValue()) {
+                    key.geomBindTransformAttr = std::move(attr);
+                }
+            }
+
+            if (UsdAttribute attr = _GetAttrInPrototype(
+                    binding.GetJointsAttr())) {
+                if (attr.HasAuthoredValue()) {
+                    key.jointsAttr = std::move(attr);
+                }
+            }
+
+            // Unlike other binding properties above, skel:blendShapes and
+            // skel:blendShapeTargets are *not* inherited, so we only check
+            // for them on skinnable prims.
+            if (isSkinnable) {
+                if (UsdAttribute attr = _GetAttrInPrototype(
+                        binding.GetBlendShapesAttr())) {
+                    if (attr.HasAuthoredValue()) {
+                        key.blendShapesAttr = std::move(attr);
+                    }
+                }
+
+                if (UsdRelationship rel = _GetRelInPrototype(
+                        binding.GetBlendShapeTargetsRel())) {
+                    if (rel.HasAuthoredTargets()) {
+                        key.blendShapeTargetsRel = std::move(rel);
+                    }
+                }
+            }
+        }
+
+        if (isSkinnable) {
+            // Append a skinning query using the resolved binding properties.
 
             _PrimToSkinningQueryMap::accessor a;
             if (_cache->_primSkinningQueryCache.insert(a, *it)) {
@@ -278,14 +321,13 @@ UsdSkel_CacheImpl::ReadScope::Populate(const UsdSkelRoot& root)
                 _MakeIndent(stack.size()).c_str(),
                 it->GetPath().GetText());
 
-            // TODO: How should nested skinnable primitives be handled?
-            // Should we prune traversal at this point?
+            // Don't allow skinnable prims to be nested.
+            it.PruneChildren();
         }
 
         stack.emplace_back(key, *it);
     }
     return true;
 }
-
 
 PXR_NAMESPACE_CLOSE_SCOPE

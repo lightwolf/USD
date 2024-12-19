@@ -1,25 +1,8 @@
 //
 // Copyright 2018 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #ifndef PXR_BASE_TRACE_REPORTER_H
@@ -28,45 +11,37 @@
 #include "pxr/pxr.h"
 
 #include "pxr/base/trace/api.h"
-#include "pxr/base/trace/collector.h"
 #include "pxr/base/trace/event.h"
 #include "pxr/base/trace/aggregateNode.h"
-#include "pxr/base/trace/key.h"
 #include "pxr/base/trace/reporterBase.h"
 
 #include "pxr/base/tf/declarePtrs.h"
 #include "pxr/base/tf/mallocTag.h"
 #include "pxr/base/tf/staticTokens.h"
 
-#include <tbb/concurrent_queue.h>
-
-#include <map>
-#include <ostream>
+#include <iosfwd>
 #include <string>
-#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 #define TRACE_REPORTER_TOKENS       \
     ((warningString, "WARNING:"))
 
-TF_DECLARE_PUBLIC_TOKENS(TraceReporterTokens, TRACE_REPORTER_TOKENS);
+TF_DECLARE_PUBLIC_TOKENS(TraceReporterTokens, TRACE_API, TRACE_REPORTER_TOKENS);
 
 
-TF_DECLARE_WEAK_AND_REF_PTRS(TraceAggregateNode);
 TF_DECLARE_WEAK_AND_REF_PTRS(TraceAggregateTree);
 TF_DECLARE_WEAK_AND_REF_PTRS(TraceEventNode);
 TF_DECLARE_WEAK_AND_REF_PTRS(TraceEventTree);
 
 TF_DECLARE_WEAK_AND_REF_PTRS(TraceReporter);
 
-class TraceAggregateNode;
 class TraceCollectionAvailable;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \class TraceReporter
 ///
-/// This class converters streams of TraceEvent objects into call trees which
+/// This class converts streams of TraceEvent objects into call trees which
 /// can then be used as a data source to a GUI or written out to a file.
 ///
 class TraceReporter : 
@@ -123,6 +98,28 @@ public:
 
     /// @}
 
+    /// \name Report Loading.
+    /// @{
+
+    /// Aggregate tree and its iteration count, parsed from a report.
+    struct ParsedTree {
+        TraceAggregateTreeRefPtr tree;
+        int iterationCount;  
+    };
+
+    /// Load an aggregate tree report from the \p stream, as written by 
+    /// Report().
+    ///
+    /// Since multiple reports may be appended to a given trace file, this will
+    /// return a vector of each tree and their iteration count. 
+    ///
+    /// This will multiply the parsed values for each aggregate tree by their 
+    /// iteration count.
+    TRACE_API static std::vector<ParsedTree> LoadReport(
+        std::istream &stream);
+
+    /// @}
+
     /// Returns the root node of the aggregated call tree.
     TRACE_API TraceAggregateNodePtr GetAggregateTreeRoot();
 
@@ -159,10 +156,7 @@ public:
     /// If we want to have multiple reporters per collector, this will need to
     /// be changed so that all reporters reporting on a collector update their
     /// respective trees. 
-    TRACE_API void UpdateAggregateTree();
-
-    /// Placeholder for UpdateAggregateTree().
-    TRACE_API void UpdateEventTree();
+    TRACE_API void UpdateTraceTrees();
     
     /// Clears event tree and counters.
     TRACE_API void ClearTree();
@@ -187,6 +181,14 @@ public:
     /// event reporting.
     TRACE_API bool GetFoldRecursiveCalls() const;
 
+    /// Set whether or not the reporter should adjust scope times for overhead
+    /// and noise.
+    TRACE_API void SetShouldAdjustForOverheadAndNoise(bool adjust);
+
+    /// Returns the current setting for addjusting scope times for overhead and
+    /// noise.
+    TRACE_API bool ShouldAdjustForOverheadAndNoise() const;
+
     /// @}
 
     /// Creates a valid TraceAggregateNode::Id object.
@@ -203,28 +205,17 @@ protected:
 private:
     void _ProcessCollection(const TraceReporterBase::CollectionPtr&) override;
     void _RebuildEventAndAggregateTrees();
-    void _PrintRecursionMarker(std::ostream &s, const std::string &label, 
-                               int indent);
-    void _PrintLineTimes(std::ostream &s, double inclusive, double exclusive,
-                    int count, const std::string& label, int indent,
-                    bool recursive_node, int iterationCount=1);
-    void _PrintNodeTimes(std::ostream &s, TraceAggregateNodeRefPtr node, 
-                        int indent, int iterationCount=1);
-    void _PrintLineCalls(std::ostream &s, int inclusive, int exclusive,
-                         int total, const std::string& label, int indent);
     void _PrintTimes(std::ostream &s);
 
-    std::string _GetKeyName(const TfToken&) const;
-
+private:
     std::string _label;
 
     bool _groupByFunction;
     bool _foldRecursiveCalls;
+    bool _shouldAdjustForOverheadAndNoise;
 
     TraceAggregateTreeRefPtr _aggregateTree;
     TraceEventTreeRefPtr _eventTree;
-
-    bool _buildEventTree;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

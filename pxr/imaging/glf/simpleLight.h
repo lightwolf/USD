@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_IMAGING_GLF_SIMPLE_LIGHT_H
 #define PXR_IMAGING_GLF_SIMPLE_LIGHT_H
@@ -32,6 +15,13 @@
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/usd/sdf/path.h"
+#include "pxr/usd/sdf/assetPath.h"
+
+#include "pxr/base/tf/token.h"
+#include "pxr/base/vt/array.h"
+#include "pxr/base/vt/dictionary.h"
+
+#include <string>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -124,10 +114,15 @@ public:
     void SetHasShadow(bool hasShadow);
 
     GLF_API
+    bool HasIntensity() const;
+    GLF_API
+    void SetHasIntensity(bool hasIntensity);
+
+    GLF_API
     bool IsCameraSpaceLight() const;
     GLF_API
-    void SetIsCameraSpaceLight(bool isCameraSpaceLight);
 
+    void SetIsCameraSpaceLight(bool isCameraSpaceLight);
     GLF_API
     SdfPath const & GetID() const;
     GLF_API
@@ -138,27 +133,42 @@ public:
     GLF_API
     void SetIsDomeLight(bool isDomeLight);
 
-    // the following Id's are GL resource handles for the precomputed textures
-    // created by HdStLight 
+    /// The path to the (unprocessed) environment map texture.
+    ///
+    /// All textures actually used by the dome light (irradiance, prefilter,
+    /// brdf) are derived from this texture in a pre-calculation step.
     GLF_API
-    uint32_t const & GetIrradianceId() const;
+    const SdfAssetPath &GetDomeLightTextureFile() const;
     GLF_API
-    void SetIrradianceId(uint32_t const & irradianceId);
+    void SetDomeLightTextureFile(const SdfAssetPath &);
+
+
+    /// \name Post Surface Lighting
+    ///
+    /// Post surface lighting is evaluated after other surface illumination
+    /// and can be used to implement lighting effects beyond those that
+    /// correspond to basic positional lighting, e.g. range base fog, etc.
+    ///
+    /// @{
 
     GLF_API
-    uint32_t const & GetPrefilterId() const;
+    TfToken const & GetPostSurfaceIdentifier() const;
     GLF_API
-    void SetPrefilterId(uint32_t const & prefilterId);
+    std::string const & GetPostSurfaceShaderSource() const;
+    GLF_API
+    VtUCharArray const & GetPostSurfaceShaderParams() const;
 
     GLF_API
-    uint32_t const & GetBrdfId() const;
-    GLF_API
-    void SetBrdfId(uint32_t const & brdfId);
+    void SetPostSurfaceParams(TfToken const & identifier,
+                              std::string const & shaderSource,
+                              VtUCharArray const & shaderParams);
 
+    /// @}
+                       
     GLF_API
-    bool operator ==(GlfSimpleLight const & other) const;
+    bool operator ==(GlfSimpleLight const &other) const;
     GLF_API
-    bool operator !=(GlfSimpleLight const & other) const;
+    bool operator !=(GlfSimpleLight const &other) const;
 
 private:
     GLF_API
@@ -173,6 +183,7 @@ private:
     float _spotFalloff;
     GfVec3f _attenuation;
     bool _isCameraSpaceLight;
+    bool _hasIntensity;
 
     bool _hasShadow;
     int _shadowResolution;
@@ -186,10 +197,12 @@ private:
 
     // domeLight specific parameters 
     bool _isDomeLight;
-    // handles for the resource bindings from HdStSimpleLightingShader
-    uint32_t _irradianceId; // pre-computed irradiance map
-    uint32_t _prefilterId;  // pre-computed preFiltered map
-    uint32_t _brdfId;       // pre-computed BRDF look up texture
+    // path to texture for dome light.
+    SdfAssetPath _domeLightTextureFile;
+
+    TfToken _postSurfaceIdentifier;
+    std::string _postSurfaceShaderSource;
+    VtUCharArray _postSurfaceShaderParams;
 
     SdfPath _id;
 };

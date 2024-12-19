@@ -1,33 +1,18 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 ///
 /// \file pxOsd/meshTopology.h
 ///
 
 #include "pxr/imaging/pxOsd/meshTopology.h"
+#include "pxr/imaging/pxOsd/meshTopologyValidation.h"
 #include "pxr/imaging/pxOsd/tokens.h"
 
+#include "pxr/base/arch/hash.h"
 #include "pxr/base/trace/trace.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/debug.h"
@@ -43,18 +28,10 @@ PxOsdMeshTopology::PxOsdMeshTopology() :
     _holeIndices(),
     _subdivTags() { }
 
-PxOsdMeshTopology::PxOsdMeshTopology(PxOsdMeshTopology const & src) :
-    _scheme(src._scheme),
-    _orientation(src._orientation),
-    _faceVertexCounts(src._faceVertexCounts),
-    _faceVertexIndices(src._faceVertexIndices),
-    _holeIndices(src._holeIndices),
-    _subdivTags(src._subdivTags) { }
-
-PxOsdMeshTopology::PxOsdMeshTopology(TfToken scheme,
-                                     TfToken orientation,
-                                     VtIntArray faceVertexCounts,
-                                     VtIntArray faceVertexIndices) :
+PxOsdMeshTopology::PxOsdMeshTopology(TfToken const& scheme,
+                                     TfToken const& orientation,
+                                     VtIntArray const& faceVertexCounts,
+                                     VtIntArray const& faceVertexIndices) :
     _scheme(scheme),
     _orientation(orientation),
     _faceVertexCounts(faceVertexCounts),
@@ -62,24 +39,43 @@ PxOsdMeshTopology::PxOsdMeshTopology(TfToken scheme,
     _holeIndices(),
     _subdivTags() { }
 
-PxOsdMeshTopology::PxOsdMeshTopology(TfToken scheme,
-                                     TfToken orientation,
-                                     VtIntArray faceVertexCounts,
-                                     VtIntArray faceVertexIndices,
-                                     VtIntArray holeIndices) :
+PxOsdMeshTopology::PxOsdMeshTopology(TfToken const& scheme,
+                                     TfToken const& orientation,
+                                     VtIntArray const& faceVertexCounts,
+                                     VtIntArray const& faceVertexIndices,
+                                     VtIntArray const& holeIndices) :
+    _scheme(scheme),
+    _orientation(orientation),
+    _faceVertexCounts(faceVertexCounts),
+    _faceVertexIndices(faceVertexIndices),
+    _holeIndices(holeIndices),
+    _subdivTags() { }
+
+PxOsdMeshTopology::PxOsdMeshTopology(TfToken const& scheme,
+                                     TfToken const& orientation,
+                                     VtIntArray const& faceVertexCounts,
+                                     VtIntArray const& faceVertexIndices,
+                                     VtIntArray const& holeIndices,
+                                     PxOsdSubdivTags const& subdivTags) :
+    _scheme(scheme),
+    _orientation(orientation),
+    _faceVertexCounts(faceVertexCounts),
+    _faceVertexIndices(faceVertexIndices),
+    _holeIndices(holeIndices),
+    _subdivTags(subdivTags) { }
+
+PxOsdMeshTopology::PxOsdMeshTopology(TfToken const& scheme,
+                                     TfToken const& orientation,
+                                     VtIntArray const& faceVertexCounts,
+                                     VtIntArray const& faceVertexIndices,
+                                     PxOsdSubdivTags const& subdivTags) :
     _scheme(scheme),
     _orientation(orientation),
     _faceVertexCounts(faceVertexCounts),
     _faceVertexIndices(faceVertexIndices),
     _holeIndices(),
-    _subdivTags()
-{
-    SetHoleIndices(holeIndices);
-}
-
-
-PxOsdMeshTopology::~PxOsdMeshTopology() { }
-
+    _subdivTags(subdivTags)
+{ }
 
 PxOsdMeshTopology::ID
 PxOsdMeshTopology::ComputeHash() const {
@@ -109,6 +105,19 @@ PxOsdMeshTopology::operator==(PxOsdMeshTopology const &other) const {
             _faceVertexIndices == other._faceVertexIndices  && 
             _subdivTags == other._subdivTags                && 
             _holeIndices == other._holeIndices);
+}
+
+PxOsdMeshTopologyValidation
+PxOsdMeshTopology::Validate() const
+{
+    TRACE_FUNCTION();
+    if (_validated.value){
+        return PxOsdMeshTopologyValidation();
+    }
+
+    PxOsdMeshTopologyValidation validation(*this);
+    _validated.value.store(bool(validation));
+    return validation;
 }
 
 std::ostream&

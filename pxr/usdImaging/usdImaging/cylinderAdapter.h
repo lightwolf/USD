@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_IMAGING_USD_IMAGING_CYLINDER_ADAPTER_H
 #define PXR_USD_IMAGING_USD_IMAGING_CYLINDER_ADAPTER_H
@@ -39,15 +22,48 @@ class UsdGeomCylinder;
 ///
 /// Delegate support for UsdGeomCylinder.
 ///
-class UsdImagingCylinderAdapter : public UsdImagingGprimAdapter {
+class UsdImagingCylinderAdapter : public UsdImagingGprimAdapter
+{
 public:
-    typedef UsdImagingGprimAdapter BaseAdapter;
+    using BaseAdapter = UsdImagingGprimAdapter;
+
+    // Number of radial segments on a circular cross-section of the cylinder.
+    static constexpr size_t numRadial = 10;
 
     UsdImagingCylinderAdapter()
         : UsdImagingGprimAdapter()
     {}
     USDIMAGING_API
-    virtual ~UsdImagingCylinderAdapter();
+    ~UsdImagingCylinderAdapter() override;
+
+    // ---------------------------------------------------------------------- //
+    /// \name Scene Index Support
+    // ---------------------------------------------------------------------- //
+
+    USDIMAGING_API
+    TfTokenVector GetImagingSubprims(UsdPrim const& prim) override;
+
+    USDIMAGING_API
+    TfToken GetImagingSubprimType(
+            UsdPrim const& prim,
+            TfToken const& subprim) override;
+
+    USDIMAGING_API
+    HdContainerDataSourceHandle GetImagingSubprimData(
+            UsdPrim const& prim,
+            TfToken const& subprim,
+            const UsdImagingDataSourceStageGlobals &stageGlobals) override;
+
+    USDIMAGING_API
+    HdDataSourceLocatorSet InvalidateImagingSubprim(
+            UsdPrim const& prim,
+            TfToken const& subprim,
+            TfTokenVector const& properties,
+            UsdImagingPropertyInvalidationType invalidationType) override;
+
+    // ---------------------------------------------------------------------- //
+    /// \name Initialization
+    // ---------------------------------------------------------------------- //
 
     USDIMAGING_API
     SdfPath Populate(
@@ -57,6 +73,11 @@ public:
 
     USDIMAGING_API
     bool IsSupported(UsdImagingIndexProxy const* index) const override;
+
+    USDIMAGING_API
+    HdDirtyBits ProcessPropertyChange(UsdPrim const& prim,
+                                      SdfPath const& cachePath,
+                                      TfToken const& propertyName) override;
 
     // ---------------------------------------------------------------------- //
     /// \name Parallel Setup and Resolve
@@ -71,30 +92,21 @@ public:
         UsdImagingInstancerContext const* instancerContext = nullptr) 
             const override;
 
-    /// Thread Safe.
+    // ---------------------------------------------------------------------- //
+    /// \name Data access
+    // ---------------------------------------------------------------------- //
+
     USDIMAGING_API
-    void UpdateForTime(
-        UsdPrim const& prim,
-        SdfPath const& cachePath, 
-        UsdTimeCode time,
-        HdDirtyBits requestedBits,
-        UsdImagingInstancerContext const* instancerContext = nullptr) 
-            const override;
+    VtValue GetTopology(UsdPrim const& prim,
+                        SdfPath const& cachePath,
+                        UsdTimeCode time) const override;
 
     // Override the implemetation in GprimAdapter since we don't fetch the
     // points attribute for implicit primitives.
     USDIMAGING_API
     VtValue GetPoints(
         UsdPrim const& prim,
-        SdfPath const& cachePath,
         UsdTimeCode time) const override;
-
-    USDIMAGING_API
-    static VtValue GetMeshPoints(UsdPrim const& prim,
-                                 UsdTimeCode time);
-
-    USDIMAGING_API
-    static VtValue GetMeshTopology();
 };
 
 

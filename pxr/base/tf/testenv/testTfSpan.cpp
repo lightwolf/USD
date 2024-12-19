@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -116,6 +99,18 @@ int main(int argc, char** argv)
         Tf_TestSpanMatchesContainer(span, constData);
     }
 
+    // Test element accessors.
+    {
+        const TfSpan<const int> span(data);
+
+        for (size_t i = 0; i < data.size(); ++i) {
+            TF_AXIOM(span[i] == data[i]);
+        }
+
+        TF_AXIOM(span.front() == data.front());
+        TF_AXIOM(span.back() == data.back());
+    }
+
     // Test subspans.
     {
         // Should be able to construct subspans from a constant span.
@@ -132,6 +127,18 @@ int main(int argc, char** argv)
         const std::vector<int> expectedSubspan2({3,4});
         TF_AXIOM(std::equal(subspan2.begin(), subspan2.end(),   
                             expectedSubspan2.begin()));
+
+        // Test first.
+        TfSpan<const int> subspan3 = span.first(2);
+        const std::vector<int> expectedSubspan3({1,2});
+        TF_AXIOM(std::equal(subspan3.begin(), subspan3.end(),
+                            expectedSubspan3.begin()));
+
+        // Test last.
+        TfSpan<const int> subspan4 = span.last(2);
+        const std::vector<int> expectedSubspan4({4,5});
+        TF_AXIOM(std::equal(subspan4.begin(), subspan4.end(),
+                            expectedSubspan4.begin()));
     }
 
     // Test span edits.

@@ -2,25 +2,8 @@
 #
 # Copyright 2017 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 
 from __future__ import print_function
 
@@ -38,7 +21,7 @@ class TestUsdShadeBinding(unittest.TestCase):
         lw1 = UsdShade.Material.Define(s, "/weaker/look1")
         lw2 = UsdShade.Material.Define(s, "/weaker/look2")
         gpw = s.OverridePrim("/weaker/gprim")
-        UsdShade.MaterialBindingAPI(gpw).Bind(lw1)
+        UsdShade.MaterialBindingAPI.Apply(gpw).Bind(lw1)
         self.assertEqual(
             UsdShade.MaterialBindingAPI(gpw).GetDirectBindingRel().GetTargets(),
             [Sdf.Path("/weaker/look1")])
@@ -46,7 +29,7 @@ class TestUsdShadeBinding(unittest.TestCase):
         ls1 = UsdShade.Material.Define(s, "/stronger/look1")
         ls2 = UsdShade.Material.Define(s, "/stronger/look2")
         gps = s.OverridePrim("/stronger/gprim")
-        UsdShade.MaterialBindingAPI(gps).Bind(ls2)
+        UsdShade.MaterialBindingAPI.Apply(gps).Bind(ls2)
         self.assertEqual(
             UsdShade.MaterialBindingAPI(gps).GetDirectBindingRel().GetTargets(), 
             [Sdf.Path("/stronger/look2")])
@@ -83,7 +66,7 @@ class TestUsdShadeBinding(unittest.TestCase):
         gprim = stage.OverridePrim("/World/Gprim")
         self.assertTrue(gprim)
 
-        gprimBindingAPI = UsdShade.MaterialBindingAPI(gprim)
+        gprimBindingAPI = UsdShade.MaterialBindingAPI.Apply(gprim)
         self.assertFalse(gprimBindingAPI.ComputeBoundMaterial()[0])
         gprimBindingAPI.Bind(look)
         (mat, rel) = gprimBindingAPI.ComputeBoundMaterial()
@@ -102,7 +85,7 @@ class TestUsdShadeBinding(unittest.TestCase):
         gprim = stage.DefinePrim("/World/gprim")
 
         UsdShade.MaterialBindingAPI(over).UnbindDirectBinding()
-        UsdShade.MaterialBindingAPI(gprim).Bind(look)
+        UsdShade.MaterialBindingAPI.Apply(gprim).Bind(look)
         # This will compose in gprim's binding, but should still be blocked
         over.GetInherits().AddInherit("/World/gprim")
         self.assertFalse(UsdShade.MaterialBindingAPI(over).ComputeBoundMaterial()[0])

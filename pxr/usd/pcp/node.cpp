@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 
 #include "pxr/pxr.h"
@@ -41,12 +24,6 @@ PcpNodeRef::operator<(const PcpNodeRef& rhs) const
     return _graph < rhs._graph;
 }
 
-PcpPrimIndex_GraphPtr 
-PcpNodeRef::GetOwningGraph() const
-{
-    return TfCreateWeakPtr(_graph);
-}
-
 void* 
 PcpNodeRef::GetUniqueIdentifier() const
 {
@@ -55,15 +32,17 @@ PcpNodeRef::GetUniqueIdentifier() const
 
 PcpNodeRef
 PcpNodeRef::InsertChildSubgraph(
-    const PcpPrimIndex_GraphPtr& subgraph, const PcpArc& arc)
+    const PcpPrimIndex_GraphRefPtr &subgraph, const PcpArc &arc,
+    PcpErrorBasePtr *error)
 {
-    return _graph->InsertChildSubgraph(*this, subgraph, arc);
+    return _graph->InsertChildSubgraph(*this, subgraph, arc, error);
 }
 
 PcpNodeRef 
-PcpNodeRef::InsertChild(const PcpLayerStackSite& site, const PcpArc& arc)
+PcpNodeRef::InsertChild(const PcpLayerStackSite& site, const PcpArc& arc,
+    PcpErrorBasePtr *error)
 {
-    return _graph->InsertChildNode(*this, site, arc);
+    return _graph->InsertChildNode(*this, site, arc, error);
 }
 
 PcpNodeRef
@@ -127,35 +106,138 @@ PCP_DEFINE_GET_API(const PcpMapExpression&, GetMapToRoot, mapToRoot);
 
 PCP_DEFINE_API(bool, HasSymmetry, SetHasSymmetry, smallInts.hasSymmetry);
 PCP_DEFINE_API(SdfPermission, GetPermission, SetPermission, smallInts.permission);
-PCP_DEFINE_API(bool, IsCulled, SetCulled, smallInts.culled);
-PCP_DEFINE_API(bool, IsRestricted, SetRestricted, smallInts.permissionDenied);
+PCP_DEFINE_API(bool, IsRestricted, _SetRestricted, smallInts.permissionDenied);
 
-PCP_DEFINE_SET_API(bool, SetInert, smallInts.inert);
+PCP_DEFINE_SET_API(bool, _SetInert, smallInts.inert);
 
-PCP_DEFINE_GET_NODE_API(size_t, _GetParentIndex, smallInts.arcParentIndex);
-PCP_DEFINE_GET_NODE_API(size_t, _GetOriginIndex, smallInts.arcOriginIndex);
+PCP_DEFINE_GET_NODE_API(size_t, _GetParentIndex, indexes.arcParentIndex);
+PCP_DEFINE_GET_NODE_API(size_t, _GetOriginIndex, indexes.arcOriginIndex);
 PCP_DEFINE_GET_API(const PcpLayerStackRefPtr&, GetLayerStack, layerStack);
+
+bool
+PcpNodeRef::IsCulled() const
+{
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    return _graph->_unshared[_nodeIdx].culled;
+}
+
+void
+PcpNodeRef::SetCulled(bool culled)
+{
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    
+    const bool wasCulled = _graph->_unshared[_nodeIdx].culled;
+    if (culled == wasCulled) {
+        return;
+    }
+
+    // Have to set finalized to false if we cull anything.
+    if (culled) {
+        _graph->_finalized = false;
+    }
+
+    // If we've culled this node, we've definitely restricted contributions.
+    // If we've unculled this node, some other flags may be restriction
+    // contributions, so we don't know.
+    _RecordRestrictionDepth(
+        culled ? _Restricted::Yes : _Restricted::Unknown);
+
+    _graph->_unshared[_nodeIdx].culled = culled;
+}
+
+void
+PcpNodeRef::SetRestricted(bool restricted)
+{
+    const bool wasRestricted = IsRestricted();
+    _SetRestricted(restricted);
+    if (restricted != wasRestricted) {
+        // If we set this node to restricted, we've definitely restricted
+        // contributions. If we've unset restricted, some other flags
+        // may be restricting contributions, so we don't know.
+        _RecordRestrictionDepth(
+            restricted ? _Restricted::Yes : _Restricted::Unknown);
+    }
+}
+
+void
+PcpNodeRef::SetInert(bool inert)
+{
+    const bool wasInert = IsInert();
+    _SetInert(inert);
+    if (inert != wasInert) {
+        // If we set this node to inert, we've definitely restricted
+        // contributions. If we've unset inert-ness, some other flags
+        // may be restricting contributions, so we don't know.
+        _RecordRestrictionDepth(
+            inert ? _Restricted::Yes : _Restricted::Unknown);
+    }
+}
+
+void
+PcpNodeRef::_RecordRestrictionDepth(_Restricted isRestricted)
+{
+    // Determine if contributions have been restricted so we can
+    // figure out what to record for the restriction depth. We
+    // can avoid doing this extra check if the caller knows they
+    // restricted contributions.
+    const bool contributionRestricted = 
+        isRestricted == _Restricted::Yes || !CanContributeSpecs();
+
+    auto& currDepth = _graph->_unshared[_nodeIdx].restrictionDepth;
+
+    if (!contributionRestricted) {
+        currDepth = 0;
+    }
+    else {
+        size_t newDepth = GetPath().GetPathElementCount();
+
+        // XXX:
+        // This should result in a "capacity exceeded" composition error
+        // instead of just a warning.
+        if (auto maxDepth =
+            std::numeric_limits<std::decay_t<decltype(currDepth)>>::max();
+            newDepth > maxDepth) {
+            TF_WARN("Maximum restriction namespace depth exceeded");
+            newDepth = maxDepth;
+        }
+
+        currDepth = newDepth;
+    }
+}
+
+bool
+PcpNodeRef::IsDueToAncestor() const
+{
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    return _graph->_unshared[_nodeIdx].isDueToAncestor;
+}
+
+void
+PcpNodeRef::SetIsDueToAncestor(bool isDueToAncestor)
+{
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    _graph->_unshared[_nodeIdx].isDueToAncestor = isDueToAncestor;
+}
 
 bool
 PcpNodeRef::HasSpecs() const
 {
-    // XXX: This VERIFY is too expensive here.
-    //TF_VERIFY(_nodeIdx < _graph->_nodeHasSpecs.size());
-    return _graph->_nodeHasSpecs[_nodeIdx];
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    return _graph->_unshared[_nodeIdx].hasSpecs;
 }
 
 void
 PcpNodeRef::SetHasSpecs(bool hasSpecs)
 {
-    TF_VERIFY(_nodeIdx < _graph->_nodeHasSpecs.size());
-    _graph->_nodeHasSpecs[_nodeIdx] = hasSpecs;
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    _graph->_unshared[_nodeIdx].hasSpecs = hasSpecs;
 }
 
 const SdfPath& 
 PcpNodeRef::GetPath() const
 {
-    TF_VERIFY(_nodeIdx < _graph->_nodeSitePaths.size());
-    return _graph->_nodeSitePaths[_nodeIdx];
+    TF_DEV_AXIOM(_nodeIdx < _graph->_unshared.size());
+    return _graph->_unshared[_nodeIdx].sitePath;
 }
 
 PcpLayerStackSite
@@ -174,8 +256,7 @@ bool
 PcpNodeRef::IsInert() const
 {
     const PcpPrimIndex_Graph::_Node& node = _graph->_GetNode(_nodeIdx);
-    bool inert = node.smallInts.inert, culled = node.smallInts.culled;
-    return inert || culled;
+    return node.smallInts.inert || _graph->_unshared[_nodeIdx].culled;
 }
 
 bool 
@@ -191,8 +272,20 @@ PcpNodeRef::CanContributeSpecs() const
     // so avoiding that overhead for the slight obfuscation is justified.
 
     const PcpPrimIndex_Graph::_Node& node = _graph->_GetNode(_nodeIdx);
-    return !(node.smallInts.inert || node.smallInts.culled) &&
-        (!node.smallInts.permissionDenied || _graph->_data->usd);
+    return !(node.smallInts.inert || _graph->_unshared[_nodeIdx].culled) &&
+        (!node.smallInts.permissionDenied || _graph->IsUsd());
+}
+
+size_t
+PcpNodeRef::GetSpecContributionRestrictedDepth() const
+{
+    return _graph->_unshared[_nodeIdx].restrictionDepth;
+}
+
+void
+PcpNodeRef::SetSpecContributionRestrictedDepth(size_t depth)
+{
+    _graph->_unshared[_nodeIdx].restrictionDepth = depth;
 }
 
 int
@@ -206,17 +299,11 @@ PcpNodeRef::GetDepthBelowIntroduction() const
         - GetNamespaceDepth();
 }
 
-bool
-PcpNodeRef::IsDueToAncestor() const
+static SdfPath 
+_GetPathAtIntroDepth(const SdfPath &path, int depthBelowIntro)
 {
-    return GetDepthBelowIntroduction() > 0;
-}
-
-SdfPath
-PcpNodeRef::GetPathAtIntroduction() const
-{
-    SdfPath pathAtIntroduction = GetPath();
-    for (int depth = GetDepthBelowIntroduction(); depth; --depth) {
+    SdfPath pathAtIntroduction = path;
+    for ( ; depthBelowIntro; --depthBelowIntro) {
         while (pathAtIntroduction.IsPrimVariantSelectionPath()) {
             // Skip over variant selections, since they do not
             // constitute levels of namespace depth. We do not simply
@@ -232,28 +319,28 @@ PcpNodeRef::GetPathAtIntroduction() const
 }
 
 SdfPath
+PcpNodeRef::GetPathAtIntroduction() const
+{
+    return _GetPathAtIntroDepth(GetPath(), GetDepthBelowIntroduction());
+}
+
+SdfPath
 PcpNodeRef::GetIntroPath() const
 {
     // Start with the parent node's current path.
     const PcpNodeRef parent = GetParentNode();
     if (!parent)
         return SdfPath::AbsoluteRootPath();
-    SdfPath introPath = parent.GetPath();
 
-    // Walk back up to the depth where this child was introduced.
-    for (int depth = GetDepthBelowIntroduction(); depth; --depth) {
-        while (introPath.IsPrimVariantSelectionPath()) {
-            // Skip over variant selections, since they do not
-            // constitute levels of namespace depth. We do not simply
-            // strip all variant selections here, because we want to
-            // retain variant selections ancestral to the path where
-            // this node was introduced.
-            introPath = introPath.GetParentPath();
-        }
-        introPath = introPath.GetParentPath();
-    }
+    return _GetPathAtIntroDepth(parent.GetPath(), GetDepthBelowIntroduction());
+}
 
-    return introPath;
+PCP_API 
+SdfPath
+PcpNodeRef::GetPathAtOriginRootIntroduction() const
+{
+    return _GetPathAtIntroDepth(GetPath(), 
+        GetOriginRootNode().GetDepthBelowIntroduction());
 }
 
 PcpNodeRef::child_const_range
@@ -262,6 +349,15 @@ PcpNodeRef::GetChildrenRange() const
     PcpNodeRef node(_graph, _nodeIdx);
     return child_const_range(child_const_iterator(node, /* end = */ false),
                              child_const_iterator(node, /* end = */ true));
+}
+
+PcpNodeRef::child_const_reverse_range
+PcpNodeRef::GetChildrenReverseRange() const
+{
+    PcpNodeRef node(_graph, _nodeIdx);
+    return child_const_reverse_range(
+        child_const_reverse_iterator(node, /* end = */ false),
+        child_const_reverse_iterator(node, /* end = */ true));
 }
 
 PcpNodeRef
@@ -292,7 +388,7 @@ PcpNodeRef_ChildrenIterator::PcpNodeRef_ChildrenIterator(
     const PcpNodeRef& node, bool end) :
     _node(node),
     _index(!end ?
-            _node._graph->_GetNode(_node).smallInts.firstChildIndex :
+            _node._graph->_GetNode(_node).indexes.firstChildIndex :
             PcpPrimIndex_Graph::_Node::_invalidNodeIndex)
 {
     // Do nothing
@@ -301,7 +397,7 @@ PcpNodeRef_ChildrenIterator::PcpNodeRef_ChildrenIterator(
 void 
 PcpNodeRef_ChildrenIterator::increment()
 {
-    _index = _node._graph->_GetNode(_index).smallInts.nextSiblingIndex;
+    _index = _node._graph->_GetNode(_index).indexes.nextSiblingIndex;
 }
 
 PcpNodeRef_ChildrenReverseIterator::PcpNodeRef_ChildrenReverseIterator() :
@@ -316,7 +412,7 @@ PcpNodeRef_ChildrenReverseIterator::PcpNodeRef_ChildrenReverseIterator(
     _index(i._index)
 {
     if (_index == PcpPrimIndex_Graph::_Node::_invalidNodeIndex) {
-        _index = _node._graph->_GetNode(_node).smallInts.lastChildIndex;
+        _index = _node._graph->_GetNode(_node).indexes.lastChildIndex;
     }
     else {
         increment();
@@ -327,7 +423,7 @@ PcpNodeRef_ChildrenReverseIterator::PcpNodeRef_ChildrenReverseIterator(
     const PcpNodeRef& node, bool end) :
     _node(node),
     _index(!end ?
-            _node._graph->_GetNode(_node).smallInts.lastChildIndex :
+            _node._graph->_GetNode(_node).indexes.lastChildIndex :
             PcpPrimIndex_Graph::_Node::_invalidNodeIndex)
 {
     // Do nothing
@@ -336,7 +432,7 @@ PcpNodeRef_ChildrenReverseIterator::PcpNodeRef_ChildrenReverseIterator(
 void 
 PcpNodeRef_ChildrenReverseIterator::increment()
 {
-    _index = _node._graph->_GetNode(_index).smallInts.prevSiblingIndex;
+    _index = _node._graph->_GetNode(_index).indexes.prevSiblingIndex;
 }
 
 int
@@ -348,17 +444,35 @@ PcpNode_GetNonVariantPathElementCount(const SdfPath &path)
 static inline int
 _GetNonVariantPathElementCount(const SdfPath &path)
 {
-    //return path.StripAllVariantSelections().GetPathElementCount();
-    if (ARCH_UNLIKELY(path.ContainsPrimVariantSelection())) {
+    // The following code is equivalent to but more performant than:
+    //
+    // return path.StripAllVariantSelections().GetPathElementCount();
+
+    int count = static_cast<int>(path.GetPathElementCount());
+    if (path.ContainsPrimVariantSelection()) {
         SdfPath cur(path);
-        int result = (!cur.IsPrimVariantSelectionPath());
-        cur = cur.GetParentPath();
-        for (; cur.ContainsPrimVariantSelection(); cur = cur.GetParentPath())
-            result += (!cur.IsPrimVariantSelectionPath());
-        return result + static_cast<int>(cur.GetPathElementCount());
-    } else {
-        return static_cast<int>(path.GetPathElementCount());
+
+        // Walk up until we hit a variant selection node, then decrement count,
+        // and keep going if there are more.
+        do {
+            while (!cur.IsPrimVariantSelectionPath()) {
+                cur = cur.GetParentPath();
+            }
+            --count;
+            cur = cur.GetParentPath();
+        } while (cur.ContainsPrimVariantSelection());
     }
+
+    return count;
 }
+
+std::ostream &
+operator<<(std::ostream &out, const PcpNodeRef &node) 
+{
+    out << "(" << node._GetNodeIndex() << ") " << 
+        TfEnum::GetDisplayName(node.GetArcType()) << " " << node.GetSite();
+    return out;
+}
+
 
 PXR_NAMESPACE_CLOSE_SCOPE

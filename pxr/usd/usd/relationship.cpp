@@ -1,25 +1,8 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/common.h"
@@ -76,10 +59,10 @@ UsdRelationship::_GetTargetForAuthoring(const SdfPath &target,
     if (!target.IsEmpty()) {
         SdfPath absTarget =
             target.MakeAbsolutePath(GetPath().GetAbsoluteRootOrPrimPath());
-        if (Usd_InstanceCache::IsPathInMaster(absTarget)) {
+        if (Usd_InstanceCache::IsPathInPrototype(absTarget)) {
             if (whyNot) { 
-                *whyNot = "Cannot target a master or an object within a "
-                    "master.";
+                *whyNot = "Cannot target a prototype or an object within a "
+                    "prototype.";
             }
             return SdfPath();
         }
@@ -156,25 +139,6 @@ UsdRelationship::RemoveTarget(const SdfPath& target) const
 }
 
 bool
-UsdRelationship::BlockTargets() const
-{
-    // NOTE! Do not insert any code that modifies scene description between the
-    // changeblock and the call to _CreateSpec!  Explanation: _CreateSpec calls
-    // code that inspects the composition graph and then does some authoring.
-    // We want that authoring to be inside the change block, but if any scene
-    // description changes are made after the block is created but before we
-    // call _CreateSpec, the composition structure may be invalidated.
-    SdfChangeBlock block;
-    SdfRelationshipSpecHandle relSpec = _CreateSpec();
-
-    if (!relSpec)
-        return false;
-
-    relSpec->GetTargetPathList().ClearEditsAndMakeExplicit();
-    return true;
-}
-
-bool
 UsdRelationship::SetTargets(const SdfPathVector& targets) const
 {
     SdfPathVector mappedPaths;
@@ -242,15 +206,27 @@ UsdRelationship::GetTargets(SdfPathVector* targets) const
 }
 
 bool
-UsdRelationship::_GetForwardedTargets(SdfPathSet* visited,
-                                      SdfPathSet* uniqueTargets,
-                                      SdfPathVector* targets,
-                                      bool includeForwardingRels) const
+UsdRelationship::_GetForwardedTargetsImpl(SdfPathSet* visited,
+                                          SdfPathSet* uniqueTargets,
+                                          SdfPathVector* targets,
+                                          bool *foundAnyErrors,
+                                          bool includeForwardingRels) const
 {
-    // Track recursive composition errors, starting with the first batch of
-    // targets.
     SdfPathVector curTargets;
-    bool success = GetTargets(&curTargets);
+    // Get the targets for this relationship first.
+    const bool foundTargets = 
+        _GetTargets(SdfSpecTypeRelationship, &curTargets, foundAnyErrors);
+    // If there are no targets we can just return the return value of 
+    // _GetTargets. Note that this may be true if there are explicit opinions 
+    // that make the targets empty.
+    if (curTargets.empty()) {
+        return foundTargets;
+    }
+
+    // We'll only return success if this relationship provides a target to the
+    // list or one of its forwarded relationships returns success (which could
+    // be because of a explicit empty opinion)
+    bool success = false;
 
     // Process all targets at this relationship.
     for (SdfPath const &target: curTargets) {
@@ -259,21 +235,27 @@ UsdRelationship::_GetForwardedTargets(SdfPathSet* visited,
             if (UsdPrim prim = GetStage()->GetPrimAtPath(target.GetPrimPath())) {
                 if (UsdRelationship rel =
                     prim.GetRelationship(target.GetNameToken())) {
+                    // Only do this rel if we've not yet seen it.
                     if (visited->insert(rel.GetPath()).second) {
-                        // Only do this rel if we've not yet seen it.
-                        success &= rel._GetForwardedTargets(
-                            visited, uniqueTargets, targets,
+                        success |= rel._GetForwardedTargetsImpl(
+                            visited, uniqueTargets, targets, foundAnyErrors,
                             includeForwardingRels);
                     }
                     if (!includeForwardingRels)
                         continue;
-                }
+                } 
             }
-        }            
+        }         
+        // If we're adding a target then this relationship is providing a 
+        // forwarded target opinion so we'll return success at the end.
+        success = true;
         if (uniqueTargets->insert(target).second)
             targets->push_back(target);
     }
 
+    // foundAnyErrors is passed through every level of recursion so we don't 
+    // include it here; it will be accounted for before _GetForwardedTargets
+    // returns.
     return success;
 }
 
@@ -283,8 +265,10 @@ UsdRelationship::_GetForwardedTargets(
     bool includeForwardingRels) const
 {
     SdfPathSet visited, uniqueTargets;
-    return _GetForwardedTargets(&visited, &uniqueTargets, targets,
-                                includeForwardingRels);
+    bool foundAnyErrors = false;
+    return _GetForwardedTargetsImpl(&visited, &uniqueTargets, targets, 
+                                    &foundAnyErrors, includeForwardingRels)
+        && !foundAnyErrors;
 }
 
 bool

@@ -1,35 +1,18 @@
 //
 // Copyright 2016 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 // glf/drawTarget.cpp
 //
 
-#include "pxr/imaging/glf/glew.h"
+#include "pxr/imaging/garch/glApi.h"
 
 #include "pxr/imaging/glf/drawTarget.h"
 #include "pxr/imaging/glf/glContext.h"
 #include "pxr/imaging/glf/diagnostic.h"
-#include "pxr/imaging/glf/image.h"
+#include "pxr/imaging/hio/image.h"
 #include "pxr/imaging/glf/utils.h"
 
 #include "pxr/imaging/hf/perfLog.h"
@@ -71,7 +54,7 @@ GlfDrawTarget::GlfDrawTarget( GfVec2i const & size, bool requestMSAA /* =false *
     _size(size),
     _numSamples(1)
 {
-    GlfGlewInit();
+    GarchGLApiLoad();
 
     // If MSAA has been requested and it is enabled then we will create
     // msaa buffers
@@ -102,7 +85,7 @@ GlfDrawTarget::GlfDrawTarget( GlfDrawTargetPtr const & drawtarget ) :
     _numSamples(drawtarget->_numSamples),
     _owningContext()
 {
-    GlfGlewInit();
+    GarchGLApiLoad();
 
     _GenFrameBuffer();
 
@@ -605,18 +588,22 @@ GlfDrawTarget::WriteToFile(std::string const & name,
         metadata["NP"] = worldToScreenTransform;
     }
 
-    GlfImage::StorageSpec storage;
+    GLenum glInternalFormat = a->GetInternalFormat();
+    bool isSRGB = (glInternalFormat == GL_SRGB8 ||
+                   glInternalFormat == GL_SRGB8_ALPHA8);
+    HioImage::StorageSpec storage;
     storage.width = _size[0];
     storage.height = _size[1];
-    storage.format = a->GetFormat();
-    storage.type = a->GetType();
+    storage.format = GlfGetHioFormat(a->GetFormat(),
+                                     a->GetType(),
+                                     /* isSRGB */ isSRGB);
     storage.flipped = true;
     storage.data = buf.get();
 
     {
         TRACE_FUNCTION_SCOPE("writing image");
 
-        GlfImageSharedPtr const image = GlfImage::OpenForWriting(filename);
+        HioImageSharedPtr const image = HioImage::OpenForWriting(filename);
         const bool writeSuccess = image && image->Write(storage, metadata);
         
         if (!writeSuccess) {

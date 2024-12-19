@@ -1,25 +1,8 @@
 #
 # Copyright 2016 Pixar
 #
-# Licensed under the Apache License, Version 2.0 (the "Apache License")
-# with the following modification; you may not use this file except in
-# compliance with the Apache License and the following modification to it:
-# Section 6. Trademarks. is deleted and replaced with:
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor
-#    and its affiliates, except as required to comply with Section 4(c) of
-#    the License and to reproduce the content of the NOTICE file.
-#
-# You may obtain a copy of the Apache License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the Apache License with the above modification is
-# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied. See the Apache License for the specific
-# language governing permissions and limitations under the Apache License.
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
 #
 #
 # Usage: testWrapper.py <options> <cmd>
@@ -58,10 +41,28 @@ def _parseArgs():
             action='append',
             help=('Compare output file with a file in the baseline-dir of the '
                   'same name'))
+    parser.add_argument('--image-diff-compare', default=[], type=str,
+                        action='append',
+                        help=('Compare output image with an image in the baseline '
+                              'of the same name'))
+    parser.add_argument('--fail', type=str,
+                        help='The threshold for the acceptable difference of a pixel for failure')
+    parser.add_argument('--failpercent', type=str,
+                        help='The percentage of pixels that can be different before failure')
+    parser.add_argument('--hardfail', type=str,
+                        help='Triggers a failure if any pixels are above this threshold')
+    parser.add_argument('--warn', type=str,
+                        help='The threshold for the acceptable difference of a pixel for a warning')
+    parser.add_argument('--warnpercent', type=str,
+                        help='The percentage of pixels that can be different before a warning')
+    parser.add_argument('--hardwarn', type=str,
+                        help='Triggers a warning if any pixels are above this threshold')
+    parser.add_argument('--perceptual', action='store_true',
+                        help='Performs a test to see if two images are visually different')
     parser.add_argument('--files-exist', nargs='*',
             help=('Check that a set of files exist.'))
     parser.add_argument('--files-dont-exist', nargs='*',
-            help=('Check that a set of files exist.'))
+            help=('Check that a set of files do not exist.'))
     parser.add_argument('--clean-output-paths', nargs='*',
             help=('Path patterns to remove from the output files being diff\'d.'))
     parser.add_argument('--post-command', type=str,
@@ -80,6 +81,15 @@ def _parseArgs():
             help='Testenv directory to copy into test run directory')
     parser.add_argument('--baseline-dir',
             help='Baseline directory to use with --diff-compare')
+    parser.add_argument('--failures-dir',
+            help=('If either --diff-compare or --image-diff-compare fail, then '
+                  'copy both the generated and baseline images into this '
+                  'directory; if <PXR_CTEST_RUN_ID>" is in the value, it is '
+                  'replaced with a timestamp identifying a given ctest '
+                  'invocation'))
+    parser.add_argument('--tempdirprefix', metavar='PREFIX', type=str,
+            help='temp directory names will begin with PREFIX',
+            default=None)
     parser.add_argument('--expected-return-code', type=int, default=0,
             help='Expected return code of this test.')
     parser.add_argument('--env-var', dest='envVars', default=[], type=str, 
@@ -132,6 +142,10 @@ def _stripPath(f, pathPattern):
         inputFile.write(data)
         inputFile.truncate()
 
+def _addFilenameSuffix(path, suffix):
+    base, ext = os.path.splitext(path)
+    return base + suffix + ext
+
 def _cleanOutput(pathPattern, fileName, verbose):
     if verbose:
         print("stripping path pattern {0} from file {1}".format(pathPattern, 
@@ -139,7 +153,7 @@ def _cleanOutput(pathPattern, fileName, verbose):
     _stripPath(fileName, pathPattern)
     return True
 
-def _diff(fileName, baselineDir, verbose):
+def _diff(fileName, baselineDir, verbose, failuresDir=None):
     # Use the diff program or equivalent, rather than filecmp or similar
     # because it's possible we might want to specify other diff programs
     # in the future.
@@ -155,13 +169,75 @@ def _diff(fileName, baselineDir, verbose):
             "Error: could not files matching {0} to diff".format(fileName))
         return False
 
-    for fileToDiff in glob.glob(fileName):
-        cmd = [diff, _resolvePath(baselineDir, fileToDiff), fileToDiff]
+    for fileToDiff in filesToDiff:
+        baselineFile = _resolvePath(baselineDir, fileToDiff)
+        cmd = [diff, baselineFile, fileToDiff]
         if verbose:
             print("diffing with {0}".format(cmd))
 
         # This will print any diffs to stdout which is a nice side-effect
         if subprocess.call(cmd) != 0:
+            if failuresDir is not None:
+                _copyFailedDiffFiles(failuresDir, baselineFile, fileToDiff)
+            return False
+
+    return True
+
+def _imageDiff(fileName, baseLineDir, verbose, env, warn=None, warnpercent=None,
+               hardwarn=None, fail=None, failpercent=None, hardfail=None,
+               perceptual=None, failuresDir=None):
+    import platform
+    if platform.system() == 'Windows':
+        imageDiff = 'idiff.exe'
+    else:
+        imageDiff = 'idiff'
+
+    cmdArgs = []
+    if warn is not None:
+        cmdArgs.extend(['-warn', warn])
+
+    if warnpercent is not None:
+        cmdArgs.extend(['-warnpercent', warnpercent])
+
+    if hardwarn is not None:
+        cmdArgs.extend(['-hardwarn', hardwarn])
+
+    if fail is not None:
+        cmdArgs.extend(['-fail', fail])
+
+    if failpercent is not None:
+        cmdArgs.extend(['-failpercent', failpercent])
+
+    if hardfail is not None:
+        cmdArgs.extend(['-hardfail', hardfail])
+
+    if perceptual:
+        cmdArgs.extend(['-p'])
+
+    filesToDiff = glob.glob(fileName)
+    if not filesToDiff:
+        sys.stderr.write(
+            "Error: could not files matching {0} to diff".format(fileName))
+        return False
+
+    for image in filesToDiff:
+        cmd = [imageDiff]
+        cmd.extend(cmdArgs)
+        baselineImage = _resolvePath(baseLineDir, image)
+        cmd.extend([baselineImage, image])
+
+        if verbose:
+            print("image diffing with {0}".format(cmd))
+
+        # This will print any diffs to stdout which is a nice side-effect
+        # 0: OK: the images match within the warning and error thresholds.
+        # 1: Warning: the errors differ a little, but within error thresholds.
+        # 2: Failure: the errors differ a lot, outside error thresholds.
+        # 3: The images were not the same size and could not be compared.
+        # 4: File error: could not find or open input files, etc.
+        if subprocess.call(cmd, shell=False, env=env) not in (0, 1):
+            if failuresDir is not None:
+                _copyFailedDiffFiles(failuresDir, baselineImage, image)
             return False
 
     return True
@@ -176,7 +252,27 @@ def _copyTree(src, dest):
         if os.path.isdir(s):
             shutil.copytree(s, d)
         else:
-            shutil.copy2(s, d) 
+            shutil.copy2(s, d)
+
+def _copyFailedDiffFiles(failuresDir, baselineFile, resultFile):
+    baselineName = _addFilenameSuffix(os.path.basename(baselineFile),
+                                      ".baseline")
+    resultName = _addFilenameSuffix(os.path.basename(resultFile), ".result")
+    baselineOutpath = os.path.join(failuresDir, baselineName)
+    resultOutpath = os.path.join(failuresDir, resultName)
+
+    if not os.path.isdir(failuresDir):
+        os.makedirs(failuresDir)
+
+    shutil.copy(baselineFile, baselineOutpath)
+    shutil.copy(resultFile, resultOutpath)
+
+    print("Image diff failure:\n"
+          "  Copied:\n"
+          "    {baselineName}\n"
+          "    {resultName}\n"
+          "  Into:\n"
+          "    {failuresDir}".format(**locals()))
 
 # subprocess.call returns -N if the process raised signal N. Convert this
 # to the standard positive error code matching that signal. e.g. if the
@@ -215,7 +311,7 @@ def _runCommand(raw_command, stdout_redir, stderr_redir, env,
                 "Error: return code {0} doesn't match "
                 "expected {1} (EXPECTED_RETURN_CODE).".format(retcode, 
                                                         expected_return_code))
-        sys.exit(1)       
+        sys.exit(1)
 
 if __name__ == '__main__':
     args = _parseArgs()
@@ -225,12 +321,17 @@ if __name__ == '__main__':
                          "--diff-compare.")
         sys.exit(1)
 
+    if args.image_diff_compare and not args.baseline_dir:
+        sys.stderr.write("Error: --baseline-dir must be specified with "
+                         "--image-diff-compare.")
+        sys.exit(1)
+
     if args.clean_output_paths and not args.diff_compare:
         sys.stderr.write("Error: --diff-compare must be specified with "
                          "--clean-output-paths.")
         sys.exit(1)
 
-    testDir = tempfile.mkdtemp()
+    testDir = tempfile.mkdtemp(prefix=args.tempdirprefix)
     os.chdir(testDir)
     if args.verbose:
         print("chdir: {0}".format(testDir))
@@ -306,11 +407,30 @@ if __name__ == '__main__':
 
     # If desired, diff the provided file(s) (must be generated by the test somehow)
     # with a file of the same name in the baseline directory
+    failuresDir = None
+    if args.failures_dir:
+        failuresDir = args.failures_dir.replace('<PXR_CTEST_RUN_ID>',
+            os.environ.get('PXR_CTEST_RUN_ID', 'NOT_RUN_FROM_CTEST'))
     if args.diff_compare:
         for diff in args.diff_compare:
-            if not _diff(diff, args.baseline_dir, args.verbose):
+            if not _diff(diff, args.baseline_dir, args.verbose,
+                         failuresDir=failuresDir):
                 sys.stderr.write('Error: diff for {0} failed '
                                  '(DIFF_COMPARE).'.format(diff))
+                sys.exit(1)
+
+    if args.image_diff_compare:
+        converted = vars(args)
+        params = {key: converted[key] for key in
+                  ('warn', 'warnpercent', 'hardwarn',
+                   'fail', 'failpercent', 'hardfail', 'perceptual')
+                  if key in converted}
+        params["failuresDir"] = failuresDir
+
+        for image in args.image_diff_compare:
+            if not _imageDiff(image, args.baseline_dir, args.verbose, env, **params):
+                sys.stderr.write('Error: image diff for {0} failed '
+                                 '(IMAGE_DIFF_COMPARE).\n'.format(image))
                 sys.exit(1)
 
     sys.exit(0)

@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #ifndef PXR_USD_IMAGING_USD_IMAGING_IMPLICIT_SURFACE_MESH_UTILS_H
 #define PXR_USD_IMAGING_USD_IMAGING_IMPLICIT_SURFACE_MESH_UTILS_H
@@ -149,6 +132,33 @@ UsdImagingGenerateCapsuleMeshPoints(
     const double height,
     const double radius,
     const TfToken& axis);
+
+// Plane
+
+/// Return a topology object for use with all generated "Plane" meshes.  This
+/// is constructed once and is identical for all planes.  The indices refer to
+/// the points array returned by UsdImagingGeneratePlaneMeshPoints().
+USDIMAGING_API
+const PxOsdMeshTopology&
+UsdImagingGetPlaneTopology();
+
+/// Generate an array of points describing a "plane". This is a mesh describing
+/// a double-sided plane aligned to an axis, with a width and length along the
+/// other cardinal axes.
+///
+/// Unlike most other primitives in this library, it's not possible to use a
+/// constant set of points and effect width and length adjustments by varying
+/// the transform matrix.  This function will generate the points with the
+/// requested parameters, and no additional transform is required.  The returned
+/// points are for use with the topology provided by
+/// UsdImagingGetPlaneTopology().
+USDIMAGING_API
+VtVec3fArray
+UsdImagingGeneratePlaneMeshPoints(
+    const double width,
+    const double length,
+    const TfToken& axis);
+
 
 // Transforms
 

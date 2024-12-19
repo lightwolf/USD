@@ -1,25 +1,8 @@
 //
 // Copyright 2019 Pixar
 //
-// Licensed under the Apache License, Version 2.0 (the "Apache License")
-// with the following modification; you may not use this file except in
-// compliance with the Apache License and the following modification to it:
-// Section 6. Trademarks. is deleted and replaced with:
-//
-// 6. Trademarks. This License does not grant permission to use the trade
-//    names, trademarks, service marks, or product names of the Licensor
-//    and its affiliates, except as required to comply with Section 4(c) of
-//    the License and to reproduce the content of the NOTICE file.
-//
-// You may obtain a copy of the Apache License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the Apache License with the above modification is
-// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied. See the Apache License for the specific
-// language governing permissions and limitations under the Apache License.
+// Licensed under the terms set forth in the LICENSE.txt file available at
+// https://openusd.org/license.
 //
 #include "pxr/usd/usdGeom/samplingUtils.h"
 #include "pxr/usd/usdGeom/motionAPI.h"
@@ -164,7 +147,6 @@ UsdGeom_GetPositionsVelocitiesAndAccelerations(
     VtVec3fArray* velocities,
     UsdTimeCode* velocitiesSampleTime,
     VtVec3fArray* accelerations,
-    float* velocityScale,
     UsdPrim const &prim)
 {
     // Get positions attribute and check array size
@@ -293,19 +275,18 @@ UsdGeom_GetPositionsVelocitiesAndAccelerations(
         accelerations->clear();
     }
 
-    *velocityScale = UsdGeomMotionAPI(prim).ComputeVelocityScale(
-        baseTime); 
-
     return true;
 }
 
+/// Helper implementations for UsdGeom_GetOrientationsAndAngularVelocities
+template <class QuatType>
 bool
-UsdGeom_GetOrientationsAndAngularVelocities(
+_UsdGeom_GetOrientationsAndAngularVelocities(
     const UsdAttribute& orientationsAttr,
     const UsdAttribute& angularVelocitiesAttr,
     UsdTimeCode baseTime,
     size_t expectedNumOrientations,
-    VtQuathArray* orientations,
+    VtArray<QuatType>* orientations,
     VtVec3fArray* angularVelocities,
     UsdTimeCode* angularVelocitiesSampleTime,
     UsdPrim const &prim)
@@ -317,7 +298,7 @@ UsdGeom_GetOrientationsAndAngularVelocities(
     double orientationsUpperTimeValue = 0.0;
     bool orientationsHasSamples = true;
 
-    if (!_GetAttrForTransforms<VtQuathArray>(
+    if (!_GetAttrForTransforms<VtArray<QuatType>>(
             orientationsAttr,
             baseTime,
             &orientationsSampleTime,
@@ -389,6 +370,50 @@ UsdGeom_GetOrientationsAndAngularVelocities(
     return true;
 }
 
+bool 
+UsdGeom_GetOrientationsAndAngularVelocities(
+    const UsdAttribute& orientationsAttr,
+    const UsdAttribute& angularVelocitiesAttr,
+    UsdTimeCode baseTime,
+    size_t expectedNumOrientations,
+    VtQuatfArray* orientations,
+    VtVec3fArray* angularVelocities,
+    UsdTimeCode* angularVelocitiesSampleTime,
+    UsdPrim const &prim)
+{
+    return _UsdGeom_GetOrientationsAndAngularVelocities<GfQuatf>(
+        orientationsAttr,
+        angularVelocitiesAttr,
+        baseTime,
+        expectedNumOrientations,
+        orientations,
+        angularVelocities,
+        angularVelocitiesSampleTime,
+        prim);
+}
+
+bool 
+UsdGeom_GetOrientationsAndAngularVelocities(
+    const UsdAttribute& orientationsAttr,
+    const UsdAttribute& angularVelocitiesAttr,
+    UsdTimeCode baseTime,
+    size_t expectedNumOrientations,
+    VtQuathArray* orientations,
+    VtVec3fArray* angularVelocities,
+    UsdTimeCode* angularVelocitiesSampleTime,
+    UsdPrim const &prim)
+{
+    return _UsdGeom_GetOrientationsAndAngularVelocities<GfQuath>(
+        orientationsAttr, 
+        angularVelocitiesAttr,
+        baseTime,
+        expectedNumOrientations,
+        orientations,
+        angularVelocities,
+        angularVelocitiesSampleTime,
+        prim);
+}
+
 
 bool
 UsdGeom_GetScales(
@@ -434,16 +459,13 @@ UsdGeom_GetScales(
     return true;
 }
 
-float
+double
 UsdGeom_CalculateTimeDelta(
-    const float velocityScale,
     const UsdTimeCode time,
     const UsdTimeCode sampleTime,
     const double timeCodesPerSecond)
 {
-    return velocityScale * static_cast<float>(
-            (time.GetValue() - sampleTime.GetValue())
-            / timeCodesPerSecond);
+    return (time.GetValue() - sampleTime.GetValue()) / timeCodesPerSecond;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
