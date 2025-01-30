@@ -3,6 +3,9 @@ set(PXR_PACKAGE sdr)
 
 pxr_library(sdr
     LIBRARIES
+        arch
+        plug
+        trace
         tf
         vt
         ar
@@ -11,27 +14,39 @@ pxr_library(sdr
 
     PUBLIC_HEADERS
         api.h
-        declare.h
+        sdfTypeIndicator.h
+        shaderNodeDiscoveryResult.h
 
     PUBLIC_CLASSES
         debugCodes
+        declare
+        discoveryPlugin
+        filesystemDiscovery
+        filesystemDiscoveryHelpers
+        parserPlugin
         registry
         shaderMetadataHelpers
         shaderNode
         shaderProperty
 
-    PYTHON_CPPFILES
-        moduleDeps.cpp
-
     PYMODULE_CPPFILES
         module.cpp
+        wrapDeclare.cpp
+        wrapDiscoveryPlugin.cpp
+        wrapFilesystemDiscovery.cpp
+        wrapFilesystemDiscoveryHelpers.cpp
         wrapRegistry.cpp
+        wrapSdfTypeIndicator.cpp
         wrapShaderNode.cpp
+        wrapShaderNodeDiscoveryResult.cpp
         wrapShaderProperty.cpp
 
     PYMODULE_FILES
         __init__.py
         shaderParserTestUtils.py
+
+    RESOURCE_FILES
+        plugInfo.json
 
     DOXYGEN_FILES
         overview.dox

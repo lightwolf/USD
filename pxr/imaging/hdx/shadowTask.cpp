@@ -277,6 +277,19 @@ void
 HdxShadowTask::Prepare(HdTaskContext* ctx,
                        HdRenderIndex* renderIndex)
 {
+    GlfSimpleLightingContextRefPtr lightingContext;
+    if (!_GetTaskContextData(ctx,
+            HdxTokens->lightingContext, &lightingContext)) {
+        return;
+    }
+
+    GlfSimpleShadowArrayRefPtr const shadows = lightingContext->GetShadows();
+    if (shadows->GetNumShadowMapPasses() == 0) {
+        // Bail if we are not generating shadow maps. We don't want to call
+        // Prepare on outdated AOV bindings.
+        return;
+    }
+
     HdResourceRegistrySharedPtr resourceRegistry =
         renderIndex->GetResourceRegistry();
 
@@ -437,7 +450,6 @@ std::ostream& operator<<(std::ostream& out, const HdxShadowTaskParams& pv)
         << pv.overrideColor << " " 
         << pv.wireframeColor << " " 
         << pv.enableLighting << " "
-        << pv.enableIdRender << " "
         << pv.enableSceneMaterials << " "
         << pv.alphaThreshold << " "
         << pv.depthBiasEnable << " "
@@ -454,7 +466,6 @@ bool operator==(const HdxShadowTaskParams& lhs, const HdxShadowTaskParams& rhs)
     return  lhs.overrideColor == rhs.overrideColor                      && 
             lhs.wireframeColor == rhs.wireframeColor                    && 
             lhs.enableLighting == rhs.enableLighting                    &&
-            lhs.enableIdRender == rhs.enableIdRender                    &&
             lhs.enableSceneMaterials == rhs.enableSceneMaterials        &&
             lhs.alphaThreshold == rhs.alphaThreshold                    &&
             lhs.depthBiasEnable == rhs.depthBiasEnable                  && 
