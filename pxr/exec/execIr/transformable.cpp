@@ -119,11 +119,8 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrJointScope)
     builder.InputAttribute<double>(ExecIrTransformableTokens->avarsRy);
     builder.InputAttribute<double>(ExecIrTransformableTokens->avarsRz);
     builder.InputAttribute<double>(ExecIrTransformableTokens->avarsRspin);
-    builder.InputAttribute<double>(ExecIrTransformableTokens->avarsTotalSize);
     builder.InputAttribute<TfToken>(
         ExecIrTransformableTokens->avarsRotationOrder);
-    builder.InputAttribute<double>(
-        ExecIrTransformableTokens->avarsDefaultTotalSize);
     builder.InputAttribute<GfMatrix4d>(
         ExecIrTransformableTokens->avarsDefaultSpace);
 
@@ -154,7 +151,6 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrJointScope)
     builder.InputAttribute<double>(ExecIrTransformableTokens->defaultRx);
     builder.InputAttribute<double>(ExecIrTransformableTokens->defaultRy);
     builder.InputAttribute<double>(ExecIrTransformableTokens->defaultRz);
-    builder.InputAttribute<double>(ExecIrTransformableTokens->defaultTotalSize);
     builder.InputAttribute<GfMatrix4d>(ExecIrTransformableTokens->defaultSpace);
 
     // Compute default:space by taking the offsets defined by the default
@@ -271,11 +267,8 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrJointScope)
         ExecIrTransformableTokens->posedDefaultSpace);
     
     builder.InputAttribute<GfMatrix4d>(ExecIrTransformableTokens->parentSpace);
-    builder.InputAttribute<double>(
-        ExecIrTransformableTokens->parentDefaultTotalSize);
     builder.InputAttribute<GfMatrix4d>(
         ExecIrTransformableTokens->parentDefaultSpace);
-    builder.InputAttribute<double>(ExecIrTransformableTokens->parentTotalSize);
 
     self.AttributeExpression(ExecIrTransformableTokens->parentDefaultSpace)
         .Inputs(Prim().Computation<GfMatrix4d>(_tokens->parentDefaultSpace))

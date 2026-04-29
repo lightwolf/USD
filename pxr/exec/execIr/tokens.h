@@ -67,9 +67,7 @@ TF_DECLARE_PUBLIC_TOKENS(ExecIrTokens, EXECIR_API, EXEC_IR_TOKENS);
     ((avarsRy, "avars:ry"))                                                     \
     ((avarsRz, "avars:rz"))                                                     \
     ((avarsRspin, "avars:rspin"))                                               \
-    ((avarsTotalSize, "avars:totalSize"))                                       \
     ((avarsRotationOrder, "avars:rotationOrder"))                               \
-    ((avarsDefaultTotalSize, "avars:defaultTotalSize"))                         \
     ((avarsDefaultSpace, "avars:defaultSpace"))                                 \
     ((avarsUnitScaleFactor, "avars:unitScaleFactor"))                           \
                                                                                 \
@@ -87,16 +85,13 @@ TF_DECLARE_PUBLIC_TOKENS(ExecIrTokens, EXECIR_API, EXEC_IR_TOKENS);
     ((defaultRx, "default:rx"))                                                 \
     ((defaultRy, "default:ry"))                                                 \
     ((defaultRz, "default:rz"))                                                 \
-    ((defaultTotalSize, "default:totalSize"))                                   \
     ((defaultSpace, "default:space"))                                           \
                                                                                 \
     ((posedSpace, "posed:space"))                                               \
     ((posedDefaultSpace, "posed:defaultSpace"))                                 \
                                                                                 \
     ((parentSpace, "parent:Space"))                                             \
-    ((parentDefaultTotalSize, "parent:defaultTotalSize"))                       \
     ((parentDefaultSpace, "parent:defaultSpace"))                               \
-    ((parentTotalSize, "parent:totalSize"))
 
 TF_DECLARE_PUBLIC_TOKENS(
     ExecIrTransformableTokens, EXECIR_API, EXEC_IR_TRANSFORMABLE_TOKENS);

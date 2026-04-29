@@ -143,7 +143,6 @@ class "IrTransformable" (
     double default:rx = 0
     double default:ry = 0
     double default:rz = 0
-    double default:totalSize = 0
     matrix4d default:space = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
 
@@ -159,21 +158,17 @@ class "IrTransformable" (
     double avars:ry = 0
     double avars:rz = 0
     double avars:rspin = 0
-    double avars:totalSize = 0
     token avars:rotationOrder = "XYZ" (
         allowedTokens = ["XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]
     )
-    double avars:defaultTotalSize = 0
     matrix4d avars:defaultSpace = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
     double avars:unitScaleFactor = 0
 
     matrix4d parent:space = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
-    double parent:defaultTotalSize = 0
     matrix4d parent:defaultSpace = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
-    double parent:totalSize
 }
 
 class IrJointScope "IrJointScope" (
