@@ -583,10 +583,11 @@ public:
 #if !defined(DISPLAY_INTERFACE_VERSION) || DISPLAY_INTERFACE_VERSION < 3
                 const size_t noutputs) override
 #else
-                const size_t noutputs, const pxrcore::ParamList& /*metadata*/) override
+                const size_t noutputs, const pxrcore::ParamList& metadata) override
 #endif
     {
         m_surface = static_cast<const uint8_t*>(srfaddr);
+        // The surface covers only the crop region (width x height).
         m_width = width;
         m_height = height;
 
@@ -603,8 +604,50 @@ public:
                 m_alphaOffset = srfoffsets[i];
             }
         }
+
+        // TODO: We should consider allocating HdPrmanFrameBuffer as "crop sized" and when we copy
+        // into the full sized HdRenderBuffer copy into the correct region.
+
+#if !defined(DISPLAY_INTERFACE_VERSION) || DISPLAY_INTERFACE_VERSION <= 3
         std::lock_guard<std::mutex> lock(m_buf->mutex);
         m_buf->Resize(width, height);
+#else
+        // Read the full-image dimensions and crop origin from metadata so the
+        // buffer is allocated at full-frame size and pixels land at the right place.
+        int cropOriginX = 0, cropOriginY = 0;
+        int fullWidth = static_cast<int>(width);
+        int fullHeight = static_cast<int>(height);
+        {
+            const RtUString kOrigin("origin");
+            const RtUString kOriginalSize("OriginalSize");
+            int32_t originArr[2] = {0, 0};
+            int32_t originalSizeArr[2] = {0, 0};
+            if (metadata.GetIntegerArray(kOrigin, 2))
+            {
+                const int32_t* o = metadata.GetIntegerArray(kOrigin, 2);
+                originArr[0] = o[0];
+                originArr[1] = o[1];
+            }
+            if (metadata.GetIntegerArray(kOriginalSize, 2))
+            {
+                const int32_t* s = metadata.GetIntegerArray(kOriginalSize, 2);
+                if (s[0] > 0 && s[1] > 0)
+                {
+                    originalSizeArr[0] = s[0];
+                    originalSizeArr[1] = s[1];
+                }
+            }
+            cropOriginX = originArr[0];
+            cropOriginY = originArr[1];
+            if (originalSizeArr[0] > 0)
+                fullWidth = originalSizeArr[0];
+            if (originalSizeArr[1] > 0)
+                fullHeight = originalSizeArr[1];
+        }
+        std::lock_guard<std::mutex> lock(m_buf->mutex);
+        m_buf->Resize(fullWidth, fullHeight, cropOriginX, cropOriginY,
+                      static_cast<int>(width), static_cast<int>(height));
+#endif
         return true;
     }
 
@@ -682,7 +725,8 @@ public:
                         for (size_t y=begin; y<end; ++y) {
                             int32_t* aovData =
                                 reinterpret_cast<int32_t*>(aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_width);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
 
                             for (uint32_t x = 0; x < m_width; x++) {
                                 *aovData = (*src) - 1;
@@ -706,12 +750,14 @@ public:
                             int32_t* aovData =
                                 reinterpret_cast<int32_t*>(
                                     aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_width);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
 
                             int32_t* primIdData =
                                 reinterpret_cast<int32_t*>(
                                     m_buf->aovBuffers[primIdIdx].pixels.data()) +
-                                ((m_buf->h-1-y)*m_buf->w);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
 
                             for (uint32_t x = 0; x < m_width; x++)
                             {
@@ -737,10 +783,11 @@ public:
                                          
                         const int32_t* src = srcInt + begin * m_width;
                         for (size_t y=begin; y<end; ++y) {
-                            int32_t* const aovData = 
+                            int32_t* const aovData =
                                 reinterpret_cast<int32_t*>(
                                     aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_width);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
                             memcpy(aovData, src, sizeof(int32_t) * m_width);
                             src += m_width;
                         }
@@ -768,7 +815,8 @@ public:
                             float* aovData =
                                 reinterpret_cast<float*>(
                                     aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_buf->w);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
 
                             for (uint32_t x = 0; x < m_width; x++)
                             {
@@ -812,7 +860,8 @@ public:
                             float* aovData =
                                 reinterpret_cast<float*>(
                                     aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_buf->w)*4;
+                                ((m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                 m_buf->cropOrigin[0]) * 4;
 
                             for (uint32_t x = 0; x < m_width; x++) {
                                 float isc = 1.f;
@@ -874,7 +923,8 @@ public:
                             float* aovData =
                                 reinterpret_cast<float*>(
                                     aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_buf->w);
+                                (m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                m_buf->cropOrigin[0];
 
                             for (uint32_t x = 0; x < m_width; x++)
                             {
@@ -918,7 +968,8 @@ public:
                             // Flip Y and assume RGBA (i.e. 4) color width
                             float* aovData =
                                 reinterpret_cast<float*>(aovBuffer.pixels.data()) +
-                                ((m_buf->h-1-y)*m_buf->w)*3;
+                                ((m_buf->h - 1 - (y + m_buf->cropOrigin[1])) * m_buf->w +
+                                 m_buf->cropOrigin[0]) * 3;
 
                             for (uint32_t x = 0; x < m_width; x++) {
                                 float isc = 1.f;
