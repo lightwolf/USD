@@ -139,16 +139,6 @@ HdRendererPlugin::IsSupported(bool gpuEnabled) const
 
 bool
 HdRendererPlugin::IsSupported(
-    HdContainerDataSourceHandle const &rendererCreateArgs,
-    std::string * const reasonWhyNot) const
-{
-    return IsSupported(
-        HdRendererCreateArgsSchema(rendererCreateArgs),
-        reasonWhyNot);
-}
-
-bool
-HdRendererPlugin::IsSupported(
     const HdRendererCreateArgsSchema &rendererCreateArgs,
     std::string * const reasonWhyNot) const
 {
