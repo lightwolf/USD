@@ -90,16 +90,6 @@ HdRendererPlugin::CreateDelegate(HdRenderSettingsMap const& settingsMap)
 HdPluginRendererUniqueHandle
 HdRendererPlugin::CreateRenderer(
     HdSceneIndexBaseRefPtr const &sceneIndex,
-    HdContainerDataSourceHandle const &rendererCreateArgs)
-{
-    return CreateRenderer(
-        sceneIndex,
-        HdRendererCreateArgsSchema(rendererCreateArgs));
-}
-
-HdPluginRendererUniqueHandle
-HdRendererPlugin::CreateRenderer(
-    HdSceneIndexBaseRefPtr const &sceneIndex,
     const HdRendererCreateArgsSchema &rendererCreateArgs)
 {
     if (!IsSupported(rendererCreateArgs)) {
@@ -171,16 +161,6 @@ HdContainerDataSourceHandle
 HdRendererPlugin::GetSceneIndexCreateArgs() const
 {
     return {};
-}
-
-std::unique_ptr<HdRenderer>
-HdRendererPlugin::_CreateRenderer(
-    HdSceneIndexBaseRefPtr const &sceneIndex,
-    HdContainerDataSourceHandle const &rendererCreateArgs)
-{
-    return _CreateRendererFromRenderDelegate(
-        sceneIndex,
-        HdRendererCreateArgsSchema(rendererCreateArgs));
 }
 
 std::unique_ptr<HdRenderer>
