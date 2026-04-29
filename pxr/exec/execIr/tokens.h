@@ -28,21 +28,34 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_DECLARE_PUBLIC_TOKENS(
     ExecIrComputationTokens, EXECIR_API, EXEC_IR_COMPUTATION_TOKENS);
 
-#define EXEC_IR_TOKENS                          \
-    ((parentSpaceToken, "ParentIn:Space"))      \
-                                                \
-    ((defaultSpaceToken, "In:DefaultSpace"))    \
-                                                \
-    ((txToken, "In:Tx"))                        \
-    ((tyToken, "In:Ty"))                        \
-    ((tzToken, "In:Tz"))                        \
-    ((rxToken, "In:Rx"))                        \
-    ((ryToken, "In:Ry"))                        \
-    ((rzToken, "In:Rz"))                        \
-    ((rspinToken, "In:Rspin"))                  \
-    ((rotationOrderToken, "In:RotationOrder"))  \
-                                                \
-    ((outSpaceToken, "Out:Space"))
+#define EXEC_IR_ROTATION_ORDER_TOKENS                                           \
+    (XYZ)                                                                       \
+    (XZY)                                                                       \
+    (YXZ)                                                                       \
+    (YZX)                                                                       \
+    (ZXY)                                                                       \
+    (ZYX)
+
+TF_DECLARE_PUBLIC_TOKENS(
+    ExecIrRotationOrderTokens, EXECIR_API, EXEC_IR_ROTATION_ORDER_TOKENS);
+
+#define EXEC_IR_TOKENS                                                          \
+    ((parentSpaceToken, "ParentIn:Space"))                                      \
+    ((parentDefaultSpaceToken, "ParentIn:DefaultSpace"))                        \
+                                                                                \
+    ((defaultSpaceToken, "In:DefaultSpace"))                                    \
+                                                                                \
+    ((txToken, "In:Tx"))                                                        \
+    ((tyToken, "In:Ty"))                                                        \
+    ((tzToken, "In:Tz"))                                                        \
+    ((rxToken, "In:Rx"))                                                        \
+    ((ryToken, "In:Ry"))                                                        \
+    ((rzToken, "In:Rz"))                                                        \
+    ((rspinToken, "In:Rspin"))                                                  \
+    ((rotationOrderToken, "In:RotationOrder"))                                  \
+                                                                                \
+    ((outSpaceToken, "Out:Space"))                                              \
+    ((outDefaultSpaceToken, "Out:DefaultSpace"))
 
 TF_DECLARE_PUBLIC_TOKENS(ExecIrTokens, EXECIR_API, EXEC_IR_TOKENS);
 

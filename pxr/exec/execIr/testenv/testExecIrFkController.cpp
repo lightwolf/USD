@@ -16,6 +16,7 @@
 #include "pxr/exec/execUsd/valueKey.h"
 
 #include "pxr/base/gf/matrix4d.h"
+#include "pxr/base/gf/rotation.h"
 #include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/stringUtils.h"
 #include "pxr/usd/sdf/layer.h"
@@ -65,7 +66,6 @@ Test_IrForwardCompute()
                 double In:Rx =    90.0
                 double In:Ry =   -90.0
                 double In:Rz =    90.0
-                double In:Rspin =  0.0
                 double In:Tx =     1.0
                 double In:Ty =     2.0
                 double In:Tz =     3.0
@@ -90,8 +90,7 @@ Test_IrForwardCompute()
     {
         ExecUsdCacheView cache = execSystem.Compute(request);
         const VtValue value = cache.Get(0);
-        TF_AXIOM(!value.IsEmpty());
-
+        TF_AXIOM(value.IsHolding<GfMatrix4d>());
         ASSERT_CLOSE(
             value.Get<GfMatrix4d>(),
             GfMatrix4d(0,  0, 1, 0,
@@ -112,7 +111,7 @@ Test_IrForwardCompute()
 
         ExecUsdCacheView cache = execSystem.Compute(request);
         const VtValue value = cache.Get(0);
-        TF_AXIOM(!value.IsEmpty());
+        TF_AXIOM(value.IsHolding<GfMatrix4d>());
         ASSERT_CLOSE(
             value.Get<GfMatrix4d>(),
             GfMatrix4d(0,  0, 1, 0,
@@ -200,8 +199,7 @@ Test_IrInverseCompute()
 
     const SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
     layer->ImportFromString(
-        R"usda(
-        #usda 1.0
+        R"usda(#usda 1.0
 
         def Scope "Root" {
             def IrFkController "FkController" {
@@ -223,7 +221,6 @@ Test_IrInverseCompute()
         prim.GetAttribute(ExecIrTokens->ryToken),
         prim.GetAttribute(ExecIrTokens->rzToken),
         prim.GetAttribute(ExecIrTokens->rspinToken),
-
         prim.GetAttribute(ExecIrTokens->txToken),
         prim.GetAttribute(ExecIrTokens->tyToken),
         prim.GetAttribute(ExecIrTokens->tzToken),
@@ -309,6 +306,203 @@ Test_IrInverseCompute()
     }
 }
 
+// Test posing with default and parent spaces, using just translations, so that
+// the results are easy to verify by hand.
+static void
+Test_IrSpacesTranslates()
+{
+    _EnsureNoErrors mark;
+
+    const SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
+    layer->ImportFromString(
+        R"usda(#usda 1.0
+
+        def Scope "Root" {
+            def IrFkController "FkController" {
+                double In:Tx = 5.0
+                matrix4d In:DefaultSpace = ((1,  0, 0, 0),
+                                            (0,  1, 0, 0),
+                                            (0,  0, 1, 0),
+                                            (0, 10, 0, 1))
+            }
+        }
+        )usda");
+    const UsdStageConstRefPtr usdStage = UsdStage::Open(layer);
+    TF_AXIOM(usdStage);
+
+
+    const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
+    TF_AXIOM(prim);
+    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
+    TF_AXIOM(outSpace);
+
+    ExecUsdSystem execSystem(usdStage);
+    const ExecUsdRequest request = execSystem.BuildRequest({
+        ExecUsdValueKey{outSpace, ExecBuiltinComputations->computeValue}
+    });
+    TF_AXIOM(request.IsValid());
+
+    // Compute forward to get the output value produced by the authored scene.
+    {
+        ExecUsdCacheView cache = execSystem.Compute(request);
+        const VtValue value = cache.Get(0);
+        TF_AXIOM(value.IsHolding<GfMatrix4d>());
+        ASSERT_CLOSE(
+            value.Get<GfMatrix4d>(),
+            GfMatrix4d(1,  0, 0, 0,
+                       0,  1, 0, 0,
+                       0,  0, 1, 0,
+                       5, 10, 0, 1));
+    }
+
+    // Now set the parent space and compute again.
+    {
+        const UsdAttribute parentSpace =
+            prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+        TF_AXIOM(parentSpace);
+        parentSpace.Set(GfMatrix4d(1, 0,  0, 0,
+                                   0, 1,  0, 0,
+                                   0, 0,  1, 0,
+                                   0, 0, 20, 1));
+
+        ExecUsdCacheView cache = execSystem.Compute(request);
+        const VtValue value = cache.Get(0);
+        TF_AXIOM(!value.IsEmpty());
+        ASSERT_CLOSE(
+            value.Get<GfMatrix4d>(),
+            GfMatrix4d(1,  0,  0, 0,
+                       0,  1,  0, 0,
+                       0,  0,  1, 0,
+                       5, 10, 20, 1));
+    }
+
+
+    const std::vector<UsdAttribute> inputAttributes = {
+        prim.GetAttribute(ExecIrTokens->rxToken),
+        prim.GetAttribute(ExecIrTokens->ryToken),
+        prim.GetAttribute(ExecIrTokens->rzToken),
+        prim.GetAttribute(ExecIrTokens->rspinToken),
+        prim.GetAttribute(ExecIrTokens->txToken),
+        prim.GetAttribute(ExecIrTokens->tyToken),
+        prim.GetAttribute(ExecIrTokens->tzToken),
+    };
+    for (const UsdAttribute &attr : inputAttributes) {
+        TF_AXIOM(attr);
+    }
+
+    {
+        const GfMatrix4d desiredOutSpaceValue( 1,  0,  0, 0,
+                                               0,  1,  0, 0,
+                                               0,  0,  1, 0,
+                                              11, 22, 33, 1);
+
+        // Expected input values in the same order as the value keys in the
+        // request.
+        const std::vector<double> expectedInputValues{
+            0.0, 0.0, 0.0, 0.0,    11.0, 12.0, 13.0,
+        };
+
+        _VerifyInverseAndForwardResults(
+            inputAttributes, expectedInputValues,
+            {outSpace}, {desiredOutSpaceValue},
+            &execSystem);
+    }
+}
+
+// Test posing with default and parent spaces, using just rotations, so that the
+// results are easy to verify by hand.
+static void
+Test_IrSpacesRotates()
+{
+    _EnsureNoErrors mark;
+
+    const SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
+    layer->ImportFromString(
+        R"usda(#usda 1.0
+
+        def IrFkController "FkController" {
+        }
+        )usda");
+    const UsdStageConstRefPtr usdStage = UsdStage::Open(layer);
+    TF_AXIOM(usdStage);
+
+    // Matrices representing rotations about the X axis by 30, 45, and 90
+    // degrees.
+    static const GfMatrix4d rotateX30(GfRotation({1, 0, 0}, 30), {0, 0, 0});
+    static const GfMatrix4d rotateX45(GfRotation({1, 0, 0}, 45), {0, 0, 0});
+    static const GfMatrix4d rotateX90(GfRotation({1, 0, 0}, 90), {0, 0, 0});
+
+    const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/FkController"));
+    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
+    const UsdAttribute rx = prim.GetAttribute(ExecIrTokens->rxToken);
+    const UsdAttribute defaultSpace =
+        prim.GetAttribute(ExecIrTokens->defaultSpaceToken);
+    const UsdAttribute parentSpace =
+        prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+    TF_AXIOM(prim && outSpace && rx && defaultSpace && parentSpace);
+
+    ExecUsdSystem execSystem(usdStage);
+    const ExecUsdRequest request = execSystem.BuildRequest({
+        ExecUsdValueKey{outSpace, ExecBuiltinComputations->computeValue}
+    });
+
+    // Set default space to a 45 degree rotation about X and pose by the same
+    // rotation, resulting in a 90 degree rotation about X.
+    {
+        defaultSpace.Set(rotateX45);
+        rx.Set(45.0);
+
+        ExecUsdCacheView cache = execSystem.Compute(request);
+        const VtValue value = cache.Get(0);
+        TF_AXIOM(value.IsHolding<GfMatrix4d>());
+        ASSERT_CLOSE(value.Get<GfMatrix4d>(), rotateX90);
+    }
+
+    // Set default space and parent space to 30 degree rotations about X and
+    // pose by the same rotation, resulting in a 90 degree rotation about X.
+    {
+        defaultSpace.Set(rotateX30);
+        parentSpace.Set(rotateX30);
+        rx.Set(30.0);
+
+        ExecUsdCacheView cache = execSystem.Compute(request);
+        const VtValue value = cache.Get(0);
+        TF_AXIOM(!value.IsEmpty());
+        ASSERT_CLOSE(value.Get<GfMatrix4d>(), GfMatrix4d(rotateX90));
+    }
+
+    // Set default and parent space to 45 degree rotations about X and invert to
+    // find the pose that make the Out:Space be the identity matrix, which is a
+    // rotation about X of -90 degrees.
+    {
+        const std::vector<UsdAttribute> inputAttributes = {
+            prim.GetAttribute(ExecIrTokens->rxToken),
+            prim.GetAttribute(ExecIrTokens->ryToken),
+            prim.GetAttribute(ExecIrTokens->rzToken),
+            prim.GetAttribute(ExecIrTokens->rspinToken),
+            prim.GetAttribute(ExecIrTokens->txToken),
+            prim.GetAttribute(ExecIrTokens->tyToken),
+            prim.GetAttribute(ExecIrTokens->tzToken),
+        };
+        for (const UsdAttribute &attr : inputAttributes) {
+            TF_AXIOM(attr);
+        }
+
+        defaultSpace.Set(rotateX45);
+        parentSpace.Set(rotateX45);
+
+        const GfMatrix4d desiredOutSpaceValue(1);
+        const std::vector<double> expectedInputValues{
+            -90.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+        };
+
+        _VerifyInverseAndForwardResults(
+            inputAttributes, expectedInputValues,
+            {outSpace}, {desiredOutSpaceValue},
+            &execSystem);
+    }
+}
+
 static void
 Test_DependentFkControllers()
 {
@@ -318,8 +512,7 @@ Test_DependentFkControllers()
     // parent space is connected to the output of the parent controller.
     const SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
     layer->ImportFromString(
-        R"usda(
-        #usda 1.0
+        R"usda(#usda 1.0
 
         def Scope "Root" {
             def IrFkController "Parent" {
@@ -349,7 +542,6 @@ Test_DependentFkControllers()
         parent.GetAttribute(ExecIrTokens->ryToken),
         parent.GetAttribute(ExecIrTokens->rzToken),
         parent.GetAttribute(ExecIrTokens->rspinToken),
-
         parent.GetAttribute(ExecIrTokens->txToken),
         parent.GetAttribute(ExecIrTokens->tyToken),
         parent.GetAttribute(ExecIrTokens->tzToken),
@@ -358,7 +550,6 @@ Test_DependentFkControllers()
         child.GetAttribute(ExecIrTokens->ryToken),
         child.GetAttribute(ExecIrTokens->rzToken),
         child.GetAttribute(ExecIrTokens->rspinToken),
-
         child.GetAttribute(ExecIrTokens->txToken),
         child.GetAttribute(ExecIrTokens->tyToken),
         child.GetAttribute(ExecIrTokens->tzToken),
@@ -393,5 +584,7 @@ int main(int argc, char **argv)
 {
     Test_IrForwardCompute();
     Test_IrInverseCompute();
+    Test_IrSpacesTranslates();
+    Test_IrSpacesRotates();
     Test_DependentFkControllers();
 }

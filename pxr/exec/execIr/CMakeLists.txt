@@ -5,9 +5,10 @@ pxr_library(execIr
     INCLUDE_SCHEMA_FILES
 
     LIBRARIES
+        execGeom
+        execUsd
         gf
         tf
-        execUsd
         
     PUBLIC_HEADERS
         api.h
@@ -84,6 +85,7 @@ pxr_build_test(testExecIrJointScope
         sdf
         tf
         usd
+        usdGeom
     CPPFILES
         testenv/testExecIrJointScope.cpp
 )

@@ -15,7 +15,6 @@
 #include "pxr/exec/vdf/context.h"
 
 #include "pxr/base/gf/matrix4d.h"
-#include "pxr/base/tf/staticTokens.h"
 #include "pxr/base/tf/token.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -37,14 +36,17 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrFkController)
 
     builder.NonInvertibleInputAttribute<GfMatrix4d>(
         ExecIrTokens->parentSpaceToken);
+    builder.NonInvertibleInputAttribute<GfMatrix4d>(
+        ExecIrTokens->parentDefaultSpaceToken);
 
     builder.InvertibleOutputAttribute<GfMatrix4d>(ExecIrTokens->outSpaceToken);
 
     builder.SwitchAttribute<TfToken>(
         ExecIrTokens->rotationOrderToken);
 
-    builder.PassthroughAttribute<GfMatrix4d>(
-        ExecIrTokens->defaultSpaceToken);
+    builder.PassthroughAttributes<GfMatrix4d>(
+        ExecIrTokens->defaultSpaceToken,
+        ExecIrTokens->outDefaultSpaceToken);
 }
 
 // Returns the forward-computed result for Out:Space.
@@ -52,17 +54,8 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrFkController)
 static ExecIrResult
 _Compute(const VdfContext &ctx)
 {
-    const GfMatrix4d startingSpace =
-        ExecIr_UtilsComputeStandardStartingSpace(ctx);
-
-    const ExecIr_UtilsParams params = {
-        startingSpace,
-        ExecIr_UtilsComputeStandardTranslationOrientation(ctx, startingSpace),
-        ExecIr_UtilsComputeStandardRotationOrientation(ctx, startingSpace)
-    };
-
     const GfMatrix4d outSpaceValue = ExecIr_UtilsCompute(
-        params,
+        ExecIr_ComputeFkParams(ctx),
         ExecIr_UtilsComputeLocalTranslation(ctx),
         ExecIr_UtilsComputeLocalRotation(ctx));
 
@@ -76,19 +69,10 @@ _Compute(const VdfContext &ctx)
 static ExecIrResult
 _Invert(const VdfContext &ctx)
 {
-    const GfMatrix4d startingSpace =
-        ExecIr_UtilsComputeStandardStartingSpace(ctx);
-
-    const GfMatrix4d posedSpace =
+    const GfMatrix4d &posedSpace =
         ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->outSpaceToken);
 
-    const ExecIr_UtilsParams params = {
-        startingSpace,
-        ExecIr_UtilsComputeStandardTranslationOrientation(ctx, startingSpace),
-        ExecIr_UtilsComputeStandardRotationOrientation(ctx, startingSpace)
-    };
-
     ExecIrResult resultMap;
-    ExecIr_UtilsInvert(ctx, posedSpace, params, &resultMap);
+    ExecIr_UtilsInvert(ctx, posedSpace, ExecIr_ComputeFkParams(ctx), &resultMap);
     return resultMap;
 }

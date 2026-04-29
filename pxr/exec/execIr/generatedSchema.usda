@@ -44,9 +44,16 @@ class IrFkController "IrFkController" (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
+    matrix4d Out:DefaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+        irRole = "PassthroughAttribute"
+    )
     matrix4d Out:Space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irIsInvertible = true
         irRole = "OutputAttribute"
+    )
+    matrix4d ParentIn:DefaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+        irIsInvertible = false
+        irRole = "InputAttribute"
     )
     matrix4d ParentIn:Space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irIsInvertible = false
