@@ -63,12 +63,12 @@ Test_IrForwardCompute()
 
         def Scope "Root" {
             def IrFkController "FkController" {
-                double In:Rx =    90.0
-                double In:Ry =   -90.0
-                double In:Rz =    90.0
-                double In:Tx =     1.0
-                double In:Ty =     2.0
-                double In:Tz =     3.0
+                double in:rx =    90.0
+                double in:ry =   -90.0
+                double in:rz =    90.0
+                double in:tx =     1.0
+                double in:ty =     2.0
+                double in:tz =     3.0
             }
         }
         )usda");
@@ -319,8 +319,8 @@ Test_IrSpacesTranslates()
 
         def Scope "Root" {
             def IrFkController "FkController" {
-                double In:Tx = 5.0
-                matrix4d In:DefaultSpace = ((1,  0, 0, 0),
+                double in:tx = 5.0
+                matrix4d in:defaultSpace = ((1,  0, 0, 0),
                                             (0,  1, 0, 0),
                                             (0,  0, 1, 0),
                                             (0, 10, 0, 1))
@@ -472,7 +472,7 @@ Test_IrSpacesRotates()
     }
 
     // Set default and parent space to 45 degree rotations about X and invert to
-    // find the pose that make the Out:Space be the identity matrix, which is a
+    // find the pose that make the out:space be the identity matrix, which is a
     // rotation about X of -90 degrees.
     {
         const std::vector<UsdAttribute> inputAttributes = {
@@ -519,7 +519,7 @@ Test_DependentFkControllers()
             }
 
             def IrFkController "Child" {
-                matrix4d ParentIn:Space.connect = </Root/Parent.Out:Space>
+                matrix4d parentIn:space.connect = </Root/Parent.out:space>
             }
         }
         )usda");

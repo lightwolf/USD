@@ -177,27 +177,27 @@ Test_BasicSwitch()
         def Scope "Root" {
             def Scope "Rig1" {
                 def IrFkController "FK1" {
-                    double In:Tx = 1.0
+                    double in:tx = 1.0
                 }
                 def IrFkController "FK2" {
-                    double In:Ty = 2.0
+                    double in:ty = 2.0
                 }
             }
 
             def Scope "Rig2" {
                 def IrFkController "FK1" {
-                    double In:Tx = 3.0
+                    double in:tx = 3.0
                 }
                 def IrFkController "FK2" {
-                    double In:Ty = 4.0
+                    double in:ty = 4.0
                 }
             }
 
             def IrSwitchController "Switch" {
-                matrix4d rig1:joint1:space.connect = </Root/Rig1/FK1.Out:Space>
-                matrix4d rig1:joint2:space.connect = </Root/Rig1/FK2.Out:Space>
-                matrix4d rig2:joint1:space.connect = </Root/Rig2/FK1.Out:Space>
-                matrix4d rig2:joint2:space.connect = </Root/Rig2/FK2.Out:Space>
+                matrix4d rig1:joint1:space.connect = </Root/Rig1/FK1.out:space>
+                matrix4d rig1:joint2:space.connect = </Root/Rig1/FK2.out:space>
+                matrix4d rig2:joint1:space.connect = </Root/Rig2/FK1.out:space>
+                matrix4d rig2:joint2:space.connect = </Root/Rig2/FK2.out:space>
             }
         }
         )usda");

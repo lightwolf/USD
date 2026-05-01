@@ -40,22 +40,22 @@ TF_DECLARE_PUBLIC_TOKENS(
     ExecIrRotationOrderTokens, EXECIR_API, EXEC_IR_ROTATION_ORDER_TOKENS);
 
 #define EXEC_IR_TOKENS                                                          \
-    ((parentSpaceToken, "ParentIn:Space"))                                      \
-    ((parentDefaultSpaceToken, "ParentIn:DefaultSpace"))                        \
+    ((parentSpaceToken, "parentIn:space"))                                      \
+    ((parentDefaultSpaceToken, "parentIn:defaultSpace"))                        \
                                                                                 \
-    ((defaultSpaceToken, "In:DefaultSpace"))                                    \
+    ((defaultSpaceToken, "in:defaultSpace"))                                    \
                                                                                 \
-    ((txToken, "In:Tx"))                                                        \
-    ((tyToken, "In:Ty"))                                                        \
-    ((tzToken, "In:Tz"))                                                        \
-    ((rxToken, "In:Rx"))                                                        \
-    ((ryToken, "In:Ry"))                                                        \
-    ((rzToken, "In:Rz"))                                                        \
-    ((rspinToken, "In:Rspin"))                                                  \
-    ((rotationOrderToken, "In:RotationOrder"))                                  \
+    ((txToken, "in:tx"))                                                        \
+    ((tyToken, "in:ty"))                                                        \
+    ((tzToken, "in:tz"))                                                        \
+    ((rxToken, "in:rx"))                                                        \
+    ((ryToken, "in:ry"))                                                        \
+    ((rzToken, "in:rz"))                                                        \
+    ((rspinToken, "in:rspin"))                                                  \
+    ((rotationOrderToken, "in:rotationOrder"))                                  \
                                                                                 \
-    ((outSpaceToken, "Out:Space"))                                              \
-    ((outDefaultSpaceToken, "Out:DefaultSpace"))
+    ((outSpaceToken, "out:space"))                                              \
+    ((outDefaultSpaceToken, "out:defaultSpace"))
 
 TF_DECLARE_PUBLIC_TOKENS(ExecIrTokens, EXECIR_API, EXEC_IR_TOKENS);
 

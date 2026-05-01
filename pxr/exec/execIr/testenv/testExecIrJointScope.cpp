@@ -70,22 +70,22 @@ Test_JointScopeBasic()
                 double avars:ry = -90.0
                 double avars:rz =  90.0
                 matrix4d posed:space.connect = [
-                    </Root/FkController.Out:Space>
+                    </Root/FkController.out:space>
                 ]
             }
 
             def IrFkController "FkController" {
-                double In:Tx.connect = </Root/Joint.avars:tx>
-                double In:Ty.connect = </Root/Joint.avars:ty>
-                double In:Tz.connect = </Root/Joint.avars:tz>
-                double In:Rx.connect = </Root/Joint.avars:rx>
-                double In:Ry.connect = </Root/Joint.avars:ry>
-                double In:Rz.connect = </Root/Joint.avars:rz>
-                double In:Rspin.connect = </Root/Joint.avars:rspin>
-                token In:RotationOrder.connect = [
+                double in:tx.connect = </Root/Joint.avars:tx>
+                double in:ty.connect = </Root/Joint.avars:ty>
+                double in:tz.connect = </Root/Joint.avars:tz>
+                double in:rx.connect = </Root/Joint.avars:rx>
+                double in:ry.connect = </Root/Joint.avars:ry>
+                double in:rz.connect = </Root/Joint.avars:rz>
+                double in:rspin.connect = </Root/Joint.avars:rspin>
+                token in:rotationOrder.connect = [
                     </Root/Joint.avars:rotationOrder>
                 ]
-                matrix4d In:DefaultSpace.connect = [
+                matrix4d in:defaultSpace.connect = [
                     </Root/Joint.avars:defaultSpace>
                 ]
             }
@@ -202,22 +202,22 @@ Test_JointScopeRestSpace()
             def IrJointScope "Joint" {
                 double avars:ty = 10.0
                 matrix4d posed:space.connect = [
-                    </Root/FkController.Out:Space>
+                    </Root/FkController.out:space>
                 ]
             }
 
             def IrFkController "FkController" {
-                double In:Tx.connect = </Root/Joint.avars:tx>
-                double In:Ty.connect = </Root/Joint.avars:ty>
-                double In:Tz.connect = </Root/Joint.avars:tz>
-                double In:Rx.connect = </Root/Joint.avars:rx>
-                double In:Ry.connect = </Root/Joint.avars:ry>
-                double In:Rz.connect = </Root/Joint.avars:rz>
-                double In:Rspin.connect = </Root/Joint.avars:rspin>
-                token In:RotationOrder.connect = [
+                double in:tx.connect = </Root/Joint.avars:tx>
+                double in:ty.connect = </Root/Joint.avars:ty>
+                double in:tz.connect = </Root/Joint.avars:tz>
+                double in:rx.connect = </Root/Joint.avars:rx>
+                double in:ry.connect = </Root/Joint.avars:ry>
+                double in:rz.connect = </Root/Joint.avars:rz>
+                double in:rspin.connect = </Root/Joint.avars:rspin>
+                token in:rotationOrder.connect = [
                     </Root/Joint.avars:rotationOrder>
                 ]
-                matrix4d In:DefaultSpace.connect = [
+                matrix4d in:defaultSpace.connect = [
                     </Root/Joint.avars:defaultSpace>
                 ]
             }
@@ -311,7 +311,7 @@ Test_JointScopeParentChild()
             def IrJointScope "ParentJoint" {
                 double avars:rx = 90.0
                 matrix4d posed:space.connect = [
-                    </Root/ParentController.Out:Space>
+                    </Root/ParentController.out:space>
                 ]
 
                 def IrJointScope "ChildJoint" {
@@ -320,48 +320,48 @@ Test_JointScopeParentChild()
                     double avars:tz =  3.0
                     double rest:tx  = 10.0
                     matrix4d posed:space.connect = [
-                        </Root/ChildController.Out:Space>
+                        </Root/ChildController.out:space>
                     ]
                 }
             }
 
             def IrFkController "ParentController" {
-                double In:Tx.connect = </Root/ParentJoint.avars:tx>
-                double In:Ty.connect = </Root/ParentJoint.avars:ty>
-                double In:Tz.connect = </Root/ParentJoint.avars:tz>
-                double In:Rx.connect = </Root/ParentJoint.avars:rx>
-                double In:Ry.connect = </Root/ParentJoint.avars:ry>
-                double In:Rz.connect = </Root/ParentJoint.avars:rz>
-                double In:Rspin.connect = </Root/ParentJoint.avars:rspin>
-                token In:RotationOrder.connect = [
+                double in:tx.connect = </Root/ParentJoint.avars:tx>
+                double in:ty.connect = </Root/ParentJoint.avars:ty>
+                double in:tz.connect = </Root/ParentJoint.avars:tz>
+                double in:rx.connect = </Root/ParentJoint.avars:rx>
+                double in:ry.connect = </Root/ParentJoint.avars:ry>
+                double in:rz.connect = </Root/ParentJoint.avars:rz>
+                double in:rspin.connect = </Root/ParentJoint.avars:rspin>
+                token in:rotationOrder.connect = [
                     </Root/ParentJoint.avars:rotationOrder>
                 ]
-                matrix4d In:DefaultSpace.connect = [
+                matrix4d in:defaultSpace.connect = [
                     </Root/ParentJoint.avars:defaultSpace>
                 ]
             }
 
             def IrFkController "ChildController" {
-                double In:Tx.connect = </Root/ParentJoint/ChildJoint.avars:tx>
-                double In:Ty.connect = </Root/ParentJoint/ChildJoint.avars:ty>
-                double In:Tz.connect = </Root/ParentJoint/ChildJoint.avars:tz>
-                double In:Rx.connect = </Root/ParentJoint/ChildJoint.avars:rx>
-                double In:Ry.connect = </Root/ParentJoint/ChildJoint.avars:ry>
-                double In:Rz.connect = </Root/ParentJoint/ChildJoint.avars:rz>
-                double In:Rspin.connect = [
+                double in:tx.connect = </Root/ParentJoint/ChildJoint.avars:tx>
+                double in:ty.connect = </Root/ParentJoint/ChildJoint.avars:ty>
+                double in:tz.connect = </Root/ParentJoint/ChildJoint.avars:tz>
+                double in:rx.connect = </Root/ParentJoint/ChildJoint.avars:rx>
+                double in:ry.connect = </Root/ParentJoint/ChildJoint.avars:ry>
+                double in:rz.connect = </Root/ParentJoint/ChildJoint.avars:rz>
+                double in:rspin.connect = [
                     </Root/ParentJoint/ChildJoint.avars:rspin>
                 ]
-                token In:RotationOrder.connect = [
+                token in:rotationOrder.connect = [
                     </Root/ParentJoint/ChildJoint.avars:rotationOrder>
                 ]
-                matrix4d In:DefaultSpace.connect = [
+                matrix4d in:defaultSpace.connect = [
                     </Root/ParentJoint/ChildJoint.avars:defaultSpace>
                 ]
-                matrix4d ParentIn:DefaultSpace.connect = [
-                    </Root/ParentController.Out:DefaultSpace>
+                matrix4d parentIn:defaultSpace.connect = [
+                    </Root/ParentController.out:defaultSpace>
                 ]
-                matrix4d ParentIn:Space.connect = [
-                    </Root/ParentController.Out:Space>
+                matrix4d parentIn:space.connect = [
+                    </Root/ParentController.out:space>
                 ]
             }
         }

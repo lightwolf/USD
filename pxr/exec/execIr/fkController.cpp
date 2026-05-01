@@ -49,7 +49,7 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrFkController)
         ExecIrTokens->outDefaultSpaceToken);
 }
 
-// Returns the forward-computed result for Out:Space.
+// Returns the forward-computed result for out:space.
 //
 static ExecIrResult
 _Compute(const VdfContext &ctx)

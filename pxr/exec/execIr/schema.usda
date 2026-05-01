@@ -49,62 +49,62 @@ class IrFkController "IrFkController" (
     }
 )
 {
-    matrix4d ParentIn:Space = (
+    matrix4d parentIn:space = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)) (
         irRole = "InputAttribute"
         irIsInvertible = False
     )
-    matrix4d ParentIn:DefaultSpace = (
+    matrix4d parentIn:defaultSpace = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)) (
         irRole = "InputAttribute"
         irIsInvertible = False
     )
 
-    matrix4d Out:Space = (
+    matrix4d out:space = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)) (
         irRole = "OutputAttribute"
         irIsInvertible = True
     )
-    matrix4d Out:DefaultSpace = (
+    matrix4d out:defaultSpace = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)) (
         irRole = "PassthroughAttribute"
     )
 
-    matrix4d In:DefaultSpace = (
+    matrix4d in:defaultSpace = (
         (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)) (
         irRole = "PassthroughAttribute"
     )
-    double In:Tx = 0 (
+    double in:tx = 0 (
         irRole = "InputAttribute"
         irIsInvertible = True
     )
-    double In:Ty = 0 (
+    double in:ty = 0 (
         irRole = "InputAttribute"
         irIsInvertible = True
     )
-    double In:Tz = 0 (
-        irRole = "InputAttribute"
-        irIsInvertible = True
-    )
-
-    double In:Rx = 0 (
-        irRole = "InputAttribute"
-        irIsInvertible = True
-    )
-    double In:Ry = 0 (
-        irRole = "InputAttribute"
-        irIsInvertible = True
-    )
-    double In:Rz = 0 (
-        irRole = "InputAttribute"
-        irIsInvertible = True
-    )
-    double In:Rspin = 0 (
+    double in:tz = 0 (
         irRole = "InputAttribute"
         irIsInvertible = True
     )
 
-    token In:RotationOrder = "XYZ" (
+    double in:rx = 0 (
+        irRole = "InputAttribute"
+        irIsInvertible = True
+    )
+    double in:ry = 0 (
+        irRole = "InputAttribute"
+        irIsInvertible = True
+    )
+    double in:rz = 0 (
+        irRole = "InputAttribute"
+        irIsInvertible = True
+    )
+    double in:rspin = 0 (
+        irRole = "InputAttribute"
+        irIsInvertible = True
+    )
+
+    token in:rotationOrder = "XYZ" (
         irRole = "SwitchAttribute"
         allowedTokens = ["XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]
     )

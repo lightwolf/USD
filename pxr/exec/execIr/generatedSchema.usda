@@ -17,53 +17,53 @@ class IrFkController "IrFkController" (
     }
 )
 {
-    matrix4d In:DefaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+    matrix4d in:defaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irRole = "PassthroughAttribute"
     )
-    token In:RotationOrder = "XYZ" (
+    token in:rotationOrder = "XYZ" (
         allowedTokens = ["XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"]
         irRole = "SwitchAttribute"
     )
-    double In:Rspin = 0 (
+    double in:rspin = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Rx = 0 (
+    double in:rx = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Ry = 0 (
+    double in:ry = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Rz = 0 (
+    double in:rz = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Tx = 0 (
+    double in:tx = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Ty = 0 (
+    double in:ty = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    double In:Tz = 0 (
+    double in:tz = 0 (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    matrix4d Out:DefaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+    matrix4d out:defaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irRole = "PassthroughAttribute"
     )
-    matrix4d Out:Space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+    matrix4d out:space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irIsInvertible = true
         irRole = "OutputAttribute"
     )
-    matrix4d ParentIn:DefaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+    matrix4d parentIn:defaultSpace = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irIsInvertible = false
         irRole = "InputAttribute"
     )
-    matrix4d ParentIn:Space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
+    matrix4d parentIn:space = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ) (
         irIsInvertible = false
         irRole = "InputAttribute"
     )
