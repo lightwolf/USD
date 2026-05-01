@@ -129,9 +129,9 @@ class IrSwitchController "IrSwitchController" (
     }
 )
 {
-    token switch = "Rig1" (
+    token switch = "rig1" (
         irRole = "SwitchAttribute"
-        allowedTokens = ["Rig1", "Rig2"]
+        allowedTokens = ["rig1", "rig2"]
     )
 
     matrix4d rig1:joint1:space = (

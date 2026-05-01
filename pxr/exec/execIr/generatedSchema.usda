@@ -100,8 +100,8 @@ class IrSwitchController "IrSwitchController" (
         irIsInvertible = true
         irRole = "InputAttribute"
     )
-    token switch = "Rig1" (
-        allowedTokens = ["Rig1", "Rig2"]
+    token switch = "rig1" (
+        allowedTokens = ["rig1", "rig2"]
         irRole = "SwitchAttribute"
     )
 }
