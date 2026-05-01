@@ -507,7 +507,7 @@ _ComputeStandardStartingSpace(
     const double parentTotalSize(1.0);
 
     const GfMatrix4d &defaultSpace =
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->defaultSpaceToken);
+        ctx.GetInputValue<GfMatrix4d>(ExecIrFkControllerTokens->inDefaultSpace);
 
     // Extract the default scales and work with a normalized matrix
     // for these calculations
@@ -549,15 +549,16 @@ ExecIr_UtilsComputeStandardTranslationOrientation(
     // non-orthonomralized matrices and then normalizing after the fact can
     // introduce unintended rotations.
     const GfMatrix4d defaultSpaceNormalized =
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->defaultSpaceToken)
+        ctx.GetInputValue<GfMatrix4d>(ExecIrFkControllerTokens->inDefaultSpace)
         .GetOrthonormalized();
 
     // TODO: Add support for _not_ inheriting non-orthogonal transforms.
     const GfMatrix4d &parentSpaceNormalized = 
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->parentSpaceToken)
+        ctx.GetInputValue<GfMatrix4d>(ExecIrFkControllerTokens->parentInSpace)
         .GetOrthonormalized();
     const GfMatrix4d parentDefaultSpaceNormalized =
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->parentDefaultSpaceToken)
+        ctx.GetInputValue<GfMatrix4d>(
+            ExecIrFkControllerTokens->parentInDefaultSpace)
         .GetOrthonormalized();
 
     GfMatrix4d translationOrientation =
@@ -590,9 +591,9 @@ ExecIr_UtilsComputeLocalTranslation(
     const VdfContext &ctx)
 {
     return GfVec3d(
-        ctx.GetInputValue<double>(ExecIrTokens->txToken),
-        ctx.GetInputValue<double>(ExecIrTokens->tyToken),
-        ctx.GetInputValue<double>(ExecIrTokens->tzToken));
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inTx),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inTy),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inTz));
 }
 
 GfRotation 
@@ -601,13 +602,14 @@ ExecIr_UtilsComputeLocalRotation(
 {
     const _TransformRotationOrder rotationOrder =
         _GetRotationOrderFromToken(
-            ctx.GetInputValue<TfToken>(ExecIrTokens->rotationOrderToken));
+            ctx.GetInputValue<TfToken>(
+                ExecIrFkControllerTokens->inRotationOrder));
 
     return _ComputeComposedRotation(
-        ctx.GetInputValue<double>(ExecIrTokens->rspinToken),
-        ctx.GetInputValue<double>(ExecIrTokens->rxToken),
-        ctx.GetInputValue<double>(ExecIrTokens->ryToken),
-        ctx.GetInputValue<double>(ExecIrTokens->rzToken),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inRspin),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inRx),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inRy),
+        ctx.GetInputValue<double>(ExecIrFkControllerTokens->inRz),
         rotationOrder);
 }
 
@@ -654,9 +656,9 @@ ExecIr_UtilsInvert(
             posedSpace,
             params.translationOrientation);
 
-    (*resultMap)[ExecIrTokens->txToken] = localTranslation[0];
-    (*resultMap)[ExecIrTokens->tyToken] = localTranslation[1];
-    (*resultMap)[ExecIrTokens->tzToken] = localTranslation[2];
+    (*resultMap)[ExecIrFkControllerTokens->inTx] = localTranslation[0];
+    (*resultMap)[ExecIrFkControllerTokens->inTy] = localTranslation[1];
+    (*resultMap)[ExecIrFkControllerTokens->inTz] = localTranslation[2];
 
     // TODO: Inversion hints. For now, we choose a rotation parameterization as
     // close to (0, 0, 0, 0) as possible.
@@ -664,7 +666,8 @@ ExecIr_UtilsInvert(
 
     const _TransformRotationOrder rotationOrder =
         _GetRotationOrderFromToken(
-            ctx.GetInputValue<TfToken>(ExecIrTokens->rotationOrderToken));
+            ctx.GetInputValue<TfToken>(
+                ExecIrFkControllerTokens->inRotationOrder));
 
     const GfVec4d angles = _InvertRotation(
         params.startingSpace,
@@ -675,10 +678,10 @@ ExecIr_UtilsInvert(
 
     // TODO: Add support for scale and squetch avars.
 
-    (*resultMap)[ExecIrTokens->rspinToken] = angles[0];
-    (*resultMap)[ExecIrTokens->rxToken] = angles[1];
-    (*resultMap)[ExecIrTokens->ryToken] = angles[2];
-    (*resultMap)[ExecIrTokens->rzToken] = angles[3];
+    (*resultMap)[ExecIrFkControllerTokens->inRspin] = angles[0];
+    (*resultMap)[ExecIrFkControllerTokens->inRx] = angles[1];
+    (*resultMap)[ExecIrFkControllerTokens->inRy] = angles[2];
+    (*resultMap)[ExecIrFkControllerTokens->inRz] = angles[3];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,8 +694,9 @@ ExecIr_ComputeFkParams(const VdfContext &ctx)
 {
     const GfMatrix4d startingSpace = _ComputeStandardStartingSpace(
         ctx,
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->parentSpaceToken),
-        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->parentDefaultSpaceToken));
+        ctx.GetInputValue<GfMatrix4d>(ExecIrFkControllerTokens->parentInSpace),
+        ctx.GetInputValue<GfMatrix4d>(
+            ExecIrFkControllerTokens->parentInDefaultSpace));
 
     return {
         startingSpace,

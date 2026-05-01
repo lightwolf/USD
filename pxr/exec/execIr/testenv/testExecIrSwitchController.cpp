@@ -91,13 +91,14 @@ void _VerifySwitchInverseAndForwardResults(
 
     std::vector<UsdAttribute> inputAvars;
     for (const UsdPrim &prim : inputPrims) {
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->rxToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->ryToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->rzToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->rspinToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->txToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->tyToken));
-        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->tzToken));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRx));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRy));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRz));
+        inputAvars.push_back(
+            prim.GetAttribute(ExecIrFkControllerTokens->inRspin));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTx));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTy));
+        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTz));
     }
     TF_AXIOM(inputAvars.size() == expectedInputValues.size());
 

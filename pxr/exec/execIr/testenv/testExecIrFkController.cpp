@@ -77,7 +77,8 @@ Test_IrForwardCompute()
 
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
     TF_AXIOM(prim);
-    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
+    const UsdAttribute outSpace =
+        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
     TF_AXIOM(outSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -102,7 +103,7 @@ Test_IrForwardCompute()
     // Now set the parent space and compute again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0, 0, 0,
                                    0, 1, 0, 0,
@@ -213,17 +214,18 @@ Test_IrInverseCompute()
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
     TF_AXIOM(prim);
 
-    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
+    const UsdAttribute outSpace =
+        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
     TF_AXIOM(outSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        prim.GetAttribute(ExecIrTokens->rxToken),
-        prim.GetAttribute(ExecIrTokens->ryToken),
-        prim.GetAttribute(ExecIrTokens->rzToken),
-        prim.GetAttribute(ExecIrTokens->rspinToken),
-        prim.GetAttribute(ExecIrTokens->txToken),
-        prim.GetAttribute(ExecIrTokens->tyToken),
-        prim.GetAttribute(ExecIrTokens->tzToken),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRx),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRy),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRz),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTx),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTy),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -281,7 +283,7 @@ Test_IrInverseCompute()
     // Now set the parent space and compute the inverse again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0, 0, 0,
                                    0, 1, 0, 0,
@@ -333,7 +335,8 @@ Test_IrSpacesTranslates()
 
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
     TF_AXIOM(prim);
-    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
+    const UsdAttribute outSpace =
+        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
     TF_AXIOM(outSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -358,7 +361,7 @@ Test_IrSpacesTranslates()
     // Now set the parent space and compute again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0,  0, 0,
                                    0, 1,  0, 0,
@@ -378,13 +381,13 @@ Test_IrSpacesTranslates()
 
 
     const std::vector<UsdAttribute> inputAttributes = {
-        prim.GetAttribute(ExecIrTokens->rxToken),
-        prim.GetAttribute(ExecIrTokens->ryToken),
-        prim.GetAttribute(ExecIrTokens->rzToken),
-        prim.GetAttribute(ExecIrTokens->rspinToken),
-        prim.GetAttribute(ExecIrTokens->txToken),
-        prim.GetAttribute(ExecIrTokens->tyToken),
-        prim.GetAttribute(ExecIrTokens->tzToken),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRx),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRy),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRz),
+        prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTx),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTy),
+        prim.GetAttribute(ExecIrFkControllerTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -433,12 +436,13 @@ Test_IrSpacesRotates()
     static const GfMatrix4d rotateX90(GfRotation({1, 0, 0}, 90), {0, 0, 0});
 
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/FkController"));
-    const UsdAttribute outSpace = prim.GetAttribute(ExecIrTokens->outSpaceToken);
-    const UsdAttribute rx = prim.GetAttribute(ExecIrTokens->rxToken);
+    const UsdAttribute outSpace =
+        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
+    const UsdAttribute rx = prim.GetAttribute(ExecIrFkControllerTokens->inRx);
     const UsdAttribute defaultSpace =
-        prim.GetAttribute(ExecIrTokens->defaultSpaceToken);
+        prim.GetAttribute(ExecIrFkControllerTokens->inDefaultSpace);
     const UsdAttribute parentSpace =
-        prim.GetAttribute(ExecIrTokens->parentSpaceToken);
+        prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
     TF_AXIOM(prim && outSpace && rx && defaultSpace && parentSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -476,13 +480,13 @@ Test_IrSpacesRotates()
     // rotation about X of -90 degrees.
     {
         const std::vector<UsdAttribute> inputAttributes = {
-            prim.GetAttribute(ExecIrTokens->rxToken),
-            prim.GetAttribute(ExecIrTokens->ryToken),
-            prim.GetAttribute(ExecIrTokens->rzToken),
-            prim.GetAttribute(ExecIrTokens->rspinToken),
-            prim.GetAttribute(ExecIrTokens->txToken),
-            prim.GetAttribute(ExecIrTokens->tyToken),
-            prim.GetAttribute(ExecIrTokens->tzToken),
+            prim.GetAttribute(ExecIrFkControllerTokens->inRx),
+            prim.GetAttribute(ExecIrFkControllerTokens->inRy),
+            prim.GetAttribute(ExecIrFkControllerTokens->inRz),
+            prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
+            prim.GetAttribute(ExecIrFkControllerTokens->inTx),
+            prim.GetAttribute(ExecIrFkControllerTokens->inTy),
+            prim.GetAttribute(ExecIrFkControllerTokens->inTz),
         };
         for (const UsdAttribute &attr : inputAttributes) {
             TF_AXIOM(attr);
@@ -532,27 +536,27 @@ Test_DependentFkControllers()
     TF_AXIOM(parent && child);
 
     const UsdAttribute parentOutSpace =
-        parent.GetAttribute(ExecIrTokens->outSpaceToken);
+        parent.GetAttribute(ExecIrFkControllerTokens->outSpace);
     const UsdAttribute childOutSpace =
-        child.GetAttribute(ExecIrTokens->outSpaceToken);
+        child.GetAttribute(ExecIrFkControllerTokens->outSpace);
     TF_AXIOM(parentOutSpace && childOutSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        parent.GetAttribute(ExecIrTokens->rxToken),
-        parent.GetAttribute(ExecIrTokens->ryToken),
-        parent.GetAttribute(ExecIrTokens->rzToken),
-        parent.GetAttribute(ExecIrTokens->rspinToken),
-        parent.GetAttribute(ExecIrTokens->txToken),
-        parent.GetAttribute(ExecIrTokens->tyToken),
-        parent.GetAttribute(ExecIrTokens->tzToken),
+        parent.GetAttribute(ExecIrFkControllerTokens->inRx),
+        parent.GetAttribute(ExecIrFkControllerTokens->inRy),
+        parent.GetAttribute(ExecIrFkControllerTokens->inRz),
+        parent.GetAttribute(ExecIrFkControllerTokens->inRspin),
+        parent.GetAttribute(ExecIrFkControllerTokens->inTx),
+        parent.GetAttribute(ExecIrFkControllerTokens->inTy),
+        parent.GetAttribute(ExecIrFkControllerTokens->inTz),
 
-        child.GetAttribute(ExecIrTokens->rxToken),
-        child.GetAttribute(ExecIrTokens->ryToken),
-        child.GetAttribute(ExecIrTokens->rzToken),
-        child.GetAttribute(ExecIrTokens->rspinToken),
-        child.GetAttribute(ExecIrTokens->txToken),
-        child.GetAttribute(ExecIrTokens->tyToken),
-        child.GetAttribute(ExecIrTokens->tzToken),
+        child.GetAttribute(ExecIrFkControllerTokens->inRx),
+        child.GetAttribute(ExecIrFkControllerTokens->inRy),
+        child.GetAttribute(ExecIrFkControllerTokens->inRz),
+        child.GetAttribute(ExecIrFkControllerTokens->inRspin),
+        child.GetAttribute(ExecIrFkControllerTokens->inTx),
+        child.GetAttribute(ExecIrFkControllerTokens->inTy),
+        child.GetAttribute(ExecIrFkControllerTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
