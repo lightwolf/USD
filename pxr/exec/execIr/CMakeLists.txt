@@ -25,6 +25,7 @@ pxr_library(execIr
 
     CPPFILES
         fkController.cpp
+        switchController.cpp
         transformable.cpp
 
     RESOURCE_FILES
@@ -92,5 +93,23 @@ pxr_build_test(testExecIrJointScope
 
 pxr_register_test(testExecIrJointScope
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testExecIrJointScope"
+    EXPECTED_RETURN_CODE 0
+)
+
+pxr_build_test(testExecIrSwitchController
+    LIBRARIES
+        exec
+        execIr
+        execUsd
+        gf
+        sdf
+        tf
+        usd
+    CPPFILES
+        testenv/testExecIrSwitchController.cpp
+)
+
+pxr_register_test(testExecIrSwitchController
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testExecIrSwitchController"
     EXPECTED_RETURN_CODE 0
 )

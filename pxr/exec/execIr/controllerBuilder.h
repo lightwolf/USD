@@ -155,8 +155,19 @@ public:
     NonInvertibleInputAttribute(
         const TfToken &attributeName);
 
-    /// Registers an invertible output attribute; the output is inverible if \p
-    /// invertible is `true`.
+    /// Registers multiple invertible input attributes.
+    ///
+    template <typename ValueType>
+    void
+    InvertibleInputAttributes(
+        const TfTokenVector &attributeNames) {
+        for (const TfToken &attributeName : attributeNames) {
+            InvertibleInputAttribute<ValueType>(attributeName);
+        }
+    }
+
+
+    /// Registers an invertible output attribute.
     ///
     /// - Output attributes produce computed values that are the results of the
     ///   forward computation and provide input to the inverse computation.
@@ -167,6 +178,17 @@ public:
     void
     InvertibleOutputAttribute(
         const TfToken &attributeName);
+
+    /// Registers multiple invertible output attributes.
+    ///
+    template <typename ValueType>
+    void
+    InvertibleOutputAttributes(
+        const TfTokenVector &attributeNames) {
+        for (const TfToken &attributeName : attributeNames) {
+            InvertibleOutputAttribute<ValueType>(attributeName);
+        }
+    }
 
     /// Registers a switch attribute.
     /// 
@@ -407,14 +429,15 @@ void
 ExecIrControllerBuilder::SwitchAttribute(
     const TfToken &attributeName)
 {
-    using namespace exec_registration;
+    // TODO: We will have work to do here that is specific to switch attributes
+    // when we implement more invertible rigging features. E.g., switch
+    // attributes play a key role in determining which controllers contribute to
+    // the current pose, and determining contributing controllers is critical
+    // for supporing advanced authoring behaviors for invertible rigs.
 
-    // Switch attributes are inputs to the forward and inverse computations.
-    _forwardComputeReg.Inputs(AttributeValue<ValueType>(attributeName));
-    _inverseComputeReg.Inputs(AttributeValue<ValueType>(attributeName));
-
-    // Switch attributes support dataflow across connections.
-    _ConnectionDataflowExpression<ValueType>(attributeName);
+    // Switch attributes have all the exec registrations that non-invertible
+    // attributes have.
+    NonInvertibleInputAttribute<ValueType>(attributeName);
 }
 
 template <typename ValueType>
