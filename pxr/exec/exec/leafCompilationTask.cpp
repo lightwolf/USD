@@ -107,8 +107,8 @@ Exec_LeafCompilationTask::_Compile(
         // Make a copy of the stored input key to inform input recompilation 
         // along with the resolved result type. 
         const Exec_InputKey &inputKey = _inputKeys->Get()[0];
-        const Exec_InputKeyVectorRefPtr inputKeys =
-            Exec_InputKeyVector::MakeShared(std::initializer_list<Exec_InputKey>{{
+        Exec_InputKeyVectorConstRefPtr inputKeys =
+            Exec_InputKeyVector::MakeConstShared({{
                 inputKey.inputName, 
                 inputKey.computationName, 
                 inputKey.disambiguatingId,
@@ -120,7 +120,7 @@ Exec_LeafCompilationTask::_Compile(
             leafNode, 
             _valueKey.GetProvider(), 
             EsfSchemaConfigKey(),
-            Exec_InputKeyVectorConstRefPtr(inputKeys));
+            std::move(inputKeys));
 
         compilationState.GetProgram()->SetCompiledLeafNode(_valueKey, leafNode);
 
