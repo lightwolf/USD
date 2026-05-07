@@ -82,7 +82,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     (restTransRotOffsetXf)
 );
 
-EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrJointScope)
+EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrTransformable)
 {
     _Builder builder(self);
 
