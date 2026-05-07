@@ -23,7 +23,14 @@ UsdExecImaging_StageSceneIndex::~UsdExecImaging_StageSceneIndex() = default;
 HdSceneIndexPrim
 UsdExecImaging_StageSceneIndex::GetPrim(const SdfPath &primPath) const
 {
-    return {};
+    return {
+        // UsdExecImaging_StageSceneIndex provides no opinion for the prim type.
+        // The prim type is overridden by UsdImagingStageSceneIndex.
+        TfToken(),
+
+        // Data source.
+        _request ? _request->GetPrimData(primPath) : nullptr
+    };
 }
 
 SdfPathVector
