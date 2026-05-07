@@ -280,50 +280,11 @@ template <typename ValueType>
 void
 _Builder::OutputAttribute(const TfToken &attributeName)
 {
-    using namespace exec_registration;
-
     // Output attributes support dataflow across connections.
     _ConnectionDataflowExpression<ValueType>(attributeName);
 
-    // The 'explicitDesiredValue' computation only exists to provide an
-    // output where desired values can be specified as overrides passed to
-    // ComputeWithOverrides.
-    //
-    // TODO: This plugin computation won't be necessary when OpenExec
-    // provides core inversion support.
-    _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->explicitDesiredValue)
-        .Callback<ValueType>(+[](const VdfContext &ctx) {
-            ctx.SetEmptyOutput();
-        });
-
-    // The 'computeDesiredValue' computation gets its value from the
-    // 'explicitDesiredValue' computation if it provides one, or the
-    // `computeDesiredValue` via incoming connections if it provides
-    // one. Otherwise, no value is returned.
-    //
-    // TODO: This plugin computation won't be necessary when OpenExec
-    // provides core inversion support.
-    _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->computeDesiredValue)
-        .Callback<ValueType>(+[](const VdfContext &ctx) {
-            if (const ValueType *const valuePtr =
-                ctx.GetInputValuePtr<ValueType>(
-                    ExecIrComputationTokens->explicitDesiredValue)) {
-                ctx.SetOutput(*valuePtr);
-            } else if (const ValueType *const valuePtr =
-                       ctx.GetInputValuePtr<ValueType>(
-                           ExecIrComputationTokens->computeDesiredValue)) {
-                ctx.SetOutput(*valuePtr);
-            } else {
-                ctx.SetEmptyOutput();
-            }
-        })
-        .Inputs(
-            Computation<ValueType>(
-                ExecIrComputationTokens->explicitDesiredValue),
-            IncomingConnections<ValueType>(
-                ExecIrComputationTokens->computeDesiredValue));
+    // Output attributes support computing desired values, for inversion.
+    _DesiredValueComputations<ValueType>(attributeName);
 }
 
 void
