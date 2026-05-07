@@ -6,12 +6,19 @@ set(PXR_PACKAGE usdExecImaging)
 
 if (PXR_BUILD_EXEC)
     set(USDEXECIMAGING_LIBRARIES
+        execUsd
         execGeom)
 
     set(USDEXECIMAGING_PRIVATE_CLASSES
         adapterRegistry
+        debugCodes
+        request
+        requestBuilderImpl
         stageSceneIndex
         xformablePrimAdapter)
+
+    set(USDEXECIMAGING_PRIVATE_HEADERS
+        valueKeyMap.h)
 
     set(USDEXECIMAGING_CPPFILES
         stageSceneIndexFactory_execOn.cpp)
@@ -29,6 +36,7 @@ pxr_library(usdExecImaging
         hd
         sdf
         tf
+        trace
         usd
         usdGeom
         vt
@@ -47,6 +55,9 @@ pxr_library(usdExecImaging
 
     PRIVATE_CLASSES
         ${USDEXECIMAGING_PRIVATE_CLASSES}
+
+    PRIVATE_HEADERS
+        ${USDEXECIMAGING_PRIVATE_HEADERS}
 
     CPPFILES
         ${USDEXECIMAGING_CPPFILES}

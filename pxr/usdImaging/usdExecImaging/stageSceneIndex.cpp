@@ -35,6 +35,12 @@ UsdExecImaging_StageSceneIndex::GetChildPrimPaths(const SdfPath &primPath) const
 void
 UsdExecImaging_StageSceneIndex::SetStage(UsdStageRefPtr stage)
 {
+    if (stage) {
+        _request = UsdExecImaging_Request::New(std::move(stage));
+    }
+    else {
+        _request.reset();
+    }
 }
 
 void
@@ -45,6 +51,9 @@ UsdExecImaging_StageSceneIndex::SetTime(UsdTimeCode time)
 void
 UsdExecImaging_StageSceneIndex::ApplyPendingUpdates()
 {
+    if (_request) {
+        _request->Refresh();
+    }
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
