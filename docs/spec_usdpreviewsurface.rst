@@ -314,7 +314,16 @@ typeName information that may be useful to a renderer or shading system.
        float inputs:opacity = 1.0 (
            doc = """Opacity of the material."""
        )
-   
+
+      token inputs:opacityMode = "transparent" (
+          allowedTokens = ["transparent", "presence"]
+          connectability = "interfaceOnly"
+          doc = """This is used to determine how materials with opacity less 
+          than one are interpreted. When set to "transparent", opacity reduces 
+          just the contribution of the non-specular lighting components, while 
+          when set to "presence", opacity scales the entire lighting response. 
+          Note that when opacityThreshold is non-zero, opacityMode is ignored."""
+      )
    
        float inputs:opacityThreshold = 0.0 (
            connectability = "interfaceOnly"
@@ -325,7 +334,8 @@ typeName information that may be useful to a renderer or shading system.
    		is greater or equal to that value. Note that when opacityThreshold is 
    		greater than zero, the opacity values less than the opacityThreshold will 
    		not be rendered, and the opacity values greater than or equal to the 
-   		opacityThreshold will be fully visible."""
+   		opacityThreshold will be fully visible. This is the behavior regardless 
+      of the opacityMode. """
        )
    
        float inputs:ior = 1.5 (
