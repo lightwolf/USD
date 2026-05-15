@@ -15,15 +15,24 @@
 #include "pxr/usdImaging/usdExecImaging/valueKeyMap.h"
 
 #include "pxr/base/tf/declarePtrs.h"
+#include "pxr/base/tf/hash.h"
+#include "pxr/base/tf/pxrTslRobinMap/robin_map.h"
+#include "pxr/exec/exec/request.h"
 #include "pxr/exec/execUsd/cacheView.h"
 #include "pxr/exec/execUsd/request.h"
 #include "pxr/exec/execUsd/system.h"
 #include "pxr/imaging/hd/dataSource.h"
+#include "pxr/imaging/hd/dataSourceLocator.h"
+#include "pxr/imaging/hd/sceneIndexObserver.h"
+#include "pxr/usd/sdf/path.h"
+#include "pxr/usd/usd/timeCode.h"
 
 #include <memory>
 #include <optional>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+class EfTimeInterval;
 
 TF_DECLARE_REF_PTRS(UsdStage);
 
@@ -55,6 +64,15 @@ public:
     ///
     void Refresh();
 
+    /// Changes the time on the exec system.
+    ///
+    /// This will invalidate time-dependent computed values, calling into
+    /// prim adapters as needed to accumulate the set of dirtied data source
+    /// locators. The resulting dirtied prim entries can be obtained by calling
+    /// TakeDirtedPrimEntries.
+    ///
+    void SetTime(UsdTimeCode timeCode);
+
     // Implements ExecUsdImagingRequestAccessor.
     VtValue GetComputedValue(const UsdExecImagingValueKey &valueKey) override;
 
@@ -73,6 +91,15 @@ public:
     ///
     HdContainerDataSourceHandle GetPrimData(const SdfPath &primPath);
 
+    /// Returns a vector of dirtied prim entries that identify data sources
+    /// dirtied by computed value invalidation, which itself may be caused by
+    /// authored value changes or time changes.
+    ///
+    /// The dirtied entries are moved out of this request, and subsequent calls
+    /// will return an empty vector unless additional invalidation has occurred.
+    ///
+    HdSceneIndexObserver::DirtiedPrimEntries TakeDirtiedPrimEntries();
+
 private:
     UsdExecImaging_Request(UsdStageRefPtr stage);
 
@@ -82,15 +109,23 @@ private:
     // Recomputes the request. This potentially recompiles the network.
     void _Recompute();
 
+    // Common implementation for exec invalidation callbacks. This notifies
+    // the necessary prim adapters for the invalidated indices.
+    void _InvalidateRequestIndices(
+        const ExecRequestIndexSet &invalidIndices);
+
 private:
     UsdStageRefPtr _stage;
     std::optional<ExecUsdSystem> _system;
     std::optional<ExecUsdRequest> _request;
     std::optional<ExecUsdCacheView> _cacheView;
     UsdExecImaging_ValueKeyMap _valueKeyMap;
+    using _PrimToDirtyDataSourcesMap =
+        pxr_tsl::robin_map<SdfPath, HdDataSourceLocatorSet, TfHash>;
+    _PrimToDirtyDataSourcesMap _primToDirtyDataSourcesMap;
+    unsigned _graphFileIndex;
     bool _requiresRebuild;
     bool _requiresRecompute;
-    unsigned _graphFileIndex;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

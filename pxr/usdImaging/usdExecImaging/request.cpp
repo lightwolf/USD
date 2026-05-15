@@ -19,6 +19,7 @@
 #include "pxr/usd/usd/primRange.h"
 #include "pxr/usd/usd/stage.h"
 
+#include <functional>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -38,9 +39,9 @@ UsdExecImaging_Request::New(UsdStageRefPtr stage)
 
 UsdExecImaging_Request::UsdExecImaging_Request(UsdStageRefPtr stage)
     : _stage(std::move(stage))
+    , _graphFileIndex(0)
     , _requiresRebuild(true)
     , _requiresRecompute(true)
-    , _graphFileIndex(0)
 {
     _system.emplace(_stage);
 }
@@ -58,6 +59,19 @@ UsdExecImaging_Request::Refresh()
     if (_requiresRecompute) {
         _Recompute();
     }
+}
+
+void
+UsdExecImaging_Request::SetTime(const UsdTimeCode timeCode)
+{
+    TRACE_FUNCTION();
+    TF_DEBUG_MSG(USDEXECIMAGING_REQUEST,
+        "[%s] %s\n",
+        TF_FUNC_NAME().c_str(),
+        TfStringify(timeCode).c_str());
+
+    // This may invoke _TimeChangedInvalidationCallback.
+    _system->ChangeTime(timeCode);
 }
 
 VtValue
@@ -114,12 +128,42 @@ UsdExecImaging_Request::GetPrimData(const SdfPath &primPath)
     return it->second->GetPrimData(primPath, requestAccessor);
 }
 
+HdSceneIndexObserver::DirtiedPrimEntries
+UsdExecImaging_Request::TakeDirtiedPrimEntries()
+{
+    TRACE_FUNCTION();
+
+    HdSceneIndexObserver::DirtiedPrimEntries result;
+
+    // Move the set of dirty locators from the map into the result vector. We
+    // need to do manual iteration instead of range-for, because the operator*
+    // for robin_map::iterator returns a const reference. We need to use the
+    // robin_map::iterator::value() method to get a non-const reference to the
+    // mapped value, in order to move it out of the entry.
+    for (auto it = _primToDirtyDataSourcesMap.begin();
+        it != _primToDirtyDataSourcesMap.end(); ++it) {
+        if (!it->second.IsEmpty()) {
+            result.emplace_back(
+                it->first,
+                std::move(it.value()));
+        }
+    }
+
+    // The dirty locators have been moved out of the map.
+    _primToDirtyDataSourcesMap.clear();
+
+    return result;
+}
+
 void
 UsdExecImaging_Request::_Rebuild()
 {
     TRACE_FUNCTION();
     TF_DESCRIBE_SCOPE("Rebuilding UsdExecImaging request");
     TF_DEBUG_MSG(USDEXECIMAGING_REQUEST, "[%s]\n", TF_FUNC_NAME().c_str());
+
+    // This method will rebuild the set of dirty data sources.
+    _primToDirtyDataSourcesMap.clear();
 
     // Prim adapters use this object to add value keys to the request.
     UsdExecImaging_RequestBuilderImpl requestBuilder;
@@ -140,10 +184,22 @@ UsdExecImaging_Request::_Rebuild()
             prim.GetPath().GetText());
         requestBuilder.SetAdaptedPrim(prim, *primAdapter);
         primAdapter->BuildRequest(prim, requestBuilder);
+
+        // TODO: Even though the exec request only provides some data sources
+        // for the prim, we conservatively invalidate all data sources of the
+        // prim when we rebuild the request. This can be optimized in the
+        // future.
+        _primToDirtyDataSourcesMap[prim.GetPath()] =
+            HdDataSourceLocatorSet::UniversalSet();
     }
 
     // Build the exec request.
-    _request = _system->BuildRequest(requestBuilder.TakeValueKeys());
+    using namespace std::placeholders;
+    using This = UsdExecImaging_Request;
+    _request = _system->BuildRequest(
+        requestBuilder.TakeValueKeys(),
+        std::bind(&This::_InvalidateRequestIndices, this, _1),
+        std::bind(&This::_InvalidateRequestIndices, this, _1));
 
     // Save the value key map gathered by the request builder.
     _valueKeyMap = requestBuilder.TakeValueKeyMap();
@@ -186,6 +242,44 @@ UsdExecImaging_Request::_Recompute()
 
     _cacheView.emplace(_system->Compute(*_request));
     _requiresRecompute = false;
+}
+
+void
+UsdExecImaging_Request::_InvalidateRequestIndices(
+    const ExecRequestIndexSet &invalidIndices)
+{
+    TRACE_FUNCTION();
+    TF_DEBUG_MSG(USDEXECIMAGING_REQUEST,
+        "[%s] %zu indices\n",
+        TF_FUNC_NAME().c_str(),
+        invalidIndices.size());
+
+    const int numValueKeys =
+        static_cast<int>(_valueKeyMap.indexToValueKeyInfo.size());
+    for (const int valueKeyIndex : invalidIndices) {
+        // Look up information about the value key at this index.
+        if (!TF_VERIFY(0 <= valueKeyIndex && valueKeyIndex < numValueKeys)) {
+            continue;
+        }
+        const UsdExecImaging_ValueKeyMap::ValueKeyInfo &valueKeyInfo =
+            _valueKeyMap.indexToValueKeyInfo[valueKeyIndex];
+
+        // Get or create the set of invalid data source locators for the adapted
+        // prim that added the value key at this index.
+        HdDataSourceLocatorSet &dirtyDataSourceLocators =
+            _primToDirtyDataSourcesMap[valueKeyInfo.adaptedPrimPath];
+
+        // Notify the prim adapter of the invalidated value key. The prim
+        // adapter responds by adding data source locators to
+        // dirtyDataSourceLocators.
+        valueKeyInfo.primAdapter->InvalidatePrimData(
+            valueKeyInfo.adaptedPrimPath,
+            valueKeyInfo.valueKey,
+            dirtyDataSourceLocators);
+    }
+
+    // The request needs to be recomputed.
+    _requiresRecompute = true;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
