@@ -4,8 +4,8 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_XFORMABLE_PRIM_ADAPTER_H
-#define PXR_USD_IMAGING_USD_EXEC_IMAGING_XFORMABLE_PRIM_ADAPTER_H
+#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_GEOM_XFORMABLE_PRIM_ADAPTER_H
+#define PXR_USD_IMAGING_USD_EXEC_IMAGING_GEOM_XFORMABLE_PRIM_ADAPTER_H
 
 /// \file
 
@@ -18,7 +18,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// The prim adapter for UsdGeomXformable prims overlays the corresponding hydra
 /// prims with the xformable's computed local-to-world transform matrix.
 ///
-class UsdExecImaging_XformablePrimAdapter final
+class UsdExecImaging_GeomXformablePrimAdapter final
     : public UsdExecImagingPrimAdapter
 {
 public:

@@ -4,7 +4,7 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#include "pxr/usdImaging/usdExecImaging/xformablePrimAdapter.h"
+#include "pxr/usdImaging/usdExecImaging/geomXformablePrimAdapter.h"
 
 #include "pxr/usdImaging/usdExecImaging/computedDataSource.h"
 #include "pxr/usdImaging/usdExecImaging/requestAccessor.h"
@@ -32,7 +32,7 @@ _GetResetXformStackDataSource()
 }
 
 void
-UsdExecImaging_XformablePrimAdapter::BuildRequest(
+UsdExecImaging_GeomXformablePrimAdapter::BuildRequest(
     const UsdPrim &prim,
     UsdExecImagingRequestBuilder &requestBuilder) const
 {
@@ -42,14 +42,14 @@ UsdExecImaging_XformablePrimAdapter::BuildRequest(
 }
 
 HdContainerDataSourceHandle
-UsdExecImaging_XformablePrimAdapter::GetPrimData(
+UsdExecImaging_GeomXformablePrimAdapter::GetPrimData(
     const SdfPath &primPath,
     const UsdExecImagingRequestAccessorSharedPtr &requestAccessor) const
 {
     // Produce a data source conforming to HdXformSchema. The 'matrix' value of
     // the xform schema gets its value from the exec request.
     return HdRetainedContainerDataSource::New(
-        HdXformSchemaTokens->xform,
+        HdXformSchema::GetSchemaToken(),
         HdXformSchema::Builder()
             .SetMatrix(
                 UsdExecImagingComputedTypedSampledDataSource<GfMatrix4d>::New(
@@ -62,7 +62,7 @@ UsdExecImaging_XformablePrimAdapter::GetPrimData(
 }
 
 void
-UsdExecImaging_XformablePrimAdapter::InvalidatePrimData(
+UsdExecImaging_GeomXformablePrimAdapter::InvalidatePrimData(
     const SdfPath &primPath,
     const UsdExecImagingValueKey &valueKey,
     HdDataSourceLocatorSet &invalidLocators) const
