@@ -64,6 +64,10 @@ TF_DECLARE_PUBLIC_TOKENS(
 
 #define EXEC_IR_JOINT_SCOPE_TOKENS                                              \
     (IrJointScope)                                                              \
+                                                                                \
+    ((guideLength, "guide:length"))                                             \
+    ((guideDisplayColor, "guide:displayColor"))                                 \
+    ((guideDisplayOpacity, "guide:displayOpacity"))
 
 TF_DECLARE_PUBLIC_TOKENS(
     ExecIrJointScopeTokens, EXECIR_API, EXEC_IR_JOINT_SCOPE_TOKENS);
