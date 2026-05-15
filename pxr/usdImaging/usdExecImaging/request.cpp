@@ -322,7 +322,7 @@ UsdExecImaging_Request::_InvalidateRequestIndices(
         valueKeyInfo.primAdapter->InvalidatePrimData(
             valueKeyInfo.adaptedPrimPath,
             valueKeyInfo.valueKey,
-            dirtyDataSourceLocators);
+            &dirtyDataSourceLocators);
     }
 
     // The request needs to be recomputed.

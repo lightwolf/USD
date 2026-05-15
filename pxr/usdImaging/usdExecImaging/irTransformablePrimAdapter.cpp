@@ -53,7 +53,7 @@ void
 UsdExecImaging_IrTransformablePrimAdapter::InvalidatePrimData(
     const SdfPath &primPath,
     const UsdExecImagingValueKey &valueKey,
-    HdDataSourceLocatorSet &invalidLocators) const
+    HdDataSourceLocatorSet *const invalidLocators) const
 {
     const UsdExecImagingValueKey posedSpaceValueKey(
         primPath.AppendProperty(ExecIrTransformableTokens->posedSpace),
@@ -62,7 +62,7 @@ UsdExecImaging_IrTransformablePrimAdapter::InvalidatePrimData(
     // If the invalidated value key is for this prim's posed:space computeValue,
     // then this prim's xform/matrix data source is invalid.
     if (valueKey == posedSpaceValueKey) {
-        invalidLocators.append(HdDataSourceLocator(
+        invalidLocators->append(HdDataSourceLocator(
             HdXformSchema::GetSchemaToken(),
             HdXformSchemaTokens->matrix));
     }

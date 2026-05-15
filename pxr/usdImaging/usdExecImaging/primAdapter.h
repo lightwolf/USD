@@ -81,7 +81,7 @@ public:
     virtual void InvalidatePrimData(
         const SdfPath &primPath,
         const UsdExecImagingValueKey &valueKey,
-        HdDataSourceLocatorSet &invalidLocators) const = 0;
+        HdDataSourceLocatorSet *invalidLocators) const = 0;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -39,7 +39,7 @@ public:
     void InvalidatePrimData(
         const SdfPath &primPath,
         const UsdExecImagingValueKey &valueKey,
-        HdDataSourceLocatorSet &invalidLocators) const override;
+        HdDataSourceLocatorSet *invalidLocators) const override;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

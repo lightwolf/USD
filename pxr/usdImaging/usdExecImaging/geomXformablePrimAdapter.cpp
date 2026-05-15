@@ -65,7 +65,7 @@ void
 UsdExecImaging_GeomXformablePrimAdapter::InvalidatePrimData(
     const SdfPath &primPath,
     const UsdExecImagingValueKey &valueKey,
-    HdDataSourceLocatorSet &invalidLocators) const
+    HdDataSourceLocatorSet *const invalidLocators) const
 {
     const UsdExecImagingValueKey localToWorldTransformValueKey(
         primPath, ExecGeomXformableTokens->computeLocalToWorldTransform);
@@ -73,7 +73,7 @@ UsdExecImaging_GeomXformablePrimAdapter::InvalidatePrimData(
     // If the invalidated value key is for computeLocalToWorldTransform on this
     // prim, then this prim's xform/matrix data source is invalid.
     if (valueKey == localToWorldTransformValueKey) {
-        invalidLocators.append(HdDataSourceLocator(
+        invalidLocators->append(HdDataSourceLocator(
             HdXformSchemaTokens->xform,
             HdXformSchemaTokens->matrix));
     }
