@@ -176,6 +176,9 @@ def IsVisualStudioVersionOrGreater(desiredVersion):
 # Helpers to determine the version of "Visual Studio" (also support the Build Tools) based
 # on the version of the MSVC compiler.
 # See MSVC++ versions table on https://en.wikipedia.org/wiki/Microsoft_Visual_C%2B%2B
+def IsVisualStudio2026OrGreater():
+    VISUAL_STUDIO_2026_VERSION = (14, 50)
+    return IsVisualStudioVersionOrGreater(VISUAL_STUDIO_2026_VERSION)
 def IsVisualStudio2022OrGreater():
     VISUAL_STUDIO_2022_VERSION = (14, 30)
     return IsVisualStudioVersionOrGreater(VISUAL_STUDIO_2022_VERSION)
@@ -416,7 +419,9 @@ def RunCMake(context, force, extraArgs = None, installDir = None):
     # building a 64-bit project. (Surely there is a better way to do this?)
     # TODO: figure out exactly what "vcvarsall.bat x64" sets to force x64
     if generator is None and Windows():
-        if IsVisualStudio2022OrGreater():
+        if IsVisualStudio2026OrGreater():
+            generator = "Visual Studio 18 2026"
+        elif IsVisualStudio2022OrGreater():
             generator = "Visual Studio 17 2022"
         elif IsVisualStudio2019OrGreater():
             generator = "Visual Studio 16 2019"
@@ -807,6 +812,9 @@ def InstallBoost_Helper(context, force, buildArgs):
     #   simplicity.
     # - Building on MacOS requires v1.82.0 or later for C++17 support starting
     #   with Xcode 15.
+    if IsVisualStudio2026OrGreater():
+        BOOST_VERSION = (1, 90, 0)
+        BOOST_SHA256 = "bdc79f179d1a4a60c10fe764172946d0eeafad65e576a8703c4d89d49949973c"
     if IsVisualStudio2022OrGreater():
         BOOST_VERSION = (1, 86, 0)
         BOOST_SHA256 = "cd20a5694e753683e1dc2ee10e2d1bb11704e65893ebcc6ced234ba68e5d8646"
@@ -952,12 +960,16 @@ def InstallBoost_Helper(context, force, buildArgs):
         if Windows():
             # toolset parameter for Visual Studio documented here:
             # https://github.com/boostorg/build/blob/develop/src/tools/msvc.jam
-            if context.cmakeToolset == "v143":
+            if context.cmakeToolset == "v145":
+                b2_settings.append("toolset=msvc-14.5")
+            elif context.cmakeToolset == "v143":
                 b2_settings.append("toolset=msvc-14.3")
             elif context.cmakeToolset == "v142":
                 b2_settings.append("toolset=msvc-14.2")
             elif context.cmakeToolset == "v141":
                 b2_settings.append("toolset=msvc-14.1")
+            elif IsVisualStudio2026OrGreater():
+                b2_settings.append("toolset=msvc-14.5")
             elif IsVisualStudio2022OrGreater():
                 b2_settings.append("toolset=msvc-14.3")
             elif IsVisualStudio2019OrGreater():
