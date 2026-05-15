@@ -10,10 +10,20 @@
 #include "pxr/usdImaging/usdExecImaging/irTransformablePrimAdapter.h"
 #include "pxr/usdImaging/usdExecImaging/primAdapter.h"
 
+#include "pxr/base/tf/envSetting.h"
 #include "pxr/exec/execIr/tokens.h"
 #include "pxr/usd/usdGeom/xformable.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+TF_DEFINE_ENV_SETTING(
+    USDEXECIMAGING_ENABLE_USDGEOM_XFORMABLE_ADAPTER, true,
+    "Enables imaging of UsdGeomXformable prims according to their "
+    "local-to-world transforms, as computed by OpenExec. Note that OpenExec "
+    "currently computes the local transformation matrix from the "
+    "xformOp:transform attribute, and ignores other attributes specified in "
+    "xformOpOrder. Users can disable this setting if they want to keep "
+    "drawing Xformable prims according to their complete list of xformOps.");
 
 UsdExecImagingPrimAdapter *
 UsdExecImaging_AdapterRegistry::GetPrimAdapter(const UsdPrim &prim)
@@ -22,7 +32,10 @@ UsdExecImaging_AdapterRegistry::GetPrimAdapter(const UsdPrim &prim)
     // will change in the future to generically handle adapters registered in
     // plugins.
 
-    if (prim.IsA<UsdGeomXformable>()) {
+    static const bool enableUsdGeomXformableAdapter =
+        TfGetEnvSetting(USDEXECIMAGING_ENABLE_USDGEOM_XFORMABLE_ADAPTER);
+
+    if (prim.IsA<UsdGeomXformable>() && enableUsdGeomXformableAdapter) {
         using Adapter = UsdExecImaging_GeomXformablePrimAdapter;
         static Adapter adapter;
         return &adapter;
