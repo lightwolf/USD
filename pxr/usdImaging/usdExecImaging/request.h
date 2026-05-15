@@ -25,6 +25,7 @@
 #include "pxr/imaging/hd/dataSourceLocator.h"
 #include "pxr/imaging/hd/sceneIndexObserver.h"
 #include "pxr/usd/sdf/path.h"
+#include "pxr/usd/usd/notice.h"
 #include "pxr/usd/usd/timeCode.h"
 
 #include <memory>
@@ -114,6 +115,16 @@ private:
     void _InvalidateRequestIndices(
         const ExecRequestIndexSet &invalidIndices);
 
+    // Invoked when the underlying stage emits an ObjectsChanged notice.
+    void _ObjectsChangedCallback(
+        const UsdNotice::ObjectsChanged &objectsChanged);
+
+    // The request owns a dedicated notice listener to detect ObjectsChanged
+    // notices from the underlying stage. The notice listener forwards the
+    // notices to _ObjectsChangedCallback on the request.
+    class _ObjectsChangedListener;
+    TF_DECLARE_WEAK_AND_REF_PTRS(_ObjectsChangedListener);
+
 private:
     UsdStageRefPtr _stage;
     std::optional<ExecUsdSystem> _system;
@@ -123,6 +134,7 @@ private:
     using _PrimToDirtyDataSourcesMap =
         pxr_tsl::robin_map<SdfPath, HdDataSourceLocatorSet, TfHash>;
     _PrimToDirtyDataSourcesMap _primToDirtyDataSourcesMap;
+    _ObjectsChangedListenerRefPtr _objectsChangedListener;
     unsigned _graphFileIndex;
     bool _requiresRebuild;
     bool _requiresRecompute;

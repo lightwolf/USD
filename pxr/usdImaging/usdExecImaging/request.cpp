@@ -12,8 +12,11 @@
 #include "pxr/usdImaging/usdExecImaging/requestBuilderImpl.h"
 
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/base/tf/refBase.h"
+#include "pxr/base/tf/refPtr.h"
 #include "pxr/base/tf/scopeDescription.h"
 #include "pxr/base/tf/stringUtils.h"
+#include "pxr/base/tf/weakBase.h"
 #include "pxr/base/trace/trace.h"
 #include "pxr/exec/exec/systemDiagnostics.h"
 #include "pxr/usd/usd/primRange.h"
@@ -23,6 +26,46 @@
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+// The request owns the listener by a TfRefPtr, and the TfNotice API requires
+// listeners be provided as TfWeakPtr.
+//
+class UsdExecImaging_Request::_ObjectsChangedListener
+    : public TfRefBase
+    , public TfWeakBase
+{
+public:
+    // Static factory method constructs a new notice listener.
+    static _ObjectsChangedListenerRefPtr New(
+        UsdExecImaging_Request *const request) {
+        return TfCreateRefPtr(new _ObjectsChangedListener(request));
+    }
+
+private:
+    // The constructor registers itself as a notice listener.
+    _ObjectsChangedListener(
+        UsdExecImaging_Request *const request)
+        : _request(request) {
+        _noticeKey = TfNotice::Register(
+            TfCreateWeakPtr(this),
+            &_ObjectsChangedListener::_ObjectsChangedCallback,
+            UsdStageConstPtr(_request->_stage));
+    }
+
+    ~_ObjectsChangedListener() {
+        TfNotice::RevokeAndWait(_noticeKey);
+    }
+
+    // Upon receiving a notice, forward the notice to the request.
+    void _ObjectsChangedCallback(
+        const UsdNotice::ObjectsChanged &objectsChanged) {
+        _request->_ObjectsChangedCallback(objectsChanged);
+    }
+
+private:
+    TfNotice::Key _noticeKey;
+    UsdExecImaging_Request *_request;
+};
 
 UsdExecImaging_RequestSharedPtr
 UsdExecImaging_Request::New(UsdStageRefPtr stage)
@@ -44,6 +87,10 @@ UsdExecImaging_Request::UsdExecImaging_Request(UsdStageRefPtr stage)
     , _requiresRecompute(true)
 {
     _system.emplace(_stage);
+
+    // Construct the change listener after the system, in case it immediately
+    // receives an ObjectsChanged notice.
+    _objectsChangedListener = _ObjectsChangedListener::New(this);
 }
 
 void
@@ -280,6 +327,69 @@ UsdExecImaging_Request::_InvalidateRequestIndices(
 
     // The request needs to be recomputed.
     _requiresRecompute = true;
+}
+
+void
+UsdExecImaging_Request::_ObjectsChangedCallback(
+    const UsdNotice::ObjectsChanged &objectsChanged)
+{
+    TRACE_FUNCTION();
+    TF_DEBUG_MSG(USDEXECIMAGING_REQUEST, "[%s]\n", TF_FUNC_NAME().c_str());
+
+    // The purpose of this method is to detect when the request must be rebuilt
+    // due to the addition of new prims that require exec for imaging. If the
+    // request is already slated to be rebuilt, then we can avoid re-traversing
+    // the scene entirely.
+    if (_requiresRebuild || !_request || !_request->IsValid()) {
+        return;
+    }
+
+    for (const SdfPath &resyncedPath : objectsChanged.GetResyncedPaths()) {
+        // Get the resynced prim. If the prim is inactive, undefined, not
+        // loaded, or abstract, then we do not traverse this prim's hierarchy.
+        // If this prim or any of its descendants are providers for value keys
+        // in the exec request, then exec already expires the request for us.
+        const UsdPrim &resyncedPrim = _stage->GetPrimAtPath(resyncedPath);
+        if (!resyncedPrim.IsValid() || !UsdPrimDefaultPredicate(resyncedPrim)) {
+            continue;
+        }
+
+        // Otherwise, the prim still exists or it has been added by the resync.
+        // Traverse the hierarchy rooted at the resynced prim in search of
+        // descendant prims whose adapters have changed.
+        for (const UsdPrim &prim : UsdPrimRange(resyncedPrim)) {
+
+            // Get the old prim adapter.
+            const auto it = _valueKeyMap.primToAdapterMap.find(prim.GetPath());
+            const UsdExecImagingPrimAdapter *const oldPrimAdapter =
+                it == _valueKeyMap.primToAdapterMap.end()
+                ? nullptr
+                : it->second;
+
+            // Get the new prim adapter.
+            const UsdExecImagingPrimAdapter *const newPrimAdapter =
+                UsdExecImaging_AdapterRegistry::GetPrimAdapter(prim);
+
+            // If an adapted prim has been resynced, then the leaf nodes for the
+            // prim's value keys have likely been uncompiled. The request should
+            // be recompiled.
+            if (oldPrimAdapter) {
+                _requiresRecompute = true;
+            }
+
+            // If the adapter has changed, then the request must be rebuilt, and
+            // there is no need to continue traversing the scene.
+            if (oldPrimAdapter != newPrimAdapter) {
+                TF_DEBUG_MSG(USDEXECIMAGING_REQUEST,
+                    "[%s] Adapter changed for prim %s \n",
+                    TF_FUNC_NAME().c_str(),
+                    prim.GetPath().GetText());
+
+                _requiresRebuild = true;
+                return;
+            }
+        }
+    }
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
