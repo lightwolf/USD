@@ -7,8 +7,8 @@
 #include "pxr/usdImaging/usdExecImaging/geomXformablePrimAdapter.h"
 
 #include "pxr/usdImaging/usdExecImaging/computedDataSource.h"
-#include "pxr/usdImaging/usdExecImaging/requestAccessor.h"
-#include "pxr/usdImaging/usdExecImaging/requestBuilder.h"
+#include "pxr/usdImaging/usdExecImaging/requestAccessorInterface.h"
+#include "pxr/usdImaging/usdExecImaging/requestBuilderInterface.h"
 #include "pxr/usdImaging/usdExecImaging/valueKey.h"
 
 #include "pxr/base/gf/matrix4d.h"
@@ -34,7 +34,7 @@ _GetResetXformStackDataSource()
 void
 UsdExecImaging_GeomXformablePrimAdapter::BuildRequest(
     const UsdPrim &prim,
-    UsdExecImagingRequestBuilder &requestBuilder) const
+    UsdExecImagingRequestBuilderInterface &requestBuilder) const
 {
     // Add a value key for computing this prim's local-to-world transform.
     requestBuilder.AddValueKey(
@@ -44,7 +44,8 @@ UsdExecImaging_GeomXformablePrimAdapter::BuildRequest(
 HdContainerDataSourceHandle
 UsdExecImaging_GeomXformablePrimAdapter::GetPrimData(
     const SdfPath &primPath,
-    const UsdExecImagingRequestAccessorSharedPtr &requestAccessor) const
+    const UsdExecImagingRequestAccessorInterfaceSharedPtr &requestAccessor)
+        const
 {
     // Produce a data source conforming to HdXformSchema. The 'matrix' value of
     // the xform schema gets its value from the exec request.

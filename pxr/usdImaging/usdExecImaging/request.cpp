@@ -8,7 +8,7 @@
 
 #include "pxr/usdImaging/usdExecImaging/adapterRegistry.h"
 #include "pxr/usdImaging/usdExecImaging/debugCodes.h"
-#include "pxr/usdImaging/usdExecImaging/primAdapter.h"
+#include "pxr/usdImaging/usdExecImaging/primAdapterInterface.h"
 #include "pxr/usdImaging/usdExecImaging/requestBuilderImpl.h"
 
 #include "pxr/base/tf/diagnostic.h"
@@ -163,11 +163,11 @@ UsdExecImaging_Request::GetPrimData(const SdfPath &primPath)
         return nullptr;
     }
 
-    // Construct a shared pointer to a UsdExecImagingRequestAccessor which holds
-    // a shared reference to this request.
-    UsdExecImagingRequestAccessorSharedPtr requestAccessor(
+    // Construct a shared pointer to a UsdExecImagingRequestAccessorInterface
+    // which holds a shared reference to this request.
+    UsdExecImagingRequestAccessorInterfaceSharedPtr requestAccessor(
         shared_from_this(),
-        static_cast<UsdExecImagingRequestAccessor *>(this));
+        static_cast<UsdExecImagingRequestAccessorInterface *>(this));
 
     // Get data sources by delegating to the prim adapter. The adapter may make
     // copies of the requestAccessor, and each copy holds a shared reference to
@@ -218,7 +218,7 @@ UsdExecImaging_Request::_Rebuild()
     for (const UsdPrim &prim : _stage->Traverse()) {
         // Get the adpater for this prim. If there is no adapter, then skip
         // this prim.
-        const UsdExecImagingPrimAdapter *const primAdapter =
+        const UsdExecImagingPrimAdapterInterface *const primAdapter =
             UsdExecImaging_AdapterRegistry::GetPrimAdapter(prim);
         if (!primAdapter) {
             continue;
@@ -361,13 +361,13 @@ UsdExecImaging_Request::_ObjectsChangedCallback(
 
             // Get the old prim adapter.
             const auto it = _valueKeyMap.primToAdapterMap.find(prim.GetPath());
-            const UsdExecImagingPrimAdapter *const oldPrimAdapter =
+            const UsdExecImagingPrimAdapterInterface *const oldPrimAdapter =
                 it == _valueKeyMap.primToAdapterMap.end()
                 ? nullptr
                 : it->second;
 
             // Get the new prim adapter.
-            const UsdExecImagingPrimAdapter *const newPrimAdapter =
+            const UsdExecImagingPrimAdapterInterface *const newPrimAdapter =
                 UsdExecImaging_AdapterRegistry::GetPrimAdapter(prim);
 
             // If an adapted prim has been resynced, then the leaf nodes for the

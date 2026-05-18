@@ -6,7 +6,7 @@
 //
 #include "pxr/usdImaging/usdExecImaging/irTransformablePrimAdapter.h"
 
-#include "pxr/usdImaging/usdExecImaging/requestBuilder.h"
+#include "pxr/usdImaging/usdExecImaging/requestBuilderInterface.h"
 #include "pxr/usdImaging/usdExecImaging/computedDataSource.h"
 #include "pxr/usdImaging/usdExecImaging/valueKey.h"
 
@@ -23,7 +23,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 void
 UsdExecImaging_IrTransformablePrimAdapter::BuildRequest(
     const UsdPrim &prim,
-    UsdExecImagingRequestBuilder &requestBuilder) const
+    UsdExecImagingRequestBuilderInterface &requestBuilder) const
 {
     requestBuilder.AddValueKey(
         prim.GetAttribute(ExecIrTransformableTokens->posedSpace));
@@ -32,7 +32,8 @@ UsdExecImaging_IrTransformablePrimAdapter::BuildRequest(
 HdContainerDataSourceHandle
 UsdExecImaging_IrTransformablePrimAdapter::GetPrimData(
     const SdfPath &primPath,
-    const UsdExecImagingRequestAccessorSharedPtr &requestAccessor) const
+    const UsdExecImagingRequestAccessorInterfaceSharedPtr &requestAccessor)
+        const
 {
     return HdRetainedContainerDataSource::New(
         HdXformSchema::GetSchemaToken(),

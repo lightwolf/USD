@@ -11,7 +11,7 @@
 
 #include "pxr/pxr.h"
 
-#include "pxr/usdImaging/usdExecImaging/requestAccessor.h"
+#include "pxr/usdImaging/usdExecImaging/requestAccessorInterface.h"
 #include "pxr/usdImaging/usdExecImaging/valueKeyMap.h"
 
 #include "pxr/base/tf/declarePtrs.h"
@@ -54,7 +54,7 @@ using UsdExecImaging_RequestSharedPtr =
 ///
 class UsdExecImaging_Request
     : public std::enable_shared_from_this<UsdExecImaging_Request> 
-    , public UsdExecImagingRequestAccessor
+    , public UsdExecImagingRequestAccessorInterface
 {
 public:
     static UsdExecImaging_RequestSharedPtr New(UsdStageRefPtr stage);
@@ -74,18 +74,19 @@ public:
     ///
     void SetTime(UsdTimeCode timeCode);
 
-    // Implements ExecUsdImagingRequestAccessor.
+    // Implements ExecUsdImagingRequestAccessorInterface.
     VtValue GetComputedValue(const UsdExecImagingValueKey &valueKey) override;
 
     /// Returns a container data source for \p primPath that can access computed
     /// values from this request.
     ///
     /// This function delegates to the GetPrimData method of the corresponding
-    /// UsdExecImagingPrimAdapter for \p primPath. That method uses a shared
-    /// pointer to a UsdExecImagingRequestAccessor to construct data sources
-    /// that lazily extract values from this request. Since
-    /// UsdExecImaging_Request IS_A UsdExecImagingRequestAccessor, data sources
-    /// returned from this method hold shared pointers to this request.
+    /// UsdExecImagingPrimAdapterInterface for \p primPath. That method uses a
+    /// shared pointer to a UsdExecImagingRequestAccessorInterface to construct
+    /// data sources that lazily extract values from this request. Since
+    /// UsdExecImaging_Request IS_A UsdExecImagingRequestAccessorInterface,
+    /// data sources returned from this method hold shared pointers to this
+    /// request.
     ///
     /// If there is no adapter for the prim at \p primPath, this returns a
     /// null data source handle.

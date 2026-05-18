@@ -11,7 +11,7 @@
 
 #include "pxr/pxr.h"
 
-#include "pxr/usdImaging/usdExecImaging/requestBuilder.h"
+#include "pxr/usdImaging/usdExecImaging/requestBuilderInterface.h"
 #include "pxr/usdImaging/usdExecImaging/valueKey.h"
 #include "pxr/usdImaging/usdExecImaging/valueKeyMap.h"
 
@@ -21,11 +21,11 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-class UsdExecImagingPrimAdapter;
+class UsdExecImagingPrimAdapterInterface;
 
-/// This class provides the implementation for UsdExecImagingRequestBuilder, and
-/// builds up a set of ExecUsdValueKeys and associated mapping from value keys
-/// back to indices.
+/// This class implements UsdExecImagingRequestBuilderInterface by building up a
+/// set of ExecUsdValueKeys and an associated mapping of value keys back to
+/// indices.
 ///
 /// The UsdExecImaging_Request constructs an instance of this object when it
 /// (re)builds the exec request. For each discovered prim that has an adapter,
@@ -34,7 +34,8 @@ class UsdExecImagingPrimAdapter;
 /// are accumulated in the builder as well as metadata for each value key
 /// (stored as an instance of UsdExecImaging_ValueKeyMap).
 ///
-class UsdExecImaging_RequestBuilderImpl : public UsdExecImagingRequestBuilder
+class UsdExecImaging_RequestBuilderImpl
+    : public UsdExecImagingRequestBuilderInterface
 {
 public:
     /// \name UsdExecImagingRequestBuilder implementation
@@ -55,7 +56,7 @@ public:
     ///
     void SetAdaptedPrim(
         const UsdPrim &prim,
-        const UsdExecImagingPrimAdapter &primAdapter);
+        const UsdExecImagingPrimAdapterInterface &primAdapter);
 
     /// Moves the vector of ExecUsdValueKeys out of this object.
     std::vector<ExecUsdValueKey> TakeValueKeys();
@@ -71,7 +72,7 @@ private:
     SdfPath _adaptedPrimPath;
 
     // The current prim adapter that is adding value keys.
-    const UsdExecImagingPrimAdapter *_primAdapter;
+    const UsdExecImagingPrimAdapterInterface *_primAdapter;
 
     // The accumulated vector of value keys.
     std::vector<ExecUsdValueKey> _valueKeys;

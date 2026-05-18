@@ -4,8 +4,8 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_ACCESSOR_H
-#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_ACCESSOR_H
+#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_ACCESSOR_INTERFACE_H
+#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_ACCESSOR_INTERFACE_H
 
 /// \file
 
@@ -21,15 +21,17 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 class UsdExecImagingValueKey;
 
-using UsdExecImagingRequestAccessorSharedPtr =
-    std::shared_ptr<class UsdExecImagingRequestAccessor>;
+using UsdExecImagingRequestAccessorInterfaceSharedPtr =
+    std::shared_ptr<class UsdExecImagingRequestAccessorInterface>;
 
-/// Interface for reading exec-computed values within a UsdExecImagingPrimAdapter.
-class UsdExecImagingRequestAccessor
+/// Interface for reading exec-computed values within an implementation of
+/// UsdExecImagingPrimAdapterInterface.
+///
+class UsdExecImagingRequestAccessorInterface
 {
 public:
     USDEXECIMAGING_API
-    virtual ~UsdExecImagingRequestAccessor();
+    virtual ~UsdExecImagingRequestAccessorInterface();
 
     /// Reads the computed value identified by \p valueKey.
     ///

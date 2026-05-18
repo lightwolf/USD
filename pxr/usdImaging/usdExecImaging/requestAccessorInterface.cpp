@@ -4,10 +4,11 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#include "pxr/usdImaging/usdExecImaging/requestAccessor.h"
+#include "pxr/usdImaging/usdExecImaging/requestAccessorInterface.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-UsdExecImagingRequestAccessor::~UsdExecImagingRequestAccessor() = default;
+UsdExecImagingRequestAccessorInterface
+::~UsdExecImagingRequestAccessorInterface() = default;
 
 PXR_NAMESPACE_CLOSE_SCOPE

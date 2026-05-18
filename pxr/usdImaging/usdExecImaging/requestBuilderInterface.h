@@ -4,8 +4,8 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_H
-#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_H
+#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_INTERFACE_H
+#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_INTERFACE_H
 
 /// \file
 
@@ -19,21 +19,23 @@ class UsdAttribute;
 class UsdPrim;
 class TfToken;
 
-/// Interface for building up an exec request within a UsdExecImagingPrimAdapter.
-class UsdExecImagingRequestBuilder
+/// Interface for building up an exec request within an implementation of
+/// UsdExecImagingPrimAdapterInterface.
+///
+class UsdExecImagingRequestBuilderInterface
 {
 public:
     USDEXECIMAGING_API
-    virtual ~UsdExecImagingRequestBuilder();
+    virtual ~UsdExecImagingRequestBuilderInterface();
 
-    /// The calling UsdExecImagingPrimAdapter requires the computation of
+    /// The calling UsdExecImagingPrimAdapterInterface requires the computation of
     /// \p computationName provided by the prim \p providerPrim.
     ///
     virtual void AddValueKey(
         const UsdPrim &providerPrim,
         const TfToken &computationName) = 0;
 
-    /// The calling UsdExecImagingPrimAdapter requires the computed value of
+    /// The calling UsdExecImagingPrimAdapterInterface requires the computed value of
     /// \p providerAttribute.
     ///
     virtual void AddValueKey(

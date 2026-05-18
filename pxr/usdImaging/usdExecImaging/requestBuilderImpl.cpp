@@ -38,7 +38,7 @@ UsdExecImaging_RequestBuilderImpl::AddValueKey(
 void
 UsdExecImaging_RequestBuilderImpl::SetAdaptedPrim(
     const UsdPrim &prim,
-    const UsdExecImagingPrimAdapter &primAdapter)
+    const UsdExecImagingPrimAdapterInterface &primAdapter)
 {
     _adaptedPrimPath = prim.GetPath();
     _primAdapter = &primAdapter;

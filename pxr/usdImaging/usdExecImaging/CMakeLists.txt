@@ -45,9 +45,9 @@ pxr_library(usdExecImaging
 
     PUBLIC_CLASSES
         computedDataSource
-        primAdapter
-        requestAccessor
-        requestBuilder
+        primAdapterInterface
+        requestAccessorInterface
+        requestBuilderInterface
         stageSceneIndexInterface
 
     PUBLIC_HEADERS

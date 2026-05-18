@@ -11,7 +11,7 @@
 
 #include "pxr/pxr.h"
 
-#include "pxr/usdImaging/usdExecImaging/primAdapter.h"
+#include "pxr/usdImaging/usdExecImaging/primAdapterInterface.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -24,17 +24,17 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// for guide geometry.
 ///
 class UsdExecImaging_IrTransformablePrimAdapter final
-    : public UsdExecImagingPrimAdapter
+    : public UsdExecImagingPrimAdapterInterface
 {
 public:
     void BuildRequest(
         const UsdPrim &prim,
-        UsdExecImagingRequestBuilder &requestBuilder) const override;
+        UsdExecImagingRequestBuilderInterface &requestBuilder) const override;
 
     HdContainerDataSourceHandle GetPrimData(
         const SdfPath &primPath,
-        const UsdExecImagingRequestAccessorSharedPtr &requestAccessor) const
-        override;
+        const UsdExecImagingRequestAccessorInterfaceSharedPtr &requestAccessor)
+            const override;
 
     void InvalidatePrimData(
         const SdfPath &primPath,

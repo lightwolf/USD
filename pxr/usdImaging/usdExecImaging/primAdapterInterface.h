@@ -4,15 +4,15 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_PRIM_ADAPTER_H
-#define PXR_USD_IMAGING_USD_EXEC_IMAGING_PRIM_ADAPTER_H
+#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_PRIM_ADAPTER_INTERFACE_H
+#define PXR_USD_IMAGING_USD_EXEC_IMAGING_PRIM_ADAPTER_INTERFACE_H
 
 /// \file
 
 #include "pxr/pxr.h"
 
 #include "pxr/usdImaging/usdExecImaging/api.h"
-#include "pxr/usdImaging/usdExecImaging/requestAccessor.h"
+#include "pxr/usdImaging/usdExecImaging/requestAccessorInterface.h"
 
 #include "pxr/imaging/hd/dataSource.h"
 
@@ -20,20 +20,21 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 class HdDataSourceLocatorSet;
 class SdfPath;
-class UsdExecImagingRequestBuilder;
+class UsdExecImagingRequestBuilderInterface;
 class UsdExecImagingValueKey;
 class UsdPrim;
 
-/// Base class for all exec imaging prim adapters.
+/// Interface to be implemented by all exec imaging prim adapters.
 ///
-/// Plugins implement and register classes derived from UsdExecImagingPrimAdapter
-/// to customize the imaging of prims that depend on exec-computed values.
+/// Plugins implement and register classes derived from
+/// UsdExecImagingPrimAdapterInterface to customize the imaging of prims that
+/// depend on exec-computed values.
 ///
-class UsdExecImagingPrimAdapter
+class UsdExecImagingPrimAdapterInterface
 {
 public:
     USDEXECIMAGING_API
-    virtual ~UsdExecImagingPrimAdapter();
+    virtual ~UsdExecImagingPrimAdapterInterface();
 
     /// Invoked by UsdExecImaging when building its exec request.
     ///
@@ -45,7 +46,7 @@ public:
     ///
     virtual void BuildRequest(
         const UsdPrim &prim,
-        UsdExecImagingRequestBuilder &requestBuilder) const = 0;
+        UsdExecImagingRequestBuilderInterface &requestBuilder) const = 0;
 
     /// Invoked by UsdExecImaging to insert computed values into the hydra scene.
     ///
@@ -62,8 +63,8 @@ public:
     ///
     virtual HdContainerDataSourceHandle GetPrimData(
         const SdfPath &primPath,
-        const UsdExecImagingRequestAccessorSharedPtr &requestAccessor) const
-        = 0;
+        const UsdExecImagingRequestAccessorInterfaceSharedPtr &requestAccessor)
+            const = 0;
 
     /// Invoked by UsdExecImaging when a computed value is invalidated by
     /// authoring or by a time change.

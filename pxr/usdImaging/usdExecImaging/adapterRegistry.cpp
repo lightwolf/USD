@@ -8,7 +8,7 @@
 
 #include "pxr/usdImaging/usdExecImaging/geomXformablePrimAdapter.h"
 #include "pxr/usdImaging/usdExecImaging/irTransformablePrimAdapter.h"
-#include "pxr/usdImaging/usdExecImaging/primAdapter.h"
+#include "pxr/usdImaging/usdExecImaging/primAdapterInterface.h"
 
 #include "pxr/base/tf/envSetting.h"
 #include "pxr/exec/execIr/tokens.h"
@@ -25,7 +25,7 @@ TF_DEFINE_ENV_SETTING(
     "xformOpOrder. Users can disable this setting if they want to keep "
     "drawing Xformable prims according to their complete list of xformOps.");
 
-UsdExecImagingPrimAdapter *
+UsdExecImagingPrimAdapterInterface *
 UsdExecImaging_AdapterRegistry::GetPrimAdapter(const UsdPrim &prim)
 {
     // TODO: The adapter currently has a few hard-coded adapter types. This
