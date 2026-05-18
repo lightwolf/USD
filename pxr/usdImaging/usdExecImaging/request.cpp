@@ -9,7 +9,7 @@
 #include "pxr/usdImaging/usdExecImaging/adapterRegistry.h"
 #include "pxr/usdImaging/usdExecImaging/debugCodes.h"
 #include "pxr/usdImaging/usdExecImaging/primAdapterInterface.h"
-#include "pxr/usdImaging/usdExecImaging/requestBuilderImpl.h"
+#include "pxr/usdImaging/usdExecImaging/requestBuilder.h"
 
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/refBase.h"
@@ -213,7 +213,7 @@ UsdExecImaging_Request::_Rebuild()
     _primToDirtyDataSourcesMap.clear();
 
     // Prim adapters use this object to add value keys to the request.
-    UsdExecImaging_RequestBuilderImpl requestBuilder;
+    UsdExecImaging_RequestBuilder requestBuilder;
 
     for (const UsdPrim &prim : _stage->Traverse()) {
         // Get the adpater for this prim. If there is no adapter, then skip

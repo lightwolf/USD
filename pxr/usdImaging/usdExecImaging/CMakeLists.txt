@@ -16,7 +16,7 @@ if (PXR_BUILD_EXEC)
         geomXformablePrimAdapter
         irTransformablePrimAdapter
         request
-        requestBuilderImpl
+        requestBuilder
         stageSceneIndex)
 
     set(USDEXECIMAGING_PRIVATE_HEADERS

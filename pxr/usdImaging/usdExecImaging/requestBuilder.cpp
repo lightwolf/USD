@@ -4,7 +4,7 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#include "pxr/usdImaging/usdExecImaging/requestBuilderImpl.h"
+#include "pxr/usdImaging/usdExecImaging/requestBuilder.h"
 
 #include "pxr/exec/exec/builtinComputations.h"
 #include "pxr/usd/usd/attribute.h"
@@ -13,7 +13,7 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 void
-UsdExecImaging_RequestBuilderImpl::AddValueKey(
+UsdExecImaging_RequestBuilder::AddValueKey(
     const UsdPrim &providerPrim,
     const TfToken &computationName)
 {
@@ -23,7 +23,7 @@ UsdExecImaging_RequestBuilderImpl::AddValueKey(
 }
 
 void
-UsdExecImaging_RequestBuilderImpl::AddValueKey(
+UsdExecImaging_RequestBuilder::AddValueKey(
     const UsdAttribute &providerAttribute)
 {
     _valueKeys.emplace_back(
@@ -36,7 +36,7 @@ UsdExecImaging_RequestBuilderImpl::AddValueKey(
 }
 
 void
-UsdExecImaging_RequestBuilderImpl::SetAdaptedPrim(
+UsdExecImaging_RequestBuilder::SetAdaptedPrim(
     const UsdPrim &prim,
     const UsdExecImagingPrimAdapterInterface &primAdapter)
 {
@@ -48,19 +48,19 @@ UsdExecImaging_RequestBuilderImpl::SetAdaptedPrim(
 }
 
 std::vector<ExecUsdValueKey>
-UsdExecImaging_RequestBuilderImpl::TakeValueKeys()
+UsdExecImaging_RequestBuilder::TakeValueKeys()
 {
     return std::move(_valueKeys);
 }
 
 UsdExecImaging_ValueKeyMap
-UsdExecImaging_RequestBuilderImpl::TakeValueKeyMap()
+UsdExecImaging_RequestBuilder::TakeValueKeyMap()
 {
     return std::move(_valueKeyMap);
 }
 
 void
-UsdExecImaging_RequestBuilderImpl::_AddValueKey(UsdExecImagingValueKey valueKey)
+UsdExecImaging_RequestBuilder::_AddValueKey(UsdExecImagingValueKey valueKey)
 {
     // This method should be called after the ExecUsdValueKey has been inserted.
     if (!TF_VERIFY(!_valueKeys.empty())) {

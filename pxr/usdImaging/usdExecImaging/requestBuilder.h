@@ -4,8 +4,8 @@
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_IMPL_H
-#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_IMPL_H
+#ifndef PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_H
+#define PXR_USD_IMAGING_USD_EXEC_IMAGING_REQUEST_BUILDER_H
 
 /// \file
 
@@ -34,7 +34,7 @@ class UsdExecImagingPrimAdapterInterface;
 /// are accumulated in the builder as well as metadata for each value key
 /// (stored as an instance of UsdExecImaging_ValueKeyMap).
 ///
-class UsdExecImaging_RequestBuilderImpl
+class UsdExecImaging_RequestBuilder
     : public UsdExecImagingRequestBuilderInterface
 {
 public:
