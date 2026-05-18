@@ -86,8 +86,8 @@ def Shader "UsdPreviewSurface" (
         connectability = "interfaceOnly"
         doc = """This is used to determine how materials with opacity less 
         than one are interpreted. When set to "transparent", opacity reduces 
-        just the contribution of the non-specular lighting components, while 
-        when set to "presence", opacity scales the entire lighting response. 
+        just the contribution of the diffuse lighting component, while when
+        set to "presence", opacity scales the entire lighting response. 
         Note that when opacityThreshold is non-zero, opacityMode is ignored."""
     )
 

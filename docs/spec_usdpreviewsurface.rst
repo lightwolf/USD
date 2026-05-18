@@ -165,15 +165,16 @@ and :usda:`opacity`.
 
   This input dictates how materials with opacity less than one are interpreted
   and accepts one of two possible values: *transparent* or *presence*. When the
-  value is *transparent*, *opacity* reduces the contribution of the non-specular
-  lighting components in favor of transparency, while the specular response
-  remains at full weight. This models materials such as glass, where even
-  perfectly clear glass still produces a specular reflection. When set to
-  *presence*, *opacity* scales the entire lighting response, including specular,
-  so the material response fades proportionally as *opacity* decreases. In this
-  mode the surface transitions toward full transparency as *opacity* approaches
-  zero, behaving as if the object itself is disappearing rather than remaining
-  optically present through specular reflection.
+  value is *transparent*, *opacity* reduces the contribution of the diffuse
+  lighting component in favor of transparency, while the specular response and 
+  emissive component remain at full weight. This models materials such as glass,
+  where even perfectly clear glass still produces a specular reflection, and 
+  glowing glass glows. When set to *presence*, *opacity* scales the entire 
+  lighting response, including specular and emission, so the material response 
+  fades proportionally as *opacity* decreases. In this mode the surface transitions 
+  toward full transparency as *opacity* approaches zero, behaving as if the 
+  object itself is disappearing rather than remaining optically present through 
+  specular reflection and emission.
 
 .. _addopacitythreshold:
 
@@ -320,8 +321,8 @@ typeName information that may be useful to a renderer or shading system.
           connectability = "interfaceOnly"
           doc = """This is used to determine how materials with opacity less 
           than one are interpreted. When set to "transparent", opacity reduces 
-          just the contribution of the non-specular lighting components, while 
-          when set to "presence", opacity scales the entire lighting response. 
+          just the contribution of the diffuse lighting component, while when 
+          set to "presence", opacity scales the entire lighting response. 
           Note that when opacityThreshold is non-zero, opacityMode is ignored."""
       )
    
