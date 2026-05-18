@@ -1,7 +1,11 @@
 set(PXR_PREFIX pxr/usdIrImaging)
 set(PXR_PACKAGE usdIrImaging)
 
-pxr_library(usdIfImaging
+if(NOT PXR_BUILD_EXEC)
+    return()
+endif()
+
+pxr_library(usdIrImaging
     LIBRARIES
         execIr
         gf
