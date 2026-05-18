@@ -865,6 +865,8 @@ HdsiVelocityMotionResolvingSceneIndex::_PrimsDirtied(
     const HdSceneIndexBase&  /*sender*/,
     const HdSceneIndexObserver::DirtiedPrimEntries& entries)
 {
+    TRACE_FUNCTION();
+
     // Scales-freezing depends on whether velocity-based motion is valid, so
     // if either positions or rotations is dirty, we will dirty scales as well.
     static const HdDataSourceLocatorSet positionsLocators {
