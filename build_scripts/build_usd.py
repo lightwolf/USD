@@ -757,25 +757,14 @@ def AnyPythonDependencies(deps):
 ############################################################
 # zlib
 
-ZLIB_URL = "https://github.com/madler/zlib/archive/v1.2.13.zip"
+ZLIB_URL = "https://github.com/madler/zlib/archive/v1.3.2.zip"
 
 def InstallZlib(context, force, buildArgs):
     with CurrentWorkingDirectory(DownloadURL(ZLIB_URL, context, force)):
-        # The following test files aren't portable to embedded platforms.
-        # They're not required for use on any platforms, so we elide them
-        # for efficiency
-        PatchFile("CMakeLists.txt",
-                [("add_executable(example test/example.c)",
-                    ""),
-                ("add_executable(minigzip test/minigzip.c)",
-                    ""),
-                ("target_link_libraries(example zlib)",
-                    ""),
-                ("target_link_libraries(minigzip zlib)",
-                    ""),
-                ("add_test(example example)",
-                    "")])
-        RunCMake(context, force, buildArgs)
+        extraArgs = [
+            "-DZLIB_BUILD_TESTING=OFF",
+        ]
+        RunCMake(context, force, extraArgs + buildArgs)
 
 ZLIB = Dependency("zlib", InstallZlib, "include/zlib.h")
         
@@ -1241,55 +1230,79 @@ TBB = Dependency("TBB", InstallTBB, "include/tbb/tbb.h")
 ############################################################
 # JPEG
 
-JPEG_URL = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.zip"
+JPEG_URL = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/3.1.4.1.zip"
 
 def InstallJPEG(context, force, buildArgs):
     with CurrentWorkingDirectory(DownloadURL(JPEG_URL, context, force)):
-        extraJPEGArgs = buildArgs
-        if not which("nasm"):
+        extraJPEGArgs = [
+            "-DWITH_TOOLS=FALSE"
+        ]
+
+        if MacOS() and context.targetUniversal:
+            # The libjpeg-turbo build errors out if CMAKE_OSX_ARCHITECTURES is
+            # set to a list of values, which is how we do universal builds.
+            # Per https://github.com/libjpeg-turbo/libjpeg-turbo/issues/512,
+            # this is because the library uses assembly for its SIMD support,
+            # which requires different builds for different architectures.
+            #
+            # However, the library _does_ provide a way to disable that SIMD
+            # support. So we (hackily) patch CMakeLists.txt to disable the
+            # CMAKE_OSX_ARCHITECTURES check, then turn off SIMD support to
+            # avoid the problem mentioned above.
+            #
+            # If we really wanted the SIMD support, we could run the two
+            # individual builds and then create a universal binary manually.
+            # This doesn't seem to be worth the effort since we're only
+            # building this library beacuse OpenImageIO requires it;
+            # OpenUSD doesn't actually use OpenImageIO to read jpeg images.
+            PatchFile("CMakeLists.txt",
+                      [('set(COUNT 1)', 
+                        'if(FALSE)\n' +
+                        'set(COUNT 1)'),
+                       
+                       ('  math(EXPR COUNT "${COUNT}+1")\n' +
+                        'endforeach()',
+                        '  math(EXPR COUNT "${COUNT}+1")\n' +
+                        'endforeach()\n' +
+                        'endif()')],
+                      multiLineMatches=True)
+
+            extraJPEGArgs.append("-DWITH_SIMD=FALSE")
+        elif not which("nasm"):
             extraJPEGArgs.append("-DWITH_SIMD=FALSE")
         
         # For compatibility with CMake 4+
         extraJPEGArgs.append("-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
 
-        RunCMake(context, force, extraJPEGArgs)
-        return os.getcwd()
+        RunCMake(context, force, extraJPEGArgs + buildArgs)
 
 JPEG = Dependency("JPEG", InstallJPEG, "include/jpeglib.h")
         
 ############################################################
 # TIFF
 
-TIFF_URL = "https://gitlab.com/libtiff/libtiff/-/archive/v4.0.7/libtiff-v4.0.7.zip"
+TIFF_URL = "https://gitlab.com/libtiff/libtiff/-/archive/v4.7.1/libtiff-v4.7.1.zip"
 
 def InstallTIFF(context, force, buildArgs):
     with CurrentWorkingDirectory(DownloadURL(TIFF_URL, context, force)):
-        # libTIFF has a build issue on Windows where tools/tiffgt.c
-        # unconditionally includes unistd.h, which does not exist.
-        # To avoid this, we patch the CMakeLists.txt to skip building
-        # the tools entirely. We do this on Linux and MacOS as well
-        # to avoid requiring some GL and X dependencies.
-        #
-        # We also need to skip building tests, since they rely on 
-        # the tools we've just elided.
-        PatchFile("CMakeLists.txt", 
-                   [("add_subdirectory(tools)", "# add_subdirectory(tools)"),
-                    ("add_subdirectory(test)", "# add_subdirectory(test)")])
+        extraArgs = [
+            "-Dtiff-tools=OFF",
+            "-Dtiff-tests=OFF",
+            "-Dtiff-contrib=OFF",
+            "-Dtiff-docs=OFF"
+        ]
 
         # The libTIFF CMakeScript says the ld-version-script 
         # functionality is only for compilers using GNU ld on 
         # ELF systems or systems which provide an emulation; therefore
         # skipping it completely on mac and windows.
         if MacOS() or Windows():
-            extraArgs = ["-Dld-version-script=OFF"]
-        else:
-            extraArgs = []
-        extraArgs += buildArgs
+            extraArgs.append("-Dld-version-script=OFF")
 
         # For compatibility with CMake 4+
         extraArgs.append("-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
 
-        RunCMake(context, force, extraArgs)
+        RunCMake(context, force, extraArgs + buildArgs)
 
 TIFF = Dependency("TIFF", InstallTIFF, "include/tiff.h")
 
