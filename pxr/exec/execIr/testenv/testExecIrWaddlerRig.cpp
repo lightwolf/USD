@@ -224,22 +224,22 @@ void _VerifySwitchInverseAndForwardResults(
     std::vector<UsdAttribute> outputSpaces;
     for (const UsdPrim &prim : jointScopes) {
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRx));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRx));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRy));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRy));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRz));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRz));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRspin));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRspin));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTx));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTx));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTy));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTy));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTz));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTz));
 
         outputSpaces.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->posedSpace));
+            prim.GetAttribute(ExecIrXformableTokens->posedSpace));
     }
     TF_AXIOM(inputAvars.size() == expectedInputValues.size());
     for (const UsdAttribute &attr : inputAvars) {
@@ -327,9 +327,9 @@ Test_WaddlerRigBasic()
     TF_AXIOM(joint1 && joint2);
 
     const UsdAttribute joint1Space =
-        joint1.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint1.GetAttribute(ExecIrXformableTokens->posedSpace);
     const UsdAttribute joint2Space =
-        joint2.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint2.GetAttribute(ExecIrXformableTokens->posedSpace);
     TF_AXIOM(joint1Space && joint2Space);
 
     ExecUsdSystem execSystem(usdStage);
@@ -631,34 +631,34 @@ Test_WaddlerRigAnimation()
     TF_AXIOM(joint1 && joint2);
 
     UsdAttribute ry1 =
-        joint1.GetAttribute(ExecIrTransformableTokens->avarsRy);
+        joint1.GetAttribute(ExecIrXformableTokens->avarsRy);
     UsdAttribute ry2 =
-        joint2.GetAttribute(ExecIrTransformableTokens->avarsRy);
+        joint2.GetAttribute(ExecIrXformableTokens->avarsRy);
     TF_AXIOM(ry1 && ry2);
 
     const UsdAttribute joint1Space =
-        joint1.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint1.GetAttribute(ExecIrXformableTokens->posedSpace);
     const UsdAttribute joint2Space =
-        joint2.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint2.GetAttribute(ExecIrXformableTokens->posedSpace);
     TF_AXIOM(joint1Space && joint2Space);
     std::vector<UsdAttribute> outputSpaces{joint1Space, joint2Space};
 
     std::vector<UsdAttribute> inputAvars;
     for (const UsdPrim &prim : {joint1, joint2}) {
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTx));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTx));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTy));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTy));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsTz));
+            prim.GetAttribute(ExecIrXformableTokens->avarsTz));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRx));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRx));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRy));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRy));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRz));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRz));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrTransformableTokens->avarsRspin));
+            prim.GetAttribute(ExecIrXformableTokens->avarsRspin));
     }
     for (const UsdAttribute &attr : inputAvars) {
         TF_AXIOM(attr);

@@ -26,7 +26,7 @@ pxr_library(execIr
     CPPFILES
         fkController.cpp
         switchController.cpp
-        transformable.cpp
+        xformable.cpp
 
     RESOURCE_FILES
         plugInfo.json

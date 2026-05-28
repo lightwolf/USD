@@ -21,16 +21,16 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 void
-UsdExecImaging_IrTransformablePrimAdapter::BuildRequest(
+UsdExecImaging_IrXformablePrimAdapter::BuildRequest(
     const UsdPrim &prim,
     UsdExecImagingRequestBuilderInterface &requestBuilder) const
 {
     requestBuilder.AddValueKey(
-        prim.GetAttribute(ExecIrTransformableTokens->posedSpace));
+        prim.GetAttribute(ExecIrXformableTokens->posedSpace));
 }
 
 HdContainerDataSourceHandle
-UsdExecImaging_IrTransformablePrimAdapter::GetPrimData(
+UsdExecImaging_IrXformablePrimAdapter::GetPrimData(
     const SdfPath &primPath,
     const UsdExecImagingRequestAccessorInterfaceSharedPtr &requestAccessor)
         const
@@ -45,19 +45,19 @@ UsdExecImaging_IrTransformablePrimAdapter::GetPrimData(
                     requestAccessor,
                     UsdExecImagingValueKey(
                         primPath.AppendProperty(
-                            ExecIrTransformableTokens->posedSpace),
+                            ExecIrXformableTokens->posedSpace),
                         ExecBuiltinComputations->computeValue)))
             .Build());
 }
 
 void
-UsdExecImaging_IrTransformablePrimAdapter::InvalidatePrimData(
+UsdExecImaging_IrXformablePrimAdapter::InvalidatePrimData(
     const SdfPath &primPath,
     const UsdExecImagingValueKey &valueKey,
     HdDataSourceLocatorSet *const invalidLocators) const
 {
     const UsdExecImagingValueKey posedSpaceValueKey(
-        primPath.AppendProperty(ExecIrTransformableTokens->posedSpace),
+        primPath.AppendProperty(ExecIrXformableTokens->posedSpace),
         ExecBuiltinComputations->computeValue);
 
     // If the invalidated value key is for this prim's posed:space computeValue,

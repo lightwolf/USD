@@ -97,17 +97,17 @@ Test_JointScopeBasic()
     const UsdPrim joint = usdStage->GetPrimAtPath(SdfPath("/Root/Joint"));
     TF_AXIOM(joint);
     const UsdAttribute posedSpace =
-        joint.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint.GetAttribute(ExecIrXformableTokens->posedSpace);
     TF_AXIOM(posedSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRx),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRy),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRz),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRspin),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTx),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTy),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTz),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRx),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRy),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRz),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRspin),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTx),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTy),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -135,7 +135,7 @@ Test_JointScopeBasic()
 
         // Translate the rest space and compute again.
         UsdAttribute restTz =
-            joint.GetAttribute(ExecIrTransformableTokens->restTz);
+            joint.GetAttribute(ExecIrXformableTokens->restTz);
         TF_AXIOM(restTz);
         restTz.Set(10.0);
 
@@ -229,17 +229,17 @@ Test_JointScopeRestSpace()
     const UsdPrim joint = usdStage->GetPrimAtPath(SdfPath("/Root/Joint"));
     TF_AXIOM(joint);
     const UsdAttribute posedSpace =
-        joint.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        joint.GetAttribute(ExecIrXformableTokens->posedSpace);
     TF_AXIOM(posedSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRx),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRy),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRz),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsRspin),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTx),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTy),
-        joint.GetAttribute(ExecIrTransformableTokens->avarsTz),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRx),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRy),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRz),
+        joint.GetAttribute(ExecIrXformableTokens->avarsRspin),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTx),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTy),
+        joint.GetAttribute(ExecIrXformableTokens->avarsTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -266,7 +266,7 @@ Test_JointScopeRestSpace()
     // Rotate the posed space around the X axis.
     {
         const UsdAttribute avarsRx =
-            joint.GetAttribute(ExecIrTransformableTokens->avarsRx);
+            joint.GetAttribute(ExecIrXformableTokens->avarsRx);
         TF_AXIOM(avarsRx);
         avarsRx.Set(90.0);
 
@@ -282,7 +282,7 @@ Test_JointScopeRestSpace()
     // Translate the rest space along the Z axis.
     {
         const UsdAttribute restTz =
-            joint.GetAttribute(ExecIrTransformableTokens->restTz);
+            joint.GetAttribute(ExecIrXformableTokens->restTz);
         TF_AXIOM(restTz);
         restTz.Set(5.0);
 
@@ -377,27 +377,27 @@ Test_JointScopeParentChild()
     TF_AXIOM(parent && child);
 
     const UsdAttribute parentPosedSpace =
-        parent.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        parent.GetAttribute(ExecIrXformableTokens->posedSpace);
     const UsdAttribute childPosedSpace =
-        child.GetAttribute(ExecIrTransformableTokens->posedSpace);
+        child.GetAttribute(ExecIrXformableTokens->posedSpace);
     TF_AXIOM(parentPosedSpace && childPosedSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        parent.GetAttribute(ExecIrTransformableTokens->avarsRx),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsRy),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsRz),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsRspin),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsTx),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsTy),
-        parent.GetAttribute(ExecIrTransformableTokens->avarsTz),
+        parent.GetAttribute(ExecIrXformableTokens->avarsRx),
+        parent.GetAttribute(ExecIrXformableTokens->avarsRy),
+        parent.GetAttribute(ExecIrXformableTokens->avarsRz),
+        parent.GetAttribute(ExecIrXformableTokens->avarsRspin),
+        parent.GetAttribute(ExecIrXformableTokens->avarsTx),
+        parent.GetAttribute(ExecIrXformableTokens->avarsTy),
+        parent.GetAttribute(ExecIrXformableTokens->avarsTz),
 
-        child.GetAttribute(ExecIrTransformableTokens->avarsRx),
-        child.GetAttribute(ExecIrTransformableTokens->avarsRy),
-        child.GetAttribute(ExecIrTransformableTokens->avarsRz),
-        child.GetAttribute(ExecIrTransformableTokens->avarsRspin),
-        child.GetAttribute(ExecIrTransformableTokens->avarsTx),
-        child.GetAttribute(ExecIrTransformableTokens->avarsTy),
-        child.GetAttribute(ExecIrTransformableTokens->avarsTz),
+        child.GetAttribute(ExecIrXformableTokens->avarsRx),
+        child.GetAttribute(ExecIrXformableTokens->avarsRy),
+        child.GetAttribute(ExecIrXformableTokens->avarsRz),
+        child.GetAttribute(ExecIrXformableTokens->avarsRspin),
+        child.GetAttribute(ExecIrXformableTokens->avarsTx),
+        child.GetAttribute(ExecIrXformableTokens->avarsTy),
+        child.GetAttribute(ExecIrXformableTokens->avarsTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);

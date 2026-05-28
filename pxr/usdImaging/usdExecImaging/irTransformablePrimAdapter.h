@@ -15,15 +15,15 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-/// The UsdExecImaging prim adapter for IrTransformable prims provides data
-/// sources for computed values.
+/// The UsdExecImaging prim adapter for IrXformable prims provides data sources
+/// for computed values.
 ///
 /// Namely, it provides data sources that extract the computed value of
 /// posed:space for the adapted prims. These data sources overlay on top of the
 /// data sources provided by the UsdImaging prim adapter, which inserts subprims
 /// for guide geometry.
 ///
-class UsdExecImaging_IrTransformablePrimAdapter final
+class UsdExecImaging_IrXformablePrimAdapter final
     : public UsdExecImagingPrimAdapterInterface
 {
 public:

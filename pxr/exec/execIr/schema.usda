@@ -168,13 +168,13 @@ class IrSwitchController "IrSwitchController" (
     )
 }
 
-class "IrTransformable" (
+class "IrXformable" (
     doc = """
     An abstract schema that provides an animation interface for an animatable
     coordinate space.
 
-    IrTransformable defines rest, default, and posed spaces, along with a group
-    of animation avars that can feed into controllers for posing.
+    IrXformable defines rest, default, and posed spaces, along with a group of
+    animation avars that can feed into controllers for posing.
    
     restSpace - A world space transform representing the position of the
     transformable object "at rest" -- generally meaning before any posing has
@@ -249,14 +249,14 @@ class IrJointScope "IrJointScope" (
     A concrete typed schema that represents the joint of an armature-based
     model.
 
-    The base schema IrTransformable defines the behavior; this schema exists
-    mainly so we can specialize drawing of guides, etc. In the future, other
-    concrete schemas will also extend IrTransformable.
+    The base schema IrXformable defines the behavior; this schema exists mainly
+    so we can specialize drawing of guides, etc. In the future, other concrete
+    schemas will also extend IrXformable.
 
     Note: The functionality provided by this schema is extremely limited,
     subject to change, and not yet ready for production use.
     """
-    inherits = </IrTransformable>
+    inherits = </IrXformable>
     customData = {
         string className = "JointScope"
     }

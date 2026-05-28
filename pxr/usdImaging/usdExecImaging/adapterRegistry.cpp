@@ -41,8 +41,8 @@ UsdExecImaging_AdapterRegistry::GetPrimAdapter(const UsdPrim &prim)
         return &adapter;
     }
 
-    if (prim.IsA(ExecIrTransformableTokens->IrTransformable)) {
-        using Adapter = UsdExecImaging_IrTransformablePrimAdapter;
+    if (prim.IsA(ExecIrXformableTokens->IrXformable)) {
+        using Adapter = UsdExecImaging_IrXformablePrimAdapter;
         static Adapter adapter;
         return &adapter;
     }

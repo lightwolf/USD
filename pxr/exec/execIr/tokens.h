@@ -92,8 +92,8 @@ TF_DECLARE_PUBLIC_TOKENS(
 TF_DECLARE_PUBLIC_TOKENS(
     ExecIrSwitchControllerTokens, EXECIR_API, EXEC_IR_SWITCH_CONTROLLER_TOKENS);
 
-#define EXEC_IR_TRANSFORMABLE_TOKENS                                            \
-    (IrTransformable)                                                           \
+#define EXEC_IR_XFORMABLE_TOKENS                                                \
+    (IrXformable)                                                               \
                                                                                 \
     ((avarsTx, "avars:tx"))                                                     \
     ((avarsTy, "avars:ty"))                                                     \
@@ -129,7 +129,7 @@ TF_DECLARE_PUBLIC_TOKENS(
     ((parentDefaultSpace, "parent:defaultSpace"))                               \
 
 TF_DECLARE_PUBLIC_TOKENS(
-    ExecIrTransformableTokens, EXECIR_API, EXEC_IR_TRANSFORMABLE_TOKENS);
+    ExecIrXformableTokens, EXECIR_API, EXEC_IR_XFORMABLE_TOKENS);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
