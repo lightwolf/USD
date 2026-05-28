@@ -315,6 +315,7 @@ PXR_NAMESPACE_OPEN_SCOPE
     (integrator)                                \
     (sampleFilter)                              \
     (displayFilter)                             \
+    (energyFilter)                              \
     (imageShader)                               \
                                                 \
     HD_LIGHT_TYPE_TOKENS                        \
