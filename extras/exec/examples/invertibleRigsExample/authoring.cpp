@@ -19,6 +19,7 @@
 
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/tf/diagnosticLite.h"
+#include "pxr/base/tf/stringUtils.h"
 #include "pxr/base/tf/type.h"
 #include "pxr/base/ts/spline.h"
 #include "pxr/usd/sdf/valueTypeName.h"
@@ -119,6 +120,20 @@ _BreakdownPreTime(
     const UsdAttribute &attr,
     const UsdTimeCode &time)
 {
+    // If the attribute doesn't already have a spline, author a spline with a
+    // single knot with the attribute's default value.
+    if (!attr.HasSpline()) {
+        VtValue value;
+        if (!attr.Get(&value)) {
+            TF_CODING_ERROR(
+                "Can't get value for <%s> at time %s",
+                attr.GetPath().GetText(), TfStringify(time).c_str());
+            return;
+        }
+
+        _SetSplineKnot(attr, time, value);
+    }
+
     TsSpline spline = attr.GetSpline();
 
     if (spline.CanBreakdown(time.GetValue())) {

@@ -69,14 +69,16 @@ class TestSwitchCompensation(unittest.TestCase):
 
         authoring = InvertibleRigsExample.Authoring(stage)
 
-        # Start at time 0 with the switch set to 'rig1' and splines on all
-        # input avars with 0 valued knots.
+        # Start at time 0 by switching to 'rig1'. This is the fallback value, so
+        # this doesn't change the selected rig, but it breaks down the default
+        # values into splines for all input avars.
         currentTime = Usd.TimeCode(0.0)
-        switch.Set('rig1', currentTime)
-        spline = Ts.Spline("double")
-        spline.SetKnot(Ts.Knot(time=0.0, value=0.0, nextInterp=Ts.InterpCurve))
-        for avar in inputAvars:
-            avar.SetSpline(spline)
+        authoring.CompensateSwitch(switch, currentTime, 'rig1')
+
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
 
         # Author animation on rotation avars and a series of compensated changes
         # to the switch attribute that make the rig tumble by alternately
