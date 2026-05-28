@@ -124,19 +124,6 @@ pxr_build_test(testHdxRenderTask
     CPPFILES
         testenv/testHdxRenderTask.cpp
 )
-pxr_build_test(testHdxOitShaderRetention
-    LIBRARIES
-        hdx
-        hd
-        hdSt
-        sdf
-        glf
-        garch
-        arch
-        tf
-    CPPFILES
-        testenv/testHdxOitShaderRetention.cpp
-)
 pxr_build_test(testHdxLightAndShadow
     LIBRARIES
         hdx
@@ -379,8 +366,22 @@ pxr_register_test(testHdxRenderTask
     ENV
         TF_DEBUG=HD_SAFE_MODE
 )
+
+pxr_build_test(testHdxOitShaderRetention
+    LIBRARIES
+        hdx
+        hd
+        hdSt
+        sdf
+        glf
+        garch
+        arch
+        tf
+    CPPFILES
+        testenv/testHdxOitShaderRetention.cpp
+)
 pxr_register_test(testHdxOitShaderRetention
-    CONNAMD "${CMAKE_INSTALL_PREFIX}/tests/testHdxOitShaderRetention"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testHdxOitShaderRetention"
     EXPECTED_RETURN_CODE 0
     ENV
         HDX_ENABLE_OIT=1

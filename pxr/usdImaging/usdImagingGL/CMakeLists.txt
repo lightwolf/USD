@@ -4537,12 +4537,12 @@ pxr_register_test(testUsdImagingGLOIT
     TESTENV testenv/testUsdImagingGLOIT)
 
 pxr_register_test(testUsdImagingGLOITPacked
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -lighting -camlight -frameAll -camera /Root/FrontCamera -stage scene.usda -write testUsdImagingGLOITPacked.png"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -lighting -camlight -frameAll -camera /Root/FrontCamera -stage scene.usda -write testUsdImagingGLOIT.png"
     IMAGE_DIFF_COMPARE
-        testUsdImagingGLOITPacked.png
+        testUsdImagingGLOIT.png
     FAIL 0.008
     FAIL_PERCENT 0.001
-    WARN 0.005
+    WARN 0.004
     WARN_PERCENT 0.0005
     EXPECTED_RETURN_CODE 0
     TESTENV testenv/testUsdImagingGLOIT
