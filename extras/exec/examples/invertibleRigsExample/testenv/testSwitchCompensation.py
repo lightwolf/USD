@@ -8,43 +8,38 @@
 from pxr import Gf, Sdf, Ts, Usd, InvertibleRigsExample
 import unittest
 
+def _SetSplineKnot(attr, time, value):
+    """
+    Sets a value on an attribute at a specified time by writing a knot to
+    the attribute's spline. If no knot exists at that time, creates a new
+    knot with curve interpolation for the segment that follows it.
+    """
+    valueType = attr.GetTypeName().type
+
+    frame = time.GetValue()
+    spline = attr.GetSpline()
+    knot = spline.GetKnot(frame)
+    if knot:
+        knot.SetValue(value)
+    else:
+        knot = Ts.Knot(
+            typeName=valueType.typeName, time=frame, value=value,
+            nextInterp=Ts.InterpCurve)
+    spline.SetKnot(knot)
+    attr.SetSpline(spline)
+
+def _AssertAvarValues(time, avars, expectedValues):
+    """
+    Asserts that the values of the given avars at the given time are close
+    to the given expected values.
+    """
+
+    for avar, expectedValue in zip(avars, expectedValues):
+        actualValue = avar.Get(time)
+        assert Gf.IsClose(actualValue, expectedValue, 1e-6), \
+            f"For avar <{avar.GetPath()} {actualValue} != {expectedValue}"
+
 class TestSwitchCompensation(unittest.TestCase):
-
-    def test_SetSplineKnot(self):
-        """
-        Test a convenience function that sets a knot on a spline.
-        """
-
-        layer = Sdf.Layer.CreateAnonymous()
-        layer.ImportFromString(
-            '''#usda 1.0
-            def "Foo" {
-                double x = 0
-            }
-            ''')
-        stage = Usd.Stage.Open(layer)
-        x = stage.GetAttributeAtPath('/Foo.x')
-        assert x
-
-        time = Usd.TimeCode(0.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(x, time, 1.0);
-        assert x.Get(time) == 1.0
-
-        time = Usd.TimeCode(10.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(x, time, 2.0);
-        assert x.Get(time) == 2.0
-
-
-    def _AssertAvarValues(time, avars, expectedValues):
-        """
-        Asserts that the values of the given avars at the given time are close
-        to the given expected values.
-        """
-
-        for avar, expectedValue in zip(avars, expectedValues):
-            actualValue = avar.Get(time)
-            assert Gf.IsClose(actualValue, expectedValue, 1e-6), \
-                f"For avar <{avar.GetPath()} {actualValue} != {expectedValue}"
 
     def test_CompensateSwitch(self):
         """
@@ -88,34 +83,34 @@ class TestSwitchCompensation(unittest.TestCase):
         # pivoting about one end or the other.
 
         currentTime = Usd.TimeCode(10.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(ry1, currentTime, 90.0)
+        _SetSplineKnot(ry1, currentTime, 90.0)
         authoring.CompensateSwitch(switch, currentTime, 'rig2')
 
-        TestSwitchCompensation._AssertAvarValues(
+        _AssertAvarValues(
             currentTime, inputAvars,
             (0, 0, 0, 0, 0, 0, 0,
              10, 0, -10, 0, 90, 0, 0))
 
         currentTime = Usd.TimeCode(30.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(ry2, currentTime, 270.0)
+        _SetSplineKnot(ry2, currentTime, 270.0)
         authoring.CompensateSwitch(switch, currentTime, 'rig1')
 
-        TestSwitchCompensation._AssertAvarValues(
+        _AssertAvarValues(
             currentTime, inputAvars,
             (20, 0, 0, 0, -90, 0, 0,
              0, 0, 0, 0, 0, 0, 0))
 
         currentTime = Usd.TimeCode(50.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(ry1, currentTime, 90.0)
+        _SetSplineKnot(ry1, currentTime, 90.0)
         authoring.CompensateSwitch(switch, currentTime, 'rig2')
     
-        TestSwitchCompensation._AssertAvarValues(
+        _AssertAvarValues(
             currentTime, inputAvars,
             (0, 0, 0, 0, 0, 0, 0,
              30, 0, -10, 0, 90, 0, 0))
 
         currentTime = Usd.TimeCode(60.0)
-        InvertibleRigsExample.Authoring.SetSplineKnot(ry2, currentTime, 180.0)
+        _SetSplineKnot(ry2, currentTime, 180.0)
 
         layer.Export("result.usda")
         

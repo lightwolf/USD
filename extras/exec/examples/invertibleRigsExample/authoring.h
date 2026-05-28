@@ -27,16 +27,6 @@ public:
     EXEC_INVERTIBLERIGSEXAMPLE_API
     InvertibleRigsExample_Authoring(const UsdStageRefPtr &stage);
 
-    /// Adds a knot to the spline on \p attr with the given \p value at the
-    /// given \p time, with curve interpolation.
-    ///
-    EXEC_INVERTIBLERIGSEXAMPLE_API
-    static void
-    SetSplineKnot(
-        const UsdAttribute &attr,
-        const UsdTimeCode &time,
-        const VtValue &value);
-
     /// Authors a value to a switch attribute with compensation that authors
     /// input avar values such that the overall pose is the same before and
     /// after the change to the switch attribute value.

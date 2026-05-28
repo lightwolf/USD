@@ -21,8 +21,6 @@ void wrapAuthoring()
 
     class_<This, noncopyable>("Authoring", no_init)
         .def(init<const UsdStageRefPtr &>())
-        .def("SetSplineKnot", &This::SetSplineKnot)
-            .staticmethod("SetSplineKnot")
         .def("CompensateSwitch", &This::CompensateSwitch)
     ;
 }

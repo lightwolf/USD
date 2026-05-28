@@ -78,8 +78,8 @@ InvertibleRigsExample_Authoring::InvertibleRigsExample_Authoring(
     }
 }
 
-void
-InvertibleRigsExample_Authoring::SetSplineKnot(
+static void
+_SetSplineKnot(
     const UsdAttribute &attr,
     const UsdTimeCode &time,
     const VtValue &value)
@@ -222,7 +222,7 @@ InvertibleRigsExample_Authoring::CompensateSwitch(
     // switch value change.
     switchAttribute.Set(VtValue(switchValue), time);
     for (unsigned int i=0; i<_inputAvars.size(); ++i) {
-        SetSplineKnot(_inputAvars[i], time, VtValue(inputAvarValues[i]));
+        _SetSplineKnot(_inputAvars[i], time, VtValue(inputAvarValues[i]));
     }
 }
 
