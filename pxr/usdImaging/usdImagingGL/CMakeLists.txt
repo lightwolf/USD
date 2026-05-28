@@ -1144,9 +1144,9 @@ pxr_register_test(testUsdImagingGLInstancing_SceneIndex_pi_ni_xform
 )
 
 pxr_register_test(testUsdImagingGLInstancing_SceneIndex_pi_outside
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/pi_outside.usda -write testUsdImagingGLInstancing_pi_outside.png"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/pi_outside.usda -write usd-12231/testUsdImagingGLInstancing_pi_outside.png"
     IMAGE_DIFF_COMPARE
-        testUsdImagingGLInstancing_pi_outside.png
+        usd-12231/testUsdImagingGLInstancing_pi_outside.png
     FAIL 0.01
     FAIL_PERCENT 0.01
     EXPECTED_RETURN_CODE 0
@@ -1157,9 +1157,9 @@ pxr_register_test(testUsdImagingGLInstancing_SceneIndex_pi_outside
 # Disabled for now because of a bug in usdImaging 2.0.
 #
 #pxr_register_test(testUsdImagingGLInstancing_SceneIndex_ni_pi_outside
-#    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/ni_pi_outside.usda -write testUsdImagingGLInstancing_ni_pi_outside.png"
+#    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/ni_pi_outside.usda -write usd-12231/testUsdImagingGLInstancing_ni_pi_outside.png"
 #    IMAGE_DIFF_COMPARE
-#        testUsdImagingGLInstancing_ni_pi_outside.png
+#        usd-12231/testUsdImagingGLInstancing_ni_pi_outside.png
 #    FAIL 0.01
 #    FAIL_PERCENT 0.01
 #    EXPECTED_RETURN_CODE 0
