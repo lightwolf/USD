@@ -602,7 +602,7 @@ _VerifyComputedValue(
 }
 
 static void
-Test_WaddlerRigAnimation()
+Test_WaddlerRigSwitchCompensation()
 {
     _EnsureNoErrors mark;
 
@@ -802,5 +802,5 @@ Test_WaddlerRigAnimation()
 int main(int argc, char **argv)
 {
     Test_WaddlerRigBasic();
-    Test_WaddlerRigAnimation();
+    Test_WaddlerRigSwitchCompensation();
 }

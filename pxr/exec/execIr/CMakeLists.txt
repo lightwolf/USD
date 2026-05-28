@@ -114,7 +114,7 @@ pxr_register_test(testExecIrSwitchController
     EXPECTED_RETURN_CODE 0
 )
 
-pxr_build_test(testExecIrWaddlerRig
+pxr_build_test(testExecIrSwitchCompensation
     LIBRARIES
         exec
         execIr
@@ -125,10 +125,10 @@ pxr_build_test(testExecIrWaddlerRig
         ts
         usd
     CPPFILES
-        testenv/testExecIrWaddlerRig.cpp
+        testenv/testExecIrSwitchCompensation.cpp
 )
 
-pxr_register_test(testExecIrWaddlerRig
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testExecIrWaddlerRig"
+pxr_register_test(testExecIrSwitchCompensation
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testExecIrSwitchCompensation"
     EXPECTED_RETURN_CODE 0
 )
