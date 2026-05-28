@@ -491,7 +491,6 @@ HdStVBOMemoryManager::_StripedBufferArray::GetResource(TfToken const& name)
 {
     HD_TRACE_FUNCTION();
     if (name.IsEmpty()) {
-        TF_WARN("EMPTY NAME!");
         return GetResource();
     }
 
@@ -501,14 +500,6 @@ HdStVBOMemoryManager::_StripedBufferArray::GetResource(TfToken const& name)
          it != _resourceList.end(); ++it) {
         if (it->first == name) return it->second;
     }
-    std::string s;
-    for (const auto& r : _resourceList) {
-        if (!s.empty()) {
-            s += ", ";
-        }
-        s += r.first.GetString();
-    }
-    TF_WARN("NAME '%s' NOT FOUND! KNOWN: [%s]", name.GetText(), s.c_str());
     return HdStBufferResourceSharedPtr();
 }
 
