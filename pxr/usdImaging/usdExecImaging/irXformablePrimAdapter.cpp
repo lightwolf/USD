@@ -26,7 +26,7 @@ UsdExecImaging_IrXformablePrimAdapter::BuildRequest(
     UsdExecImagingRequestBuilderInterface &requestBuilder) const
 {
     requestBuilder.AddValueKey(
-        prim.GetAttribute(ExecIrXformableTokens->posedSpace));
+        prim.GetAttribute(ExecIrTokens->posedSpace));
 }
 
 HdContainerDataSourceHandle
@@ -45,7 +45,7 @@ UsdExecImaging_IrXformablePrimAdapter::GetPrimData(
                     requestAccessor,
                     UsdExecImagingValueKey(
                         primPath.AppendProperty(
-                            ExecIrXformableTokens->posedSpace),
+                            ExecIrTokens->posedSpace),
                         ExecBuiltinComputations->computeValue)))
             .Build());
 }
@@ -57,7 +57,7 @@ UsdExecImaging_IrXformablePrimAdapter::InvalidatePrimData(
     HdDataSourceLocatorSet *const invalidLocators) const
 {
     const UsdExecImagingValueKey posedSpaceValueKey(
-        primPath.AppendProperty(ExecIrXformableTokens->posedSpace),
+        primPath.AppendProperty(ExecIrTokens->posedSpace),
         ExecBuiltinComputations->computeValue);
 
     // If the invalidated value key is for this prim's posed:space computeValue,

@@ -26,28 +26,28 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrFkController)
 {
     ExecIrControllerBuilder builder(self, &_Compute, &_Invert);
 
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inTx);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inTy);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inTz);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inRx);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inRy);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inRz);
-    builder.InvertibleInputAttribute<double>(ExecIrFkControllerTokens->inRspin);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inTx);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inTy);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inTz);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inRx);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inRy);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inRz);
+    builder.InvertibleInputAttribute<double>(ExecIrTokens->inRspin);
 
     builder.NonInvertibleInputAttribute<GfMatrix4d>(
-        ExecIrFkControllerTokens->parentInSpace);
+        ExecIrTokens->parentInSpace);
     builder.NonInvertibleInputAttribute<GfMatrix4d>(
-        ExecIrFkControllerTokens->parentInDefaultSpace);
+        ExecIrTokens->parentInDefaultSpace);
 
     builder.InvertibleOutputAttribute<GfMatrix4d>(
-        ExecIrFkControllerTokens->outSpace);
+        ExecIrTokens->outSpace);
 
     builder.SwitchAttribute<TfToken>(
-        ExecIrFkControllerTokens->inRotationOrder);
+        ExecIrTokens->inRotationOrder);
 
     builder.PassthroughAttributes<GfMatrix4d>(
-        ExecIrFkControllerTokens->inDefaultSpace,
-        ExecIrFkControllerTokens->outDefaultSpace);
+        ExecIrTokens->inDefaultSpace,
+        ExecIrTokens->outDefaultSpace);
 }
 
 // Returns the forward-computed result for out:space.
@@ -61,7 +61,7 @@ _Compute(const VdfContext &ctx)
         ExecIr_UtilsComputeLocalRotation(ctx));
 
     return ExecIrResult({
-        {ExecIrFkControllerTokens->outSpace, VtValue(outSpaceValue)}});
+        {ExecIrTokens->outSpace, VtValue(outSpaceValue)}});
 }
 
 // Populates \p resultMap with inverted values that attempt to satisfy the given
@@ -71,7 +71,7 @@ static ExecIrResult
 _Invert(const VdfContext &ctx)
 {
     const GfMatrix4d &posedSpace =
-        ctx.GetInputValue<GfMatrix4d>(ExecIrFkControllerTokens->outSpace);
+        ctx.GetInputValue<GfMatrix4d>(ExecIrTokens->outSpace);
 
     ExecIrResult resultMap;
     ExecIr_UtilsInvert(ctx, posedSpace, ExecIr_ComputeFkParams(ctx), &resultMap);

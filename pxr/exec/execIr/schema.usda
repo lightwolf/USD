@@ -10,7 +10,6 @@ def "GLOBAL" (
     customData = {
         string libraryName = "execIr"
         string libraryPath = "pxr/exec/execIr"
-        bool skipCodeGeneration = true
     }
 )
 {
@@ -131,6 +130,17 @@ class IrSwitchController "IrSwitchController" (
     token switch = "rig1" (
         irRole = "SwitchAttribute"
         allowedTokens = ["rig1", "rig2"]
+
+        customData = {
+            # TODO: The switch must be disabled from code generation, because
+            # there is a bug in usdGenSchema. 'switch' is a reserved C++
+            # keyword. While usdGenSchema properly fixes the token name to
+            # 'ExecIrTokens->switch_', the generated schema class continues to
+            # refer to the token by the unfixed name 'ExecIrTokens->switch'.
+            # By setting apiName to the empty string, we disable generation of
+            # schema methods for this attribute, which sidesteps the bug.
+            string apiName = ""
+        }
     )
 
     matrix4d rig1:space = (

@@ -16,7 +16,6 @@ pxr_library(execIr
     PUBLIC_CLASSES
         computations
         controllerBuilder
-        tokens
         types
 
     PRIVATE_HEADERS
@@ -29,8 +28,8 @@ pxr_library(execIr
         switchControllerComputations.cpp
         xformableComputations.cpp
 
-    RESOURCE_FILES
-        plugInfo.json
+    PYMODULE_FILES
+        __init__.py
 
     DOXYGEN_FILES
         README.md

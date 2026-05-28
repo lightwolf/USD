@@ -92,14 +92,14 @@ void _VerifySwitchInverseAndForwardResults(
 
     std::vector<UsdAttribute> inputAvars;
     for (const UsdPrim &prim : inputPrims) {
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRx));
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRy));
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inRz));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inRx));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inRy));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inRz));
         inputAvars.push_back(
-            prim.GetAttribute(ExecIrFkControllerTokens->inRspin));
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTx));
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTy));
-        inputAvars.push_back(prim.GetAttribute(ExecIrFkControllerTokens->inTz));
+            prim.GetAttribute(ExecIrTokens->inRspin));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inTx));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inTy));
+        inputAvars.push_back(prim.GetAttribute(ExecIrTokens->inTz));
     }
     TF_AXIOM(inputAvars.size() == expectedInputValues.size());
 
@@ -245,7 +245,7 @@ Test_BasicSwitch()
 
     // Set the switch controller so Rig2 is active and compute in the forward
     // direction and confirm that we get the values Rig2 computes as authored.
-    switchAttr.Set(ExecIrSwitchControllerTokens->rig2);
+    switchAttr.Set(ExecIrTokens->rig2);
 
     {
         ExecUsdCacheView cache = execSystem.Compute(outputRequest);
@@ -259,7 +259,7 @@ Test_BasicSwitch()
 
     // Set the switch to Rig1 and test inverse computation with an override that
     // selects Rig2.
-    switchAttr.Set(ExecIrSwitchControllerTokens->rig1);
+    switchAttr.Set(ExecIrTokens->rig1);
 
     {
         const UsdPrim fk1 = usdStage->GetPrimAtPath(SdfPath("/Root/Rig2/FK1"));
@@ -279,7 +279,7 @@ Test_BasicSwitch()
         };
 
         _VerifySwitchInverseAndForwardResults(
-            switchAttr, ExecIrSwitchControllerTokens->rig2,
+            switchAttr, ExecIrTokens->rig2,
             {fk1, fk2},
             expectedInputValues,
             {joint1Space, joint2Space},
@@ -292,7 +292,7 @@ Test_BasicSwitch()
     {
         VtValue value;
         TF_AXIOM(switchAttr.Get(&value));
-        ASSERT_EQ(value, ExecIrSwitchControllerTokens->rig2);
+        ASSERT_EQ(value, ExecIrTokens->rig2);
 
         const UsdPrim fk1 = usdStage->GetPrimAtPath(SdfPath("/Root/Rig1/FK1"));
         const UsdPrim fk2 = usdStage->GetPrimAtPath(SdfPath("/Root/Rig1/FK2"));
@@ -311,7 +311,7 @@ Test_BasicSwitch()
         };
 
         _VerifySwitchInverseAndForwardResults(
-            switchAttr, ExecIrSwitchControllerTokens->rig1,
+            switchAttr, ExecIrTokens->rig1,
             {fk1, fk2},
             expectedInputValues,
             {joint1Space, joint2Space},

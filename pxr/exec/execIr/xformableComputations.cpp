@@ -86,46 +86,46 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
 {
     _Builder builder(self);
 
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsTx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsTy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsTz);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsRx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsRy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsRz);
-    builder.InputAttribute<double>(ExecIrXformableTokens->avarsRspin);
+    builder.InputAttribute<double>(ExecIrTokens->avarsTx);
+    builder.InputAttribute<double>(ExecIrTokens->avarsTy);
+    builder.InputAttribute<double>(ExecIrTokens->avarsTz);
+    builder.InputAttribute<double>(ExecIrTokens->avarsRx);
+    builder.InputAttribute<double>(ExecIrTokens->avarsRy);
+    builder.InputAttribute<double>(ExecIrTokens->avarsRz);
+    builder.InputAttribute<double>(ExecIrTokens->avarsRspin);
     builder.InputAttribute<TfToken>(
-        ExecIrXformableTokens->avarsRotationOrder);
+        ExecIrTokens->avarsRotationOrder);
     builder.InputAttribute<GfMatrix4d>(
-        ExecIrXformableTokens->avarsDefaultSpace);
+        ExecIrTokens->avarsDefaultSpace);
 
     // avars:defaultSpace has an expression that simply returns the value of
     // default:space.
-    self.AttributeExpression(ExecIrXformableTokens->avarsDefaultSpace)
+    self.AttributeExpression(ExecIrTokens->avarsDefaultSpace)
         .Inputs(Prim().AttributeValue<GfMatrix4d>(
-                    ExecIrXformableTokens->defaultSpace))
+                    ExecIrTokens->defaultSpace))
         .Callback(+[](const VdfContext &ctx) -> GfMatrix4d {
             return ctx.GetInputValue<GfMatrix4d>(
-                ExecIrXformableTokens->defaultSpace);
+                ExecIrTokens->defaultSpace);
         });
 
     builder.InputAttribute<double>(
-        ExecIrXformableTokens->avarsUnitScaleFactor);
+        ExecIrTokens->avarsUnitScaleFactor);
 
-    builder.InputAttribute<double>(ExecIrXformableTokens->restTx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->restTy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->restTz);
-    builder.InputAttribute<double>(ExecIrXformableTokens->restRx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->restRy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->restRz);
-    builder.InputAttribute<GfMatrix4d>(ExecIrXformableTokens->restSpace);
+    builder.InputAttribute<double>(ExecIrTokens->restTx);
+    builder.InputAttribute<double>(ExecIrTokens->restTy);
+    builder.InputAttribute<double>(ExecIrTokens->restTz);
+    builder.InputAttribute<double>(ExecIrTokens->restRx);
+    builder.InputAttribute<double>(ExecIrTokens->restRy);
+    builder.InputAttribute<double>(ExecIrTokens->restRz);
+    builder.InputAttribute<GfMatrix4d>(ExecIrTokens->restSpace);
 
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultTx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultTy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultTz);
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultRx);
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultRy);
-    builder.InputAttribute<double>(ExecIrXformableTokens->defaultRz);
-    builder.InputAttribute<GfMatrix4d>(ExecIrXformableTokens->defaultSpace);
+    builder.InputAttribute<double>(ExecIrTokens->defaultTx);
+    builder.InputAttribute<double>(ExecIrTokens->defaultTy);
+    builder.InputAttribute<double>(ExecIrTokens->defaultTz);
+    builder.InputAttribute<double>(ExecIrTokens->defaultRx);
+    builder.InputAttribute<double>(ExecIrTokens->defaultRy);
+    builder.InputAttribute<double>(ExecIrTokens->defaultRz);
+    builder.InputAttribute<GfMatrix4d>(ExecIrTokens->defaultSpace);
 
     // Compute default:space by taking the offsets defined by the default
     // scalars and combining them with the parent default space.
@@ -135,19 +135,19 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     // default scaling for a character, to make variants, or to set a more
     // natural starting place for animation controls. Default space combines the
     // effect of that local transform with the rest space offset.
-    self.AttributeExpression(ExecIrXformableTokens->defaultSpace)
+    self.AttributeExpression(ExecIrTokens->defaultSpace)
         .Inputs(
             Prim().Computation<GfMatrix4d>(_tokens->defaultTransRotOffsetXf),
             Prim().Computation<GfMatrix4d>(_tokens->localRestXf),
             Prim().AttributeValue<GfMatrix4d>(
-                ExecIrXformableTokens->parentDefaultSpace))
+                ExecIrTokens->parentDefaultSpace))
         .Callback(+[](const VdfContext &ctx) -> GfMatrix4d {
             return ExecIr_ComputeDefaultSpace(
                 ctx.GetInputValue<GfMatrix4d>(_tokens->defaultTransRotOffsetXf),
                 GfMatrix4d(1), // defaultScaleXf
                 ctx.GetInputValue<GfMatrix4d>(_tokens->localRestXf),
                 ctx.GetInputValue<GfMatrix4d>(
-                    ExecIrXformableTokens->parentDefaultSpace));
+                    ExecIrTokens->parentDefaultSpace));
         });
 
     // The defaultTransRotOffsetXf computation represents the local authored
@@ -156,22 +156,22 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     // will be applied to rest space, which already incorporates handedness.
     self.PrimComputation(_tokens->defaultTransRotOffsetXf)
         .Inputs(
-            AttributeValue<double>(ExecIrXformableTokens->defaultTx),
-            AttributeValue<double>(ExecIrXformableTokens->defaultTy),
-            AttributeValue<double>(ExecIrXformableTokens->defaultTz),
-            AttributeValue<double>(ExecIrXformableTokens->defaultRx),
-            AttributeValue<double>(ExecIrXformableTokens->defaultRy),
-            AttributeValue<double>(ExecIrXformableTokens->defaultRz))
+            AttributeValue<double>(ExecIrTokens->defaultTx),
+            AttributeValue<double>(ExecIrTokens->defaultTy),
+            AttributeValue<double>(ExecIrTokens->defaultTz),
+            AttributeValue<double>(ExecIrTokens->defaultRx),
+            AttributeValue<double>(ExecIrTokens->defaultRy),
+            AttributeValue<double>(ExecIrTokens->defaultRz))
         .Callback(+[](const VdfContext &ctx) {
             return ExecIr_ComputeLocalXf(
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultTx),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultTy),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultTz),
+                ctx.GetInputValue<double>(ExecIrTokens->defaultTx),
+                ctx.GetInputValue<double>(ExecIrTokens->defaultTy),
+                ctx.GetInputValue<double>(ExecIrTokens->defaultTz),
                 0.0, // rSpin
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultRx),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultRy),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->defaultRz),
-                ExecIrRotationOrderTokens->XYZ,
+                ctx.GetInputValue<double>(ExecIrTokens->defaultRx),
+                ctx.GetInputValue<double>(ExecIrTokens->defaultRy),
+                ctx.GetInputValue<double>(ExecIrTokens->defaultRz),
+                ExecIrTokens->XYZ,
                 ctx);
         });
 
@@ -183,7 +183,7 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     // combines the effect of the restTx/y/z/... attributes to yield a local
     // transform. restSpace inherits from the transform parent. The connected
     // value is orthonormalized.
-    self.AttributeExpression(ExecIrXformableTokens->restSpace)
+    self.AttributeExpression(ExecIrTokens->restSpace)
         .Inputs(
             Prim().Computation<GfMatrix4d>(_tokens->restTransRotOffsetXf),
             Prim().Computation<GfMatrix4d>(_tokens->parentRestSpace))
@@ -197,34 +197,34 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     // values of the rest space scalars.
     self.PrimComputation(_tokens->restTransRotOffsetXf)
         .Inputs(
-            AttributeValue<double>(ExecIrXformableTokens->restTx),
-            AttributeValue<double>(ExecIrXformableTokens->restTy),
-            AttributeValue<double>(ExecIrXformableTokens->restTz),
-            AttributeValue<double>(ExecIrXformableTokens->restRx),
-            AttributeValue<double>(ExecIrXformableTokens->restRy),
-            AttributeValue<double>(ExecIrXformableTokens->restRz))
+            AttributeValue<double>(ExecIrTokens->restTx),
+            AttributeValue<double>(ExecIrTokens->restTy),
+            AttributeValue<double>(ExecIrTokens->restTz),
+            AttributeValue<double>(ExecIrTokens->restRx),
+            AttributeValue<double>(ExecIrTokens->restRy),
+            AttributeValue<double>(ExecIrTokens->restRz))
         .Callback(+[](const VdfContext &ctx) {
             return ExecIr_ComputeLocalXf(
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restTx),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restTy),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restTz),
+                ctx.GetInputValue<double>(ExecIrTokens->restTx),
+                ctx.GetInputValue<double>(ExecIrTokens->restTy),
+                ctx.GetInputValue<double>(ExecIrTokens->restTz),
                 0.0, // rSpin
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restRx),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restRy),
-                ctx.GetInputValue<double>(ExecIrXformableTokens->restRz),
-                ExecIrRotationOrderTokens->XYZ,
+                ctx.GetInputValue<double>(ExecIrTokens->restRx),
+                ctx.GetInputValue<double>(ExecIrTokens->restRy),
+                ctx.GetInputValue<double>(ExecIrTokens->restRz),
+                ExecIrTokens->XYZ,
                 ctx);
         });
 
     // Compute local transform that defines the delta from the parent.
     self.PrimComputation(_tokens->localRestXf)
         .Inputs(
-            AttributeValue<GfMatrix4d>(ExecIrXformableTokens->restSpace),
+            AttributeValue<GfMatrix4d>(ExecIrTokens->restSpace),
             Computation<GfMatrix4d>(_tokens->parentRestSpace))
         .Callback(+[](const VdfContext &ctx) {
             return
                 ctx.GetInputValue<GfMatrix4d>(
-                    ExecIrXformableTokens->restSpace) *
+                    ExecIrTokens->restSpace) *
                 ctx.GetInputValue<GfMatrix4d>(
                     _tokens->parentRestSpace).GetInverse();
         });
@@ -234,17 +234,17 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     builder.InheritedTransformationComputation(
         _tokens->parentRestSpace,
         _tokens->computedRestSpace,
-        ExecIrXformableTokens->restSpace);
+        ExecIrTokens->restSpace);
 
-    builder.OutputAttribute<GfMatrix4d>(ExecIrXformableTokens->posedSpace);
+    builder.OutputAttribute<GfMatrix4d>(ExecIrTokens->posedSpace);
     builder.OutputAttribute<GfMatrix4d>(
-        ExecIrXformableTokens->posedDefaultSpace);
+        ExecIrTokens->posedDefaultSpace);
     
-    builder.InputAttribute<GfMatrix4d>(ExecIrXformableTokens->parentSpace);
+    builder.InputAttribute<GfMatrix4d>(ExecIrTokens->parentSpace);
     builder.InputAttribute<GfMatrix4d>(
-        ExecIrXformableTokens->parentDefaultSpace);
+        ExecIrTokens->parentDefaultSpace);
 
-    self.AttributeExpression(ExecIrXformableTokens->parentDefaultSpace)
+    self.AttributeExpression(ExecIrTokens->parentDefaultSpace)
         .Inputs(Prim().Computation<GfMatrix4d>(_tokens->parentDefaultSpace))
         .Callback(+[](const VdfContext &ctx) -> GfMatrix4d {
             return ctx.GetInputValue<GfMatrix4d>(_tokens->parentDefaultSpace);
@@ -255,7 +255,7 @@ EXEC_REGISTER_COMPUTATIONS_FOR_SCHEMA(ExecIrXformable)
     builder.InheritedTransformationComputation(
         _tokens->parentDefaultSpace,
         _tokens->computedDefaultSpace,
-        ExecIrXformableTokens->defaultSpace);
+        ExecIrTokens->defaultSpace);
 }
 
 template <typename ValueType>

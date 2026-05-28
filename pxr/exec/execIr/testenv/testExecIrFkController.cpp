@@ -79,7 +79,7 @@ Test_IrForwardCompute()
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
     TF_AXIOM(prim);
     const UsdAttribute outSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
+        prim.GetAttribute(ExecIrTokens->outSpace);
     TF_AXIOM(outSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -104,7 +104,7 @@ Test_IrForwardCompute()
     // Now set the parent space and compute again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
+            prim.GetAttribute(ExecIrTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0, 0, 0,
                                    0, 1, 0, 0,
@@ -216,17 +216,17 @@ Test_IrInverseCompute()
     TF_AXIOM(prim);
 
     const UsdAttribute outSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
+        prim.GetAttribute(ExecIrTokens->outSpace);
     TF_AXIOM(outSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        prim.GetAttribute(ExecIrFkControllerTokens->inRx),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRy),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRz),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTx),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTy),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTz),
+        prim.GetAttribute(ExecIrTokens->inRx),
+        prim.GetAttribute(ExecIrTokens->inRy),
+        prim.GetAttribute(ExecIrTokens->inRz),
+        prim.GetAttribute(ExecIrTokens->inRspin),
+        prim.GetAttribute(ExecIrTokens->inTx),
+        prim.GetAttribute(ExecIrTokens->inTy),
+        prim.GetAttribute(ExecIrTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -284,7 +284,7 @@ Test_IrInverseCompute()
     // Now set the parent space and compute the inverse again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
+            prim.GetAttribute(ExecIrTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0, 0, 0,
                                    0, 1, 0, 0,
@@ -337,7 +337,7 @@ Test_IrSpacesTranslates()
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/Root/FkController"));
     TF_AXIOM(prim);
     const UsdAttribute outSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
+        prim.GetAttribute(ExecIrTokens->outSpace);
     TF_AXIOM(outSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -362,7 +362,7 @@ Test_IrSpacesTranslates()
     // Now set the parent space and compute again.
     {
         const UsdAttribute parentSpace =
-            prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
+            prim.GetAttribute(ExecIrTokens->parentInSpace);
         TF_AXIOM(parentSpace);
         parentSpace.Set(GfMatrix4d(1, 0,  0, 0,
                                    0, 1,  0, 0,
@@ -382,13 +382,13 @@ Test_IrSpacesTranslates()
 
 
     const std::vector<UsdAttribute> inputAttributes = {
-        prim.GetAttribute(ExecIrFkControllerTokens->inRx),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRy),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRz),
-        prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTx),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTy),
-        prim.GetAttribute(ExecIrFkControllerTokens->inTz),
+        prim.GetAttribute(ExecIrTokens->inRx),
+        prim.GetAttribute(ExecIrTokens->inRy),
+        prim.GetAttribute(ExecIrTokens->inRz),
+        prim.GetAttribute(ExecIrTokens->inRspin),
+        prim.GetAttribute(ExecIrTokens->inTx),
+        prim.GetAttribute(ExecIrTokens->inTy),
+        prim.GetAttribute(ExecIrTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);
@@ -438,12 +438,12 @@ Test_IrSpacesRotates()
 
     const UsdPrim prim = usdStage->GetPrimAtPath(SdfPath("/FkController"));
     const UsdAttribute outSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->outSpace);
-    const UsdAttribute rx = prim.GetAttribute(ExecIrFkControllerTokens->inRx);
+        prim.GetAttribute(ExecIrTokens->outSpace);
+    const UsdAttribute rx = prim.GetAttribute(ExecIrTokens->inRx);
     const UsdAttribute defaultSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->inDefaultSpace);
+        prim.GetAttribute(ExecIrTokens->inDefaultSpace);
     const UsdAttribute parentSpace =
-        prim.GetAttribute(ExecIrFkControllerTokens->parentInSpace);
+        prim.GetAttribute(ExecIrTokens->parentInSpace);
     TF_AXIOM(prim && outSpace && rx && defaultSpace && parentSpace);
 
     ExecUsdSystem execSystem(usdStage);
@@ -481,13 +481,13 @@ Test_IrSpacesRotates()
     // rotation about X of -90 degrees.
     {
         const std::vector<UsdAttribute> inputAttributes = {
-            prim.GetAttribute(ExecIrFkControllerTokens->inRx),
-            prim.GetAttribute(ExecIrFkControllerTokens->inRy),
-            prim.GetAttribute(ExecIrFkControllerTokens->inRz),
-            prim.GetAttribute(ExecIrFkControllerTokens->inRspin),
-            prim.GetAttribute(ExecIrFkControllerTokens->inTx),
-            prim.GetAttribute(ExecIrFkControllerTokens->inTy),
-            prim.GetAttribute(ExecIrFkControllerTokens->inTz),
+            prim.GetAttribute(ExecIrTokens->inRx),
+            prim.GetAttribute(ExecIrTokens->inRy),
+            prim.GetAttribute(ExecIrTokens->inRz),
+            prim.GetAttribute(ExecIrTokens->inRspin),
+            prim.GetAttribute(ExecIrTokens->inTx),
+            prim.GetAttribute(ExecIrTokens->inTy),
+            prim.GetAttribute(ExecIrTokens->inTz),
         };
         for (const UsdAttribute &attr : inputAttributes) {
             TF_AXIOM(attr);
@@ -537,27 +537,27 @@ Test_DependentFkControllers()
     TF_AXIOM(parent && child);
 
     const UsdAttribute parentOutSpace =
-        parent.GetAttribute(ExecIrFkControllerTokens->outSpace);
+        parent.GetAttribute(ExecIrTokens->outSpace);
     const UsdAttribute childOutSpace =
-        child.GetAttribute(ExecIrFkControllerTokens->outSpace);
+        child.GetAttribute(ExecIrTokens->outSpace);
     TF_AXIOM(parentOutSpace && childOutSpace);
 
     const std::vector<UsdAttribute> inputAttributes = {
-        parent.GetAttribute(ExecIrFkControllerTokens->inRx),
-        parent.GetAttribute(ExecIrFkControllerTokens->inRy),
-        parent.GetAttribute(ExecIrFkControllerTokens->inRz),
-        parent.GetAttribute(ExecIrFkControllerTokens->inRspin),
-        parent.GetAttribute(ExecIrFkControllerTokens->inTx),
-        parent.GetAttribute(ExecIrFkControllerTokens->inTy),
-        parent.GetAttribute(ExecIrFkControllerTokens->inTz),
+        parent.GetAttribute(ExecIrTokens->inRx),
+        parent.GetAttribute(ExecIrTokens->inRy),
+        parent.GetAttribute(ExecIrTokens->inRz),
+        parent.GetAttribute(ExecIrTokens->inRspin),
+        parent.GetAttribute(ExecIrTokens->inTx),
+        parent.GetAttribute(ExecIrTokens->inTy),
+        parent.GetAttribute(ExecIrTokens->inTz),
 
-        child.GetAttribute(ExecIrFkControllerTokens->inRx),
-        child.GetAttribute(ExecIrFkControllerTokens->inRy),
-        child.GetAttribute(ExecIrFkControllerTokens->inRz),
-        child.GetAttribute(ExecIrFkControllerTokens->inRspin),
-        child.GetAttribute(ExecIrFkControllerTokens->inTx),
-        child.GetAttribute(ExecIrFkControllerTokens->inTy),
-        child.GetAttribute(ExecIrFkControllerTokens->inTz),
+        child.GetAttribute(ExecIrTokens->inRx),
+        child.GetAttribute(ExecIrTokens->inRy),
+        child.GetAttribute(ExecIrTokens->inRz),
+        child.GetAttribute(ExecIrTokens->inRspin),
+        child.GetAttribute(ExecIrTokens->inTx),
+        child.GetAttribute(ExecIrTokens->inTy),
+        child.GetAttribute(ExecIrTokens->inTz),
     };
     for (const UsdAttribute &attr : inputAttributes) {
         TF_AXIOM(attr);

@@ -47,17 +47,17 @@ InvertibleRigsExample_Authoring::InvertibleRigsExample_Authoring(
     // rigs.
 
     static const std::vector<TfToken> inputAvarNames = {
-        ExecIrXformableTokens->avarsTx,
-        ExecIrXformableTokens->avarsTy,
-        ExecIrXformableTokens->avarsTz,
-        ExecIrXformableTokens->avarsRx,
-        ExecIrXformableTokens->avarsRy,
-        ExecIrXformableTokens->avarsRz,
-        ExecIrXformableTokens->avarsRspin
+        ExecIrTokens->avarsTx,
+        ExecIrTokens->avarsTy,
+        ExecIrTokens->avarsTz,
+        ExecIrTokens->avarsRx,
+        ExecIrTokens->avarsRy,
+        ExecIrTokens->avarsRz,
+        ExecIrTokens->avarsRspin
     };
 
     for (const UsdPrim &prim : stage->Traverse()) {
-        if (prim.IsA(ExecIrJointScopeTokens->IrJointScope)) {
+        if (prim.IsA(ExecIrTokens->IrJointScope)) {
             for (const TfToken &name : inputAvarNames) {
                 if (UsdAttribute attr = prim.GetAttribute(name)) {
                     _inputAvars.push_back(attr);
@@ -68,12 +68,12 @@ InvertibleRigsExample_Authoring::InvertibleRigsExample_Authoring(
                 }
             }
             if (UsdAttribute attr =
-                prim.GetAttribute(ExecIrXformableTokens->posedSpace)) {
+                prim.GetAttribute(ExecIrTokens->posedSpace)) {
                 _outputSpaces.push_back(attr);
             } else {
                 TF_CODING_ERROR(
                     "Failed to find attribute '%s' on <%s>",
-                    ExecIrXformableTokens->posedSpace.GetText(),
+                    ExecIrTokens->posedSpace.GetText(),
                     prim.GetPath().GetText());
             }
         }
