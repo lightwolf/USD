@@ -7,7 +7,7 @@
 #include "pxr/usdImaging/usdExecImaging/adapterRegistry.h"
 
 #include "pxr/usdImaging/usdExecImaging/geomXformablePrimAdapter.h"
-#include "pxr/usdImaging/usdExecImaging/irTransformablePrimAdapter.h"
+#include "pxr/usdImaging/usdExecImaging/irXformablePrimAdapter.h"
 #include "pxr/usdImaging/usdExecImaging/primAdapterInterface.h"
 
 #include "pxr/base/tf/envSetting.h"
