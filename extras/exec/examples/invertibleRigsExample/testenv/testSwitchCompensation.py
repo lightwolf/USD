@@ -36,8 +36,14 @@ def _AssertAvarValues(time, avars, expectedValues):
 
     for avar, expectedValue in zip(avars, expectedValues):
         actualValue = avar.Get(time)
-        assert Gf.IsClose(actualValue, expectedValue, 1e-6), \
-            f"For avar <{avar.GetPath()} {actualValue} != {expectedValue}"
+        if isinstance(actualValue, str):
+            assert actualValue == expectedValue, \
+                   f"For avar <{avar.GetPath()}> " \
+                   f"'{actualValue}' != '{expectedValue}'"
+        else:
+            assert Gf.IsClose(actualValue, expectedValue, 1e-6), \
+                   f"For avar <{avar.GetPath()}> " \
+                   f"{actualValue} != {expectedValue}"
 
 class TestSwitchCompensation(unittest.TestCase):
 
@@ -82,7 +88,7 @@ class TestSwitchCompensation(unittest.TestCase):
         # Start at time 0 by breaking down default values into splines for all
         # input avars.
         currentTime = Usd.TimeCode(0.0)
-        authoring.BreakdownInputAvars(currentTime)
+        authoring.BreakdownInputAvars(switch, currentTime)
 
         _AssertAvarValues(
             currentTime, inputAvars,
@@ -149,6 +155,9 @@ class TestSwitchCompensation(unittest.TestCase):
         layer = Sdf.Layer.FindOrOpen("shot.usda")
         stage = Usd.Stage.Open(layer)
 
+        switch = stage.GetAttributeAtPath('/Root/Control/Switch.switch')
+        assert switch
+
         joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')
         joint2 = stage.GetPrimAtPath('/Root/Anim/Joint1/Joint2')
         assert joint1 and joint2
@@ -159,6 +168,7 @@ class TestSwitchCompensation(unittest.TestCase):
         inputAvars = [prim.GetAttribute(name)
                       for prim in (joint1, joint2)
                       for name in inputAvarNames]
+        inputAvars.append(switch)
 
         authoring = InvertibleRigsExample.Authoring(stage)
 
@@ -168,50 +178,65 @@ class TestSwitchCompensation(unittest.TestCase):
         # At time 0, break down default (and fallback)values into splines for
         # all input avars.
         currentTime = Usd.TimeCode(0.0)
-        authoring.BreakdownInputAvars(currentTime)
+        authoring.BreakdownInputAvars(switch, currentTime)
 
         # Verify avar default values have been preserved as spline knots at the
         # current time.
         _AssertAvarValues(
             currentTime, inputAvars,
             (10, 0, 0, 0, 0, 0, 0,
-             0, 0, 0, 0, 0, 0, 0))
+             0, 0, 0, 0, 0, 0, 0,
+             'rig1'))
 
         # At time 10, set a knot on a different input avar and then break down.
         currentTime = Usd.TimeCode(10.0)
         _SetSplineKnot(inputAvars[1], currentTime, 20.0)
-        authoring.BreakdownInputAvars(currentTime)
+        authoring.BreakdownInputAvars(switch, currentTime)
         _AssertAvarValues(
             currentTime, inputAvars,
             (10, 20, 0, 0, 0, 0, 0,
-             0, 0, 0, 0, 0, 0, 0))
+             0, 0, 0, 0, 0, 0, 0,
+             'rig1'))
 
         # Change the interpolation mode for the spline segments following time
         # 10 to linear, to make it easy to reason about interpolated values.
         _SetSplineKnotNextInterp(inputAvars[0], currentTime, Ts.InterpLinear)
         _SetSplineKnotNextInterp(inputAvars[1], currentTime, Ts.InterpLinear)
 
-        # At time 20, set knots on the two input avars we've been manipulating.
+        # At time 20, set knots on the two input avars we've been manipulating
+        # and author a time sample on the switch attribute.
         currentTime = Usd.TimeCode(20.0)
         _SetSplineKnot(inputAvars[0], currentTime, 0.0)
         _SetSplineKnot(inputAvars[1], currentTime, 40.0)
+        switch.Set('rig2', currentTime)
         _AssertAvarValues(
             currentTime, inputAvars,
             (0, 40, 0, 0, 0, 0, 0,
-             0, 0, 0, 0, 0, 0, 0))
+             0, 0, 0, 0, 0, 0, 0,
+             'rig2'))
 
-        # At time 15, verify we get the expected linearly interpolated values,
-        # then breakdown, and verify that those values have been preserved.
+        # At time 15, verify we get the expected interpolated values, then
+        # breakdown.
         currentTime = Usd.TimeCode(15.0)
         _AssertAvarValues(
             currentTime, inputAvars,
             (5, 30, 0, 0, 0, 0, 0,
-             0, 0, 0, 0, 0, 0, 0))
-        authoring.BreakdownInputAvars(currentTime)
+             0, 0, 0, 0, 0, 0, 0,
+             'rig1'))
+        authoring.BreakdownInputAvars(switch, currentTime)
+
+        # At time 18, set knots on the two input avars we've been manipulating.
+        currentTime = Usd.TimeCode(18.0)
+        _SetSplineKnot(inputAvars[0], currentTime, 100.0)
+        _SetSplineKnot(inputAvars[1], currentTime, 200.0)
+
+        # Verify that the breakdown at time 15 preserved values.
+        currentTime = Usd.TimeCode(15.0)
         _AssertAvarValues(
             currentTime, inputAvars,
             (5, 30, 0, 0, 0, 0, 0,
-             0, 0, 0, 0, 0, 0, 0))
+             0, 0, 0, 0, 0, 0, 0,
+             'rig1'))
         
 if __name__ == "__main__":
     unittest.main()

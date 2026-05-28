@@ -161,8 +161,19 @@ _BreakdownPreTime(
 
 void
 InvertibleRigsExample_Authoring::BreakdownInputAvars(
+    const UsdAttribute &switchAttribute,
     const UsdTimeCode &time)
 {
+    // Author a time sample that breaks down the switch avar value.
+    VtValue value;
+    if (!switchAttribute.Get(&value)) {
+        TF_CODING_ERROR(
+            "Can't get value for switch attribute <%s> at time %s",
+            switchAttribute.GetPath().GetText(), TfStringify(time).c_str());
+    } else {
+        switchAttribute.Set(value, time);
+    }
+
     for (const UsdAttribute &attr : _inputAvars) {
         if (attr.HasSpline()) {
             TsSpline spline = attr.GetSpline();

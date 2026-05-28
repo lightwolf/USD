@@ -27,17 +27,25 @@ public:
     EXEC_INVERTIBLERIGSEXAMPLE_API
     InvertibleRigsExample_Authoring(const UsdStageRefPtr &stage);
 
-    /// For each input avar, authors a knot at the given time, with the value of
-    /// the avar at that time.
+    /// For each input avar, authors a knot or a time sample at the given time,
+    /// with the value of the avar at that time.
     ///
     /// This operation can be used to preserve the pose at the given time, in
     /// preparation for authoring knots at other times, which might otherwise
-    /// cause the pose at the broken down time to change, due to spline
-    /// interpolation.
+    /// cause the pose at the broken down time to change, due to interpolation
+    /// or extrapolation caused by spline knots or time samples authored at
+    /// times before or after the breakdown time.
+    ///
+    /// \warning
+    /// This function currently hardcodes the set of input avars in the rig used
+    /// in testSwitchCompensation. A production-ready version of this function
+    /// would find the input avars by analysis, based on the switch attribute,
+    /// but that requires additional core support for invertible rigs.
     /// 
     EXEC_INVERTIBLERIGSEXAMPLE_API
     void
     BreakdownInputAvars(
+        const UsdAttribute &switchAttribute,
         const UsdTimeCode &time);
 
     /// Authors a value to a switch attribute with compensation that authors
@@ -53,6 +61,12 @@ public:
     /// avar values that preserve the pose and authors those values, along with
     /// the new 'switch' value, changing the active control rig such that the
     /// pose is continuous across the transition.
+    /// 
+    /// \warning
+    /// This function currently hardcodes the set of input avars in the rig used
+    /// in testSwitchCompensation. A production-ready version of this function
+    /// would find the input avars by analysis, based on the switch attribute,
+    /// but that requires additional core support for invertible rigs.
     ///
     EXEC_INVERTIBLERIGSEXAMPLE_API
     void
