@@ -46,17 +46,6 @@ protected:
     //
     virtual ~ExecIr_ControllerBuilderBase();
 
-    // Registers an expression that implements dataflow across attribute
-    // connections.
-    //
-    // TODO: This expression won't be needed when the OpenExec core defines
-    // default attribute connection dataflow behavior for all attributes.
-    //
-    template <typename ValueType>
-    void
-    _ConnectionDataflowExpression(
-        const TfToken &attributeName);
-
     // Registers the 'explicitDesiredValue' and 'computedDesiredValue'
     // computations that are required to compute desired values, including
     // desired values that are expressed as overrides.
@@ -364,10 +353,6 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
             .Computation<ValueType>(
                 _privateComputations->computeInvertedForwardValue)
             .InputName(attributeName));
-
-    // All input attributes (invertible or not) support dataflow across
-    // connections.
-    _ConnectionDataflowExpression<ValueType>(attributeName);
 }
 
 template <typename ValueType>
@@ -383,10 +368,6 @@ ExecIrControllerBuilder::NonInvertibleInputAttribute(
 
     // Non-invertible input attributes are inputs to the inverse computation.
     _inverseComputeReg.Inputs(AttributeValue<ValueType>(attributeName));
-
-    // All input attributes (invertible or not) support dataflow across
-    // connections.
-    _ConnectionDataflowExpression<ValueType>(attributeName);
 }
 
 template <typename ValueType>
@@ -472,36 +453,6 @@ ExecIrControllerBuilder::PassthroughAttributes(
         .Inputs(Prim().AttributeValue<ValueType>(inAttributeName))
         .template Callback<ValueType>([inAttributeName](const VdfContext &ctx) {
             ctx.SetOutputToReferenceInput(inAttributeName);
-        });
-
-    // Passthrough input attributes support dataflow across connections.
-    _ConnectionDataflowExpression<ValueType>(inAttributeName);
-}
-
-template <typename ValueType>
-void
-ExecIr_ControllerBuilderBase::_ConnectionDataflowExpression(
-    const TfToken &attributeName)
-{
-    using namespace exec_registration;
-
-    _self.AttributeExpression(attributeName)
-        .Inputs(
-            Connections<ValueType>(
-                ExecBuiltinComputations->computeValue),
-            Computation<ValueType>(
-                ExecBuiltinComputations->computeResolvedValue))
-        .Callback(+[](const VdfContext &ctx) -> ValueType {
-            // A value that flows across a connection takes precedence.
-            if (const ValueType *const connectedValuePtr =
-                ctx.GetInputValuePtr<ValueType>(
-                    ExecBuiltinComputations->computeValue)) {
-                return *connectedValuePtr;
-            }
-
-            // Otherwise, the attribute's resolved value is its computed value.
-            return ctx.GetInputValue<ValueType>(
-                ExecBuiltinComputations->computeResolvedValue);
         });
 }
 

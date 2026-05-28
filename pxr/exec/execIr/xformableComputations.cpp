@@ -25,9 +25,8 @@ namespace {
 
 // Builder used to register computations for input and output attributes.
 //
-// TODO: When the OpenExec core provides builtin support for attribute
-// connection data flow and for inversion, we won't need to define any of the
-// plugin computations defined by this builder.
+// TODO: When the OpenExec core provides builtin support for inversion, we 
+// won't need to define any of the plugin computations defined by this builder.
 // 
 class _Builder : ExecIr_ControllerBuilderBase {
 public:
@@ -281,9 +280,6 @@ template <typename ValueType>
 void
 _Builder::OutputAttribute(const TfToken &attributeName)
 {
-    // Output attributes support dataflow across connections.
-    _ConnectionDataflowExpression<ValueType>(attributeName);
-
     // Output attributes support computing desired values, for inversion.
     _DesiredValueComputations<ValueType>(attributeName);
 }
