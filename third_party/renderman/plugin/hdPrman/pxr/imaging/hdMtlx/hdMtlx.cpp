@@ -1,13 +1,28 @@
 //
-// Copyright 2021 Pixar
+// Copyright 2026 Pixar
 //
 // Licensed under the terms set forth in the LICENSE.txt file available at
 // https://openusd.org/license.
 //
-#include "pxr/imaging/hdMtlx/hdMtlx.h"
+#include "pxr/pxr.h"
+#if PXR_VERSION < 2608
+
+#include "hdMtlx.h"
+
+#if PXR_VERSION >= 2511
 #include "pxr/imaging/hdMtlx/combinedMtlxVersion.h"
+#else
+#include <MaterialXCore/Generated.h>
+#define MTLX_COMBINED_VERSION                                                \
+    ((MATERIALX_MAJOR_VERSION * 100 * 100) + (MATERIALX_MINOR_VERSION * 100) \
+     + MATERIALX_BUILD_VERSION)
+#endif
+#if PXR_VERSION >= 2502
 #include "pxr/imaging/hdMtlx/debugCodes.h"
+#endif
+#if PXR_VERSION >= 2601
 #include "pxr/imaging/hdMtlx/tokens.h"
+#endif
 #include "pxr/imaging/hd/material.h"
 #include "pxr/imaging/hd/materialNetwork2Interface.h"
 
@@ -79,7 +94,11 @@ static mx::FileSearchPath
 _ComputeSearchPaths()
 {
     mx::FileSearchPath searchPaths;
+#if PXR_VERSION >= 2505
     static const SdrStringVec searchPathStrings = UsdMtlxSearchPaths();
+#else
+    static const NdrStringVec searchPathStrings = UsdMtlxSearchPaths();
+#endif
     for (auto path : searchPathStrings) {
         searchPaths.append(mx::FilePath(path));
     }
@@ -87,7 +106,7 @@ _ComputeSearchPaths()
 }
 
 const mx::FileSearchPath&
-HdMtlxSearchPaths()
+HdMtlxPrmanSearchPaths()
 {
     static const mx::FileSearchPath searchPaths = _ComputeSearchPaths();
     return searchPaths;
@@ -98,12 +117,12 @@ _ComputeStdLibraries()
 {
     mx::FilePathVec libraryFolders;
     mx::DocumentPtr stdLibraries = mx::createDocument();
-    mx::loadLibraries(libraryFolders, HdMtlxSearchPaths(), stdLibraries);
+    mx::loadLibraries(libraryFolders, HdMtlxPrmanSearchPaths(), stdLibraries);
     return stdLibraries;
 }
 
 const mx::DocumentPtr&
-HdMtlxStdLibraries()
+HdMtlxPrmanStdLibraries()
 {
     static const mx::DocumentPtr stdLibraries = _ComputeStdLibraries();
     return stdLibraries;
@@ -120,7 +139,7 @@ _GetMxNodeString(mx::NodeDefPtr const& mxNodeDef)
 }
 
 std::string
-HdMtlxCreateNameFromPath(SdfPath const& path)
+HdMtlxPrmanCreateNameFromPath(SdfPath const& path)
 {
     std::string pathName = path.GetText();
     pathName = TfStringReplace(pathName, "/", "_");
@@ -133,7 +152,7 @@ HdMtlxCreateNameFromPath(SdfPath const& path)
 
 // Convert the HdParameterValue to a string MaterialX can understand
 std::string 
-HdMtlxConvertToString(VtValue const& hdParameterValue)
+HdMtlxPrmanConvertToString(VtValue const& hdParameterValue)
 {
     std::ostringstream valStream;
     if (hdParameterValue.IsHolding<bool>()) {
@@ -263,7 +282,7 @@ _GetMxInputType(
 }
 
 std::string 
-HdMtlxGetNodeDefName(std::string const& prevMxNodeDefName)
+HdMtlxPrmanGetNodeDefName(std::string const& prevMxNodeDefName)
 {
     std::string mxNodeDefName = prevMxNodeDefName;
     // For nodeDef name changes between MaterialX v1.38 and the current version
@@ -367,18 +386,30 @@ _AddParameterInputs(
         }
 
         // Get the MaterialX Parameter info
+#if PXR_VERSION >= 2402
         const HdMaterialNetworkInterface::NodeParamData paramData = 
             netInterface->GetNodeParameterData(hdNodeName, paramName);
-        const std::string mxInputValue = HdMtlxConvertToString(paramData.value);
+        const std::string mxInputValue = HdMtlxPrmanConvertToString(paramData.value);
+#else
+        std::string mxInputValue = HdMtlxPrmanConvertToString(
+            netInterface->GetNodeParameterValue(hdNodeName, paramName));
+#endif
 
         // Set the input value, and colorspace on the mxNode
+#if PXR_VERSION >= 2502
         const std::string mxInputType = 
             _GetMxInputType(mxNodeDef, mxInputName, paramData.typeName);
+#else
+        const std::string mxInputType = 
+            _GetMxInputType(mxNodeDef, mxInputName);
+#endif
         mx::InputPtr mxInput = 
             mxNode->setInputValue(mxInputName, mxInputValue, mxInputType);
+#if PXR_VERSION >= 2402
         if (!paramData.colorSpace.IsEmpty()) {
             mxInput->setColorSpace(paramData.colorSpace);
         }
+#endif
     }
 
 }
@@ -407,7 +438,7 @@ _AddMaterialXNode(
     }
 
     const SdfPath hdNodePath(hdNodeName.GetString());
-    const std::string &mxNodeName = HdMtlxCreateNameFromPath(hdNodePath);
+    const std::string &mxNodeName = HdMtlxPrmanCreateNameFromPath(hdNodePath);
     const std::string &mxNodeCategory = _GetMxNodeString(mxNodeDef);
     const std::string &mxNodeType = mxNodeDef->getType();
     const std::string &mxNodeDefString = 
@@ -426,7 +457,6 @@ _AddMaterialXNode(
 
     // Add the hdNode parameters as inputs to the mxNode
     _AddParameterInputs(netInterface, hdNodeName, mxNodeDef, mxNode);
-
     // The rest of this function is populating mxHdData
     if (!mxHdData) {
         return mxNode;
@@ -485,15 +515,19 @@ _AddNodeInput(
         // Add input with the connected ouptut type and set the output name 
         const mx::OutputPtr mxConnOutput = mxNextNodeDef->getOutput(
             conn.upstreamOutputName.GetString());
+#if PXR_VERSION >= 2603
         TF_DEBUG(HDMTLX_DOCUMENT).Msg(
             "Adding input '%s' of type '%s' from multi output node <%s>\n", 
             inputName.GetText(), mxConnOutput->getType().c_str(),
             conn.upstreamNodeName.GetText());
+#endif
         mxInput = mxCurrNode->addInput(inputName, mxConnOutput->getType());
         mxInput->setConnectedOutput(mxConnOutput);
     }
     else {
+#if PXR_VERSION >= 2603
         TF_DEBUG(HDMTLX_DOCUMENT).Msg("Adding input '%s'\n", inputName.GetText());
+#endif
         mxInput = mxCurrNode->addInput(inputName, mxNextNode->getType());
     }
 
@@ -571,10 +605,12 @@ _GatherUpstreamNodes(
         return;
     }
 
+#if PXR_VERSION >= 2603
     TF_DEBUG(HDMTLX_DOCUMENT).Msg(
         "Adding node <%s> of type '%s' to the nodegraph <%s>\n",
         hdNodeName.GetText(), mxCurrNode->getNodeDefString().c_str(),
         (*mxNodeGraph)->getName().c_str());
+#endif
 
     // Continue traversing the upsteam connections to create the mxNodeGraph
     TfTokenVector hdConnectionNames =
@@ -597,9 +633,11 @@ _GatherUpstreamNodes(
             mx::InputPtr mxInput =
                 _AddNodeInput(netInterface, currConn, connName, mxDoc, 
                     mxCurrNode, mxNextNode);
+#if PXR_VERSION >= 2603
             TF_DEBUG(HDMTLX_DOCUMENT).Msg(
                 "Connecting node '%s' to input '%s'\n",
                 mxNextNode->getName().c_str(), mxInput->getName().c_str());
+#endif
             mxInput->setConnectedNode(mxNextNode);
         }
     }
@@ -642,42 +680,60 @@ _CreateNodeGraphFromTerminalNodeConnections(
             mx::InputPtr mxInput =
                 _AddNodeInput(netInterface, currConn, connName, mxDoc, 
                     mxShaderNode, mxUpstreamNode);
+#if PXR_VERSION >= 2603
             TF_DEBUG(HDMTLX_DOCUMENT).Msg(
                 "Connecting NodeGraph output '%s' to input '%s'\n",
                 mxOutput->getName().c_str(), mxInput->getName().c_str());
+#endif
             mxInput->setConnectedOutput(mxOutput);
         }
     }
 }
 
 std::string
-HdMtlxGetMxTerminalName(
+HdMtlxPrmanGetMxTerminalName(
     HdMaterialNetworkInterface *netInterface,
     TfToken const& hdTerminalNodeName)
 {
     const mx::NodeDefPtr terminalNodeDef =
         HdMtlxGetNodeDef(netInterface->GetNodeType(hdTerminalNodeName));
     if (!terminalNodeDef) {
+#if PXR_VERSION >= 2601
         return HdMtlxTokens->surfaceshaderName;
+#else
+        return "Surface";
+#endif
     }
     return HdMtlxGetMxTerminalName(terminalNodeDef->getType());
 }
 
 std::string
-HdMtlxGetMxTerminalName(std::string const& terminalType)
+HdMtlxPrmanGetMxTerminalName(std::string const& terminalType)
 {
     if (terminalType == mx::SURFACE_SHADER_TYPE_STRING) {
+#if PXR_VERSION >= 2601
         return HdMtlxTokens->surfaceshaderName;
+#else
+        return "Surface";
+#endif
     } else if (terminalType == mx::DISPLACEMENT_SHADER_TYPE_STRING) {
+#if PXR_VERSION >= 2601
         return HdMtlxTokens->displacementshaderName;
+#else
+        return "Displacement";
+#endif
     }
     // default to Surface
-    return HdMtlxTokens->surfaceshaderName;
+#if PXR_VERSION >= 2601
+        return HdMtlxTokens->surfaceshaderName;
+#else
+        return "Surface";
+#endif
 }
 
 // Create a MaterialX Document from the given HdMaterialNetwork2
 mx::DocumentPtr 
-HdMtlxCreateMtlxDocumentFromHdNetwork(
+HdMtlxPrmanCreateMtlxDocumentFromHdNetwork(
     HdMaterialNetwork2 const& hdNetwork,
     HdMaterialNode2 const& hdMaterialXNode,
     SdfPath const& hdMaterialXNodePath,
@@ -692,7 +748,7 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
 
     TfToken terminalNodeName = hdMaterialXNodePath.GetAsToken();
     
-    return HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
+    return HdMtlxPrmanCreateMtlxDocumentFromHdMaterialNetworkInterface(
         &netInterface,
         terminalNodeName,
         netInterface.GetNodeInputConnectionNames(terminalNodeName),
@@ -701,7 +757,7 @@ HdMtlxCreateMtlxDocumentFromHdNetwork(
 }
 
 MaterialX::DocumentPtr
-HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
+HdMtlxPrmanCreateMtlxDocumentFromHdMaterialNetworkInterface(
     HdMaterialNetworkInterface *netInterface,
     TfToken const& terminalNodeName,
     TfTokenVector const& terminalNodeConnectionNames,
@@ -712,9 +768,11 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
     if (!netInterface) {
         return nullptr;
     }
-    
+
+#if PXR_VERSION >= 2603
     TF_DEBUG(HDMTLX_DOCUMENT).Msg("Create Mtlx Document for terminal <%s>\n", 
         terminalNodeName.GetText());
+#endif
 
     // Initialize a MaterialX Document
     mx::DocumentPtr mxDoc = mx::createDocument();
@@ -724,6 +782,7 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
     // default to v1.38. Note that we should always default to 1.38 to handle 
     // the case where older USD files have not made use of this config schema. 
     std::string materialXVersionString = "1.38";
+#if PXR_VERSION >= 2502
     const VtValue materialXVersionValue =
         netInterface->GetMaterialConfigValue(_tokens->mtlxVersion);
     if (materialXVersionValue.IsHolding<std::string>()) {
@@ -736,6 +795,7 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
             "[%s] : MaterialX document version : '%s' (Using default)\n",
             TF_FUNC_NAME().c_str(), materialXVersionString.c_str());
     }
+#endif
     mxDoc->setVersionString(materialXVersionString);
     
     // Create the terminal shader and material nodes 
@@ -760,9 +820,11 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
     mx::NodePtr mxMaterial = mxDoc->addMaterialNode(
         mxDoc->createValidChildName(materialName), mxShaderNode);
 
+#if PXR_VERSION >= 2603
     TF_DEBUG(HDMTLX_DOCUMENT).Msg("Create MaterialX Material '%s' with terminal "
         "'%s' of type '%s'\n", materialName.c_str(), 
         mxTerminalName.c_str(), mxTerminalType.c_str());
+#endif
 
     // Create the NodeGraph
     _CreateNodeGraphFromTerminalNodeConnections(
@@ -773,6 +835,7 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
     _AddParameterInputs(
         netInterface, terminalNodeName, terminalNodeDef, mxShaderNode);
 
+#if PXR_VERSION >= 2502
     if (TfDebug::IsEnabled(HDMTLX_VERSION_UPGRADE)) {
         const std::string filename =
             mxMaterial->getName() + "_" + mxTerminalName + "_before.mtlx";
@@ -800,18 +863,25 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
             TF_FUNC_NAME().c_str(), filename.c_str());
         mx::writeToXmlFile(mxDoc, mx::FilePath(filename));
     } 
+#if PXR_VERSION >= 2603
     else if (TfDebug::IsEnabled(HDMTLX_WRITE_DOCUMENT) ||
         TfDebug::IsEnabled(HDMTLX_WRITE_DOCUMENT_WITHOUT_INCLUDES)) {
+#else 
+    else if (TfDebug::IsEnabled(HDMTLX_WRITE_DOCUMENT)) {
+#endif
         const std::string filename =
             mxMaterial->getName() + "_" + mxTerminalName + ".mtlx";
         TF_DEBUG(HDMTLX_WRITE_DOCUMENT).Msg(
             "[%s] : MaterialX document: '%s'\n\n",
             TF_FUNC_NAME().c_str(), filename.c_str());
+#if PXR_VERSION >= 2603
         TF_DEBUG(HDMTLX_WRITE_DOCUMENT_WITHOUT_INCLUDES).Msg(
             "[%s] : MaterialX document: '%s'\n\n",
             TF_FUNC_NAME().c_str(), filename.c_str());
+#endif
 
         mx::XmlWriteOptions mxWriteOptions;
+#if PXR_VERSION >= 2603
         if (TfDebug::IsEnabled(HDMTLX_WRITE_DOCUMENT_WITHOUT_INCLUDES)) {
             mxWriteOptions.elementPredicate =
                 [](mx::ConstElementPtr elem) -> bool {
@@ -819,8 +889,10 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
                 return !elem->hasSourceUri();
             };
         }
+#endif
         mx::writeToXmlFile(mxDoc, mx::FilePath(filename), &mxWriteOptions);
     }
+#endif
 
     // Validate the MaterialX Document.
     {
@@ -830,11 +902,15 @@ HdMtlxCreateMtlxDocumentFromHdMaterialNetworkInterface(
             TF_WARN("Validation warnings for generated MaterialX file.\n%s\n", 
                 message.c_str());
         } else {
+#if PXR_VERSION >= 2603
             TF_DEBUG(HDMTLX_DOCUMENT).Msg("Mtlx Document for terminal <%s> "
                 "validated by MaterialX.\n\n", terminalNodeName.GetText());
+#endif
         }
     }
     return mxDoc;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
+
+#endif // PXR_VERSION < 2608

@@ -47,7 +47,10 @@ if (${PXR_ENABLE_MATERIALX_SUPPORT})
         MaterialXRender
         hdMtlx
     )
-    list(APPEND optionalPublicClasses matfiltMaterialX)
+    list(APPEND optionalPublicClasses 
+        matfiltMaterialX
+        pxr/imaging/hdMtlx/hdMtlx
+    )
 
     if (${PXR_ENABLE_OSL_SUPPORT})
         if (DEFINED OSL_SHADER_INSTALL_DIR)
