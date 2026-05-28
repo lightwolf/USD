@@ -33,17 +33,17 @@ struct ExecIrComputationsType
     /// by ExecIrControllerBuilder::InvertibleInputAttribute.
     ///
     /// **computeDesiredValue** is the opposite of
-    /// [computeValue](ExecBuiltinComputationTokens::computeValue). As opposed
+    /// [computeValue](#Exec_BuiltinComputationTokens::computeValue). As opposed
     /// to computeValue, which produces an attribute's computed value from
     /// upstream authored values, computeDesiredValue produces a value which
     /// must be authored in order for to acheive desired downstream computed
     /// values.
     ///
     /// This computation is designed to be used with
-    /// [ComputeWithOverrides](ExecUsdSystem::ComputeWithOverrides). The request
-    /// contains one or more value keys for computeDesiredValue, and the desired
-    /// downstream computed values are specified as overrides for
-    /// [explicitDesiredValue](ExecIrComputationsType::explicitDesiredValue) on
+    /// ExecUsdSystem::ComputeWithOverrides. The request contains one or more
+    /// value keys for computeDesiredValue, and the desired downstream computed
+    /// values are specified as overrides for
+    /// [explicitDesiredValue](#ExecIrComputationsType::explicitDesiredValue) on
     /// the downstream attributes.
     ///
     const TfToken computeDesiredValue;
@@ -53,7 +53,7 @@ struct ExecIrComputationsType
     /// explicitDesiredValue is defined for all attributes in ExecIr. It has
     /// no dependencies on other computations and always computes an empty
     /// value, unless explicitly overridden during an invocation of
-    /// ComputeWithOverrides](ExecUsdSystem::ComputeWithOverrides).
+    /// ExecUsdSystem::ComputeWithOverrides.
     ///
     const TfToken explicitDesiredValue;
 };
