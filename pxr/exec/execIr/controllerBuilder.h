@@ -21,9 +21,10 @@
 
 #include "pxr/pxr.h"
 
-#include "pxr/exec/execIr/tokens.h"
+#include "pxr/exec/execIr/computations.h"
 #include "pxr/exec/execIr/types.h"
 
+#include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/exec/exec/builtinComputations.h"
 #include "pxr/exec/exec/computationBuilders.h"
@@ -272,6 +273,20 @@ public:
         const TfToken &outAttributeName);
 
 private:
+    
+    // These computations are registered by the controller builder, but they
+    // are not meant to be consumed by code outside the controller builder.
+    struct _PrivateComputationsType {
+        EXECIR_API
+        _PrivateComputationsType();
+
+        const TfToken computeInvertedForwardValue;
+        const TfToken forwardCompute;
+        const TfToken inverseCompute;
+    };
+
+    EXECIR_API
+    static TfStaticData<_PrivateComputationsType> _privateComputations;
 
     ExecPrimComputationBuilder _forwardComputeReg;
     ExecPrimComputationBuilder _inverseComputeReg;
@@ -293,10 +308,10 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
     // be registered using a builtin computation token that the core will
     // provide, as a plugin point for plugins that provide inversion behavior.
     _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->computeDesiredValue)
+        attributeName, ExecIrComputations->computeDesiredValue)
         .Callback<ValueType>([attributeName](const VdfContext &ctx) {
             const ExecIrResult &resultMap = ctx.GetInputValue<ExecIrResult>(
-                    ExecIrComputationTokens->inverseCompute);
+                    _privateComputations->inverseCompute);
 
             // If the inverse computation computed a value for this attribute,
             // return it; otherwise, set an empty result.
@@ -310,7 +325,7 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
         })
         .Inputs(
             Prim().Computation<ExecIrResult>(
-                ExecIrComputationTokens->inverseCompute));
+                _privateComputations->inverseCompute));
 
     // Invertible input attributes define 'computeInvertedForwardValue'
     // computations that get their values from the inverse computation, but only
@@ -325,12 +340,12 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
     // is dependent on another. In such situations, computing "inverted forward
     // values" allows for controller networks to produce "best try" solutions.
     _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->computeInvertedForwardValue)
+        attributeName, _privateComputations->computeInvertedForwardValue)
         .Callback(+[](const VdfContext &ctx) -> ValueType {
             // If we have a computed desired value, that takes precedence.
             if (const ValueType *const desiredValue =
                 ctx.GetInputValuePtr<ValueType>(
-                    ExecIrComputationTokens->computeDesiredValue)) {
+                    ExecIrComputations->computeDesiredValue)) {
                 return *desiredValue;
             }
 
@@ -339,7 +354,7 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
                 ExecBuiltinComputations->computeValue);
         })
         .Inputs(
-            Computation<ValueType>(ExecIrComputationTokens->computeDesiredValue),
+            Computation<ValueType>(ExecIrComputations->computeDesiredValue),
             Computation<ValueType>(ExecBuiltinComputations->computeValue));
 
     // Invertible input attributes provide inputs to the forward computation via
@@ -347,7 +362,7 @@ ExecIrControllerBuilder::InvertibleInputAttribute(
     _forwardComputeReg.Inputs(
         Attribute(attributeName)
             .Computation<ValueType>(
-                ExecIrComputationTokens->computeInvertedForwardValue)
+                _privateComputations->computeInvertedForwardValue)
             .InputName(attributeName));
 
     // All input attributes (invertible or not) support dataflow across
@@ -391,7 +406,7 @@ ExecIrControllerBuilder::InvertibleOutputAttribute(
     _inverseComputeReg.Inputs(
         Attribute(attributeName)
             .Computation<ValueType>(
-                ExecIrComputationTokens->computeDesiredValue)
+                ExecIrComputations->computeDesiredValue)
             .InputName(attributeName));
 
     // Register an expression on the invertible output that pulls its value
@@ -400,7 +415,7 @@ ExecIrControllerBuilder::InvertibleOutputAttribute(
         .Callback<ValueType>([attributeName](const VdfContext &ctx) {
             const ExecIrResult &resultMap =
                 ctx.GetInputValue<ExecIrResult>(
-                    ExecIrComputationTokens->forwardCompute);
+                    _privateComputations->forwardCompute);
             const auto it = resultMap.find(attributeName);
             if (it != resultMap.end()) {
                 ctx.SetOutput(it->second.Get<ValueType>());
@@ -419,7 +434,7 @@ ExecIrControllerBuilder::InvertibleOutputAttribute(
         })
         .Inputs(
             Prim().Computation<ExecIrResult>(
-                ExecIrComputationTokens->forwardCompute));
+                _privateComputations->forwardCompute));
 }
 
 template <typename ValueType>
@@ -501,7 +516,7 @@ ExecIr_ControllerBuilderBase::_DesiredValueComputations(
     // where desired values can be specified as overrides passed to
     // ComputeWithOverrides.
     _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->explicitDesiredValue)
+        attributeName, ExecIrComputations->explicitDesiredValue)
         .Callback<ValueType>(+[](const VdfContext &ctx) {
             ctx.SetEmptyOutput();
         });
@@ -513,13 +528,13 @@ ExecIr_ControllerBuilderBase::_DesiredValueComputations(
     // value is returned. An error is emitted if more than one desired value is
     // present.
     _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->computeDesiredValue)
+        attributeName, ExecIrComputations->computeDesiredValue)
         .Callback<ValueType>(&_GetExactlyOneDesiredValue<ValueType>)
         .Inputs(
             Computation<ValueType>(
-                ExecIrComputationTokens->explicitDesiredValue),
+                ExecIrComputations->explicitDesiredValue),
             IncomingConnections<ValueType>(
-                ExecIrComputationTokens->computeDesiredValue));
+                ExecIrComputations->computeDesiredValue));
 }
 
 template <typename ValueType>
@@ -531,11 +546,11 @@ ExecIr_ControllerBuilderBase::_GetExactlyOneDesiredValue(
     {
         const ValueType *foundInputValue =
             ctx.GetInputValuePtr<ValueType>(
-                ExecIrComputationTokens->explicitDesiredValue);
+                ExecIrComputations->explicitDesiredValue);
 
         for (const ValueType &value :
                  VdfReadIteratorRange<ValueType>(
-                     ctx, ExecIrComputationTokens->computeDesiredValue)) {
+                     ctx, ExecIrComputations->computeDesiredValue)) {
             if (!foundInputValue) {
                 foundInputValue = &value;
             } else {

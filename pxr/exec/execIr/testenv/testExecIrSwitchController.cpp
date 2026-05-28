@@ -6,6 +6,7 @@
 //
 #include "pxr/pxr.h"
 
+#include "pxr/exec/execIr/computations.h"
 #include "pxr/exec/execIr/tokens.h"
 
 #include "pxr/exec/exec/builtinComputations.h"
@@ -108,7 +109,7 @@ void _VerifySwitchInverseAndForwardResults(
         std::vector<ExecUsdValueKey> valueKeys;
         for (const UsdAttribute &avar : inputAvars) {
             valueKeys.emplace_back(
-                avar, ExecIrComputationTokens->computeDesiredValue);
+                avar, ExecIrComputations->computeDesiredValue);
         }
         TF_AXIOM(valueKeys.size() == expectedInputValues.size());
         const ExecUsdRequest request =
@@ -123,7 +124,7 @@ void _VerifySwitchInverseAndForwardResults(
         for (size_t i=0; i<desiredValues.size(); ++i) {
             overrides.push_back(
                 {{outputSpaces[i],
-                  ExecIrComputationTokens->explicitDesiredValue},
+                  ExecIrComputations->explicitDesiredValue},
                  VtValue(desiredValues[i])});
         };
         ExecUsdCacheView cache =

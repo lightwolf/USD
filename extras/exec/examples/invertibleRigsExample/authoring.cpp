@@ -8,6 +8,7 @@
 
 #include "authoring.h"
 
+#include "pxr/exec/execIr/computations.h"
 #include "pxr/exec/execIr/tokens.h"
 
 #include "pxr/exec/exec/builtinComputations.h"
@@ -245,7 +246,7 @@ InvertibleRigsExample_Authoring::CompensateSwitch(
         std::vector<ExecUsdValueKey> valueKeys;
         for (const UsdAttribute &avar : _inputAvars) {
             valueKeys.emplace_back(
-                avar, ExecIrComputationTokens->computeDesiredValue);
+                avar, ExecIrComputations->computeDesiredValue);
         }
         const ExecUsdRequest request =
             _execSystem.BuildRequest(std::move(valueKeys));
@@ -262,7 +263,7 @@ InvertibleRigsExample_Authoring::CompensateSwitch(
         for (size_t i=0; i<_outputSpaces.size(); ++i) {
             overrides.push_back(
                 {{_outputSpaces[i],
-                  ExecIrComputationTokens->explicitDesiredValue},
+                  ExecIrComputations->explicitDesiredValue},
                  VtValue(preSwitchSpaceValues[i])});
         };
 

@@ -6,6 +6,7 @@
 //
 #include "pxr/pxr.h"
 
+#include "pxr/exec/execIr/computations.h"
 #include "pxr/exec/execIr/controllerBuilder.h"
 #include "pxr/exec/execIr/tokens.h"
 #include "pxr/exec/execIr/utils.h"
@@ -269,11 +270,11 @@ _Builder::InputAttribute(const TfToken &attributeName)
     // there is exactly one desired value present. Otherwise, no value is
     // returned. An error is emitted if more than one desired value is present.
     _self.AttributeComputation(
-        attributeName, ExecIrComputationTokens->computeDesiredValue)
+        attributeName, ExecIrComputations->computeDesiredValue)
         .Callback<ValueType>(&_GetExactlyOneDesiredValue<ValueType>)
         .Inputs(
             IncomingConnections<ValueType>(
-                ExecIrComputationTokens->computeDesiredValue));
+                ExecIrComputations->computeDesiredValue));
 }
 
 template <typename ValueType>

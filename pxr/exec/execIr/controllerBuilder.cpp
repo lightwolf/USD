@@ -28,9 +28,9 @@ ExecIrControllerBuilder::ExecIrControllerBuilder(
     Callback inverseCallback)
     : ExecIr_ControllerBuilderBase(self)
     , _forwardComputeReg(
-        self.PrimComputation(ExecIrComputationTokens->forwardCompute))
+        self.PrimComputation(_privateComputations->forwardCompute))
     , _inverseComputeReg(
-        self.PrimComputation(ExecIrComputationTokens->inverseCompute))
+        self.PrimComputation(_privateComputations->inverseCompute))
     , _inverseCallback(inverseCallback)
 {
     _forwardComputeReg.Callback<ExecIrResult>(forwardCallback);
@@ -64,5 +64,15 @@ ExecIrControllerBuilder::~ExecIrControllerBuilder()
             ctx.SetOutput(inverseCallback(ctx));
         });
 }
+
+ExecIrControllerBuilder::_PrivateComputationsType::_PrivateComputationsType()
+    : computeInvertedForwardValue(
+        "computeInvertedForwardValue", TfToken::Immortal)
+    , forwardCompute("forwardCompute", TfToken::Immortal)
+    , inverseCompute("inverseCompute", TfToken::Immortal)
+{}
+
+TfStaticData<ExecIrControllerBuilder::_PrivateComputationsType>
+    ExecIrControllerBuilder::_privateComputations;
 
 PXR_NAMESPACE_CLOSE_SCOPE

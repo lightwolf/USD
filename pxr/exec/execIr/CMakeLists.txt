@@ -14,6 +14,7 @@ pxr_library(execIr
         api.h
 
     PUBLIC_CLASSES
+        computations
         controllerBuilder
         tokens
         types
@@ -24,9 +25,9 @@ pxr_library(execIr
         utils
 
     CPPFILES
-        fkController.cpp
-        switchController.cpp
-        xformable.cpp
+        fkControllerComputations.cpp
+        switchControllerComputations.cpp
+        xformableComputations.cpp
 
     RESOURCE_FILES
         plugInfo.json

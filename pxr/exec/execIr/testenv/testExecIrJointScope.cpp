@@ -6,6 +6,7 @@
 //
 #include "pxr/pxr.h"
 
+#include "pxr/exec/execIr/computations.h"
 #include "pxr/exec/execIr/tokens.h"
 #include "pxr/exec/execIr/types.h"
 
@@ -154,7 +155,7 @@ Test_JointScopeBasic()
         std::vector<ExecUsdValueKey> valueKeys;
         for (const UsdAttribute &attr : inputAttributes) {
             valueKeys.emplace_back(
-                attr, ExecIrComputationTokens->computeDesiredValue);
+                attr, ExecIrComputations->computeDesiredValue);
         }
         const ExecUsdRequest request =
             execSystem.BuildRequest(std::move(valueKeys));
@@ -168,7 +169,7 @@ Test_JointScopeBasic()
                                                     1,  0,  0, 0,
                                                     6,  7, 18, 1);
             ExecUsdValueOverrideVector overrides {
-                {{posedSpace, ExecIrComputationTokens->explicitDesiredValue},
+                {{posedSpace, ExecIrComputations->explicitDesiredValue},
                  VtValue(desiredPosedSpaceValue)}
             };
             ExecUsdCacheView cache =
@@ -429,7 +430,7 @@ Test_JointScopeParentChild()
     std::vector<ExecUsdValueKey> valueKeys;
     for (const UsdAttribute &attr : inputAttributes) {
         valueKeys.emplace_back(
-            attr, ExecIrComputationTokens->computeDesiredValue);
+            attr, ExecIrComputations->computeDesiredValue);
     }
     const ExecUsdRequest inputRequest =
         execSystem.BuildRequest(std::move(valueKeys));
@@ -453,9 +454,9 @@ Test_JointScopeParentChild()
 
     {
         ExecUsdValueOverrideVector overrides {
-            {{parentPosedSpace, ExecIrComputationTokens->explicitDesiredValue},
+            {{parentPosedSpace, ExecIrComputations->explicitDesiredValue},
              VtValue(desiredParentPosedSpaceValue)},
-            {{childPosedSpace, ExecIrComputationTokens->explicitDesiredValue},
+            {{childPosedSpace, ExecIrComputations->explicitDesiredValue},
              VtValue(desiredChildPosedSpaceValue)},
         };
         ExecUsdCacheView cache =
