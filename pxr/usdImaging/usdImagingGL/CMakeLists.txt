@@ -1143,6 +1143,29 @@ pxr_register_test(testUsdImagingGLInstancing_SceneIndex_pi_ni_xform
     TESTENV testenv/testUsdImagingGLInstancing
 )
 
+pxr_register_test(testUsdImagingGLInstancing_SceneIndex_pi_outside
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/pi_outside.usda -write testUsdImagingGLInstancing_pi_outside.png"
+    IMAGE_DIFF_COMPARE
+        testUsdImagingGLInstancing_pi_outside.png
+    FAIL 0.01
+    FAIL_PERCENT 0.01
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLInstancing
+)
+
+
+# Disabled for now because of a bug in usdImaging 2.0.
+#
+#pxr_register_test(testUsdImagingGLInstancing_SceneIndex_ni_pi_outside
+#    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -camera /main_cam -stage usd-12231/ni_pi_outside.usda -write testUsdImagingGLInstancing_ni_pi_outside.png"
+#    IMAGE_DIFF_COMPARE
+#        testUsdImagingGLInstancing_ni_pi_outside.png
+#    FAIL 0.01
+#    FAIL_PERCENT 0.01
+#    EXPECTED_RETURN_CODE 0
+#    TESTENV testenv/testUsdImagingGLInstancing
+#)
+
 pxr_register_test(testUsdImagingGLPickAndHighlight
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLPickAndHighlight -offscreen -frameAll -stage instance.usda -write testUsdImagingGLPickAndHighlight.png"
     IMAGE_DIFF_COMPARE
