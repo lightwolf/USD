@@ -27,9 +27,32 @@ public:
     EXEC_INVERTIBLERIGSEXAMPLE_API
     InvertibleRigsExample_Authoring(const UsdStageRefPtr &stage);
 
+    /// For each input avar, authors a knot at the given time, with the value of
+    /// the avar at that time.
+    ///
+    /// This operation can be used to preserve the pose at the given time, in
+    /// preparation for authoring knots at other times, which might otherwise
+    /// cause the pose at the broken down time to change, due to spline
+    /// interpolation.
+    /// 
+    EXEC_INVERTIBLERIGSEXAMPLE_API
+    void
+    BreakdownInputAvars(
+        const UsdTimeCode &time);
+
     /// Authors a value to a switch attribute with compensation that authors
     /// input avar values such that the overall pose is the same before and
     /// after the change to the switch attribute value.
+    /// 
+    /// Switching control rigs with compensation is a primary workflow supported
+    /// by invertible rigs. The value of the switch controller 'switch'
+    /// attribute determines which control rig is used to compute the rig's pose
+    /// at any given time. If we simply author a new value to the 'switch'
+    /// attribute, then the resulting pose will, in general, change
+    /// discontinuously. Compensation invokes inversion to compute the input
+    /// avar values that preserve the pose and authors those values, along with
+    /// the new 'switch' value, changing the active control rig such that the
+    /// pose is continuous across the transition.
     ///
     EXEC_INVERTIBLERIGSEXAMPLE_API
     void

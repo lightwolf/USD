@@ -21,6 +21,7 @@ void wrapAuthoring()
 
     class_<This, noncopyable>("Authoring", no_init)
         .def(init<const UsdStageRefPtr &>())
+        .def("BreakdownInputAvars", &This::BreakdownInputAvars)
         .def("CompensateSwitch", &This::CompensateSwitch)
     ;
 }

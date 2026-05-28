@@ -160,6 +160,38 @@ _BreakdownPreTime(
 }
 
 void
+InvertibleRigsExample_Authoring::BreakdownInputAvars(
+    const UsdTimeCode &time)
+{
+    for (const UsdAttribute &attr : _inputAvars) {
+        if (attr.HasSpline()) {
+            TsSpline spline = attr.GetSpline();
+
+            // We won't be able to break down if there is already a knot at the
+            // given time, but we don't need to break down if that's the case.
+            if (spline.CanBreakdown(time.GetValue())) {
+                spline.Breakdown(time.GetValue());
+                UsdAttribute(attr).SetSpline(spline);
+            }
+        }
+
+        // If the attribute doesn't have a spline, add one with a knot that
+        // breaks down the default or fallback value.
+        else {
+            VtValue value;
+            if (!attr.Get(&value)) {
+                TF_CODING_ERROR(
+                    "Can't get value for <%s> at time %s",
+                    attr.GetPath().GetText(), TfStringify(time).c_str());
+                continue;
+            }
+
+            _SetSplineKnot(attr, time, value);
+        }
+    }
+}
+
+void
 InvertibleRigsExample_Authoring::CompensateSwitch(
     const UsdAttribute &switchAttribute,
     const UsdTimeCode &time,

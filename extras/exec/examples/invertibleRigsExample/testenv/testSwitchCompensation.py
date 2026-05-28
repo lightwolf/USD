@@ -44,6 +44,16 @@ class TestSwitchCompensation(unittest.TestCase):
     def test_CompensateSwitch(self):
         """
         Test compensation on a switch controller.
+
+        Switching control rigs with compensation is a primary workflow supported
+        by invertible rigs. The value of the switch controller 'switch'
+        attribute determines which control rig is used to compute the rig's pose
+        at any given time. If we simply author a new value to the 'switch'
+        attribute, then the resulting pose will, in general, change
+        discontinuously. Compensation invokes inversion to compute the input
+        avar values that preserve the pose and authors those values, along with
+        the new 'switch' value, changing the active control rig such that the
+        pose is continuous across the transition.
         """
 
         layer = Sdf.Layer.FindOrOpen("shot.usda")
@@ -69,11 +79,10 @@ class TestSwitchCompensation(unittest.TestCase):
 
         authoring = InvertibleRigsExample.Authoring(stage)
 
-        # Start at time 0 by switching to 'rig1'. This is the fallback value, so
-        # this doesn't change the selected rig, but it breaks down the default
-        # values into splines for all input avars.
+        # Start at time 0 by breaking down default values into splines for all
+        # input avars.
         currentTime = Usd.TimeCode(0.0)
-        authoring.CompensateSwitch(switch, currentTime, 'rig1')
+        authoring.BreakdownInputAvars(currentTime)
 
         _AssertAvarValues(
             currentTime, inputAvars,
@@ -115,6 +124,94 @@ class TestSwitchCompensation(unittest.TestCase):
         _SetSplineKnot(ry2, currentTime, 180.0)
 
         layer.Export("result.usda")
+
+    def test_BreakdownInputAvars(self):
+        """
+        Test the breakdown operation.
+
+        Breakdown takes the value of an attribute at a given time and authors a
+        spline knot of that value at that time on that attribute. See
+        Ts.Spline.Breakdown.
+        """
+
+        def _SetSplineKnotNextInterp(attr, time, interp):
+            """
+            Find the knot at the given time on attr's spline and set the
+            interpolation mode for the segment after that time to the given
+            interpolation type.
+            """
+            spline = attr.GetSpline()
+            knot = spline.GetKnot(time.GetValue())
+            knot.SetNextInterpolation(interp)
+            spline.SetKnot(knot)
+            attr.SetSpline(spline)
+        
+        layer = Sdf.Layer.FindOrOpen("shot.usda")
+        stage = Usd.Stage.Open(layer)
+
+        joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')
+        joint2 = stage.GetPrimAtPath('/Root/Anim/Joint1/Joint2')
+        assert joint1 and joint2
+
+        inputAvarNames = (
+            "avars:tx", "avars:ty", "avars:tz", 
+            "avars:rx", "avars:ry", "avars:rz", "avars:rspin")
+        inputAvars = [prim.GetAttribute(name)
+                      for prim in (joint1, joint2)
+                      for name in inputAvarNames]
+
+        authoring = InvertibleRigsExample.Authoring(stage)
+
+        # Author a default to one of the input avars.
+        inputAvars[0].Set(10.0)
+
+        # At time 0, break down default (and fallback)values into splines for
+        # all input avars.
+        currentTime = Usd.TimeCode(0.0)
+        authoring.BreakdownInputAvars(currentTime)
+
+        # Verify avar default values have been preserved as spline knots at the
+        # current time.
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (10, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
+
+        # At time 10, set a knot on a different input avar and then break down.
+        currentTime = Usd.TimeCode(10.0)
+        _SetSplineKnot(inputAvars[1], currentTime, 20.0)
+        authoring.BreakdownInputAvars(currentTime)
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (10, 20, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
+
+        # Change the interpolation mode for the spline segments following time
+        # 10 to linear, to make it easy to reason about interpolated values.
+        _SetSplineKnotNextInterp(inputAvars[0], currentTime, Ts.InterpLinear)
+        _SetSplineKnotNextInterp(inputAvars[1], currentTime, Ts.InterpLinear)
+
+        # At time 20, set knots on the two input avars we've been manipulating.
+        currentTime = Usd.TimeCode(20.0)
+        _SetSplineKnot(inputAvars[0], currentTime, 0.0)
+        _SetSplineKnot(inputAvars[1], currentTime, 40.0)
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (0, 40, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
+
+        # At time 15, verify we get the expected linearly interpolated values,
+        # then breakdown, and verify that those values have been preserved.
+        currentTime = Usd.TimeCode(15.0)
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (5, 30, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
+        authoring.BreakdownInputAvars(currentTime)
+        _AssertAvarValues(
+            currentTime, inputAvars,
+            (5, 30, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0))
         
 if __name__ == "__main__":
     unittest.main()
