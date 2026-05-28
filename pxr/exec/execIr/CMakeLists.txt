@@ -1,6 +1,12 @@
 set(PXR_PREFIX pxr/exec)
 set(PXR_PACKAGE execIr)
 
+# TODO: Currently, generated schema code only works with hidden symbol
+# visibility on Windows; therefore, we disable it on Linux for now. (Note that
+# OpenExec doesn't yet support hidden symbol visibility on Apple platforms and
+# that CMAKE_CXX_VISIBILITY_PRESET has no effect if the compiler is MSVC.
+unset(CMAKE_CXX_VISIBILITY_PRESET)
+
 pxr_library(execIr
     INCLUDE_SCHEMA_FILES
 
@@ -8,7 +14,10 @@ pxr_library(execIr
         execGeom
         execUsd
         gf
+        sdf
         tf
+        usd
+        vt
         
     PUBLIC_HEADERS
         api.h

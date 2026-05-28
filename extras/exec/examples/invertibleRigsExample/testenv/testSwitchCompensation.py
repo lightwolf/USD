@@ -5,7 +5,7 @@
 # Licensed under the terms set forth in the LICENSE.txt file available at
 # https://openusd.org/license.
 
-from pxr import Gf, Sdf, Ts, Usd, InvertibleRigsExample
+from pxr import ExecIr, Gf, Sdf, Ts, Usd, InvertibleRigsExample
 import unittest
 
 def _SetSplineKnot(attr, time, value):
@@ -65,20 +65,26 @@ class TestSwitchCompensation(unittest.TestCase):
         layer = Sdf.Layer.FindOrOpen("shot.usda")
         stage = Usd.Stage.Open(layer)
 
-        switch = stage.GetAttributeAtPath('/Root/Anim.switch')
+        switch = stage.GetPrimAtPath('/Root/Anim') \
+                 .GetAttribute(ExecIr.Tokens.switch_)
         assert switch
 
         joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')
         joint2 = stage.GetPrimAtPath('/Root/Anim/Joint1/Joint2')
         assert joint1 and joint2
 
-        ry1 = joint1.GetAttribute("avars:ry")
-        ry2 = joint2.GetAttribute("avars:ry")
+        ry1 = joint1.GetAttribute(ExecIr.Tokens.avarsRy)
+        ry2 = joint2.GetAttribute(ExecIr.Tokens.avarsRy)
         assert ry1 and ry2
 
         inputAvarNames = (
-            "avars:tx", "avars:ty", "avars:tz", 
-            "avars:rx", "avars:ry", "avars:rz", "avars:rspin")
+            ExecIr.Tokens.avarsTx,
+            ExecIr.Tokens.avarsTy,
+            ExecIr.Tokens.avarsTz,
+            ExecIr.Tokens.avarsRx,
+            ExecIr.Tokens.avarsRy,
+            ExecIr.Tokens.avarsRz,
+            ExecIr.Tokens.avarsRspin)
         inputAvars = [prim.GetAttribute(name)
                       for prim in (joint1, joint2)
                       for name in inputAvarNames]
@@ -101,7 +107,7 @@ class TestSwitchCompensation(unittest.TestCase):
 
         currentTime = Usd.TimeCode(10.0)
         _SetSplineKnot(ry1, currentTime, 90.0)
-        authoring.CompensateSwitch(switch, currentTime, 'rig2')
+        authoring.CompensateSwitch(switch, currentTime, ExecIr.Tokens.rig2)
 
         _AssertAvarValues(
             currentTime, inputAvars,
@@ -110,7 +116,7 @@ class TestSwitchCompensation(unittest.TestCase):
 
         currentTime = Usd.TimeCode(30.0)
         _SetSplineKnot(ry2, currentTime, 270.0)
-        authoring.CompensateSwitch(switch, currentTime, 'rig1')
+        authoring.CompensateSwitch(switch, currentTime, ExecIr.Tokens.rig1)
 
         _AssertAvarValues(
             currentTime, inputAvars,
@@ -119,7 +125,7 @@ class TestSwitchCompensation(unittest.TestCase):
 
         currentTime = Usd.TimeCode(50.0)
         _SetSplineKnot(ry1, currentTime, 90.0)
-        authoring.CompensateSwitch(switch, currentTime, 'rig2')
+        authoring.CompensateSwitch(switch, currentTime, ExecIr.Tokens.rig2)
     
         _AssertAvarValues(
             currentTime, inputAvars,
@@ -155,7 +161,8 @@ class TestSwitchCompensation(unittest.TestCase):
         layer = Sdf.Layer.FindOrOpen("shot.usda")
         stage = Usd.Stage.Open(layer)
 
-        switch = stage.GetAttributeAtPath('/Root/Anim.switch')
+        switch = stage.GetPrimAtPath('/Root/Anim') \
+                 .GetAttribute(ExecIr.Tokens.switch_)
         assert switch
 
         joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')
@@ -163,8 +170,13 @@ class TestSwitchCompensation(unittest.TestCase):
         assert joint1 and joint2
 
         inputAvarNames = (
-            "avars:tx", "avars:ty", "avars:tz", 
-            "avars:rx", "avars:ry", "avars:rz", "avars:rspin")
+            ExecIr.Tokens.avarsTx,
+            ExecIr.Tokens.avarsTy,
+            ExecIr.Tokens.avarsTz,
+            ExecIr.Tokens.avarsRx,
+            ExecIr.Tokens.avarsRy,
+            ExecIr.Tokens.avarsRz,
+            ExecIr.Tokens.avarsRspin)
         inputAvars = [prim.GetAttribute(name)
                       for prim in (joint1, joint2)
                       for name in inputAvarNames]
@@ -186,7 +198,7 @@ class TestSwitchCompensation(unittest.TestCase):
             currentTime, inputAvars,
             (10, 0, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0,
-             'rig1'))
+             ExecIr.Tokens.rig1))
 
         # At time 10, set a knot on a different input avar and then break down.
         currentTime = Usd.TimeCode(10.0)
@@ -196,7 +208,7 @@ class TestSwitchCompensation(unittest.TestCase):
             currentTime, inputAvars,
             (10, 20, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0,
-             'rig1'))
+             ExecIr.Tokens.rig1))
 
         # Change the interpolation mode for the spline segments following time
         # 10 to linear, to make it easy to reason about interpolated values.
@@ -208,12 +220,12 @@ class TestSwitchCompensation(unittest.TestCase):
         currentTime = Usd.TimeCode(20.0)
         _SetSplineKnot(inputAvars[0], currentTime, 0.0)
         _SetSplineKnot(inputAvars[1], currentTime, 40.0)
-        switch.Set('rig2', currentTime)
+        switch.Set(ExecIr.Tokens.rig2, currentTime)
         _AssertAvarValues(
             currentTime, inputAvars,
             (0, 40, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0,
-             'rig2'))
+             ExecIr.Tokens.rig2))
 
         # At time 15, verify we get the expected interpolated values, then
         # breakdown.
@@ -222,7 +234,7 @@ class TestSwitchCompensation(unittest.TestCase):
             currentTime, inputAvars,
             (5, 30, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0,
-             'rig1'))
+             ExecIr.Tokens.rig1))
         authoring.BreakdownInputAvars(switch, currentTime)
 
         # At time 18, set knots on the two input avars we've been manipulating.
@@ -236,7 +248,7 @@ class TestSwitchCompensation(unittest.TestCase):
             currentTime, inputAvars,
             (5, 30, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0,
-             'rig1'))
+             ExecIr.Tokens.rig1))
         
 if __name__ == "__main__":
     unittest.main()
