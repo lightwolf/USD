@@ -99,6 +99,7 @@ pxr_plugin(${PXR_PACKAGE}
         dependencySceneIndexPlugin
         dependencyForwardingSceneIndexPlugin
         displayFilter
+        energyFilter
         displayColorSpaceSceneIndexPlugin
         gprim
         gprimbase
@@ -124,6 +125,7 @@ pxr_plugin(${PXR_PACKAGE}
         rileyCoordinateSystemSchema
         rileyDisplacementSchema
         rileyDisplayFilterSchema
+        rileyEnergyFilterSchema
         rileyDisplaySchema
         rileyGeometryInstanceSchema
         rileyGeometryPrototypeSchema
@@ -178,6 +180,7 @@ pxr_plugin(${PXR_PACKAGE}
         rileyClippingPlanePrim
         rileyDisplacementPrim
         rileyDisplayFilterPrim
+        rileyEnergyFilterPrim
         rileyDisplayPrim
         rileyFallbackMaterial
         rileyGeometryInstancePrim

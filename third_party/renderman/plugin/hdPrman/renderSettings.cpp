@@ -74,6 +74,10 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((riIntegrator, "ri:integrator"))
     ((riSampleFilters, "ri:sampleFilters"))
     ((riDisplayFilters, "ri:displayFilters"))
+    // Note: riEnergyFilters is only used when _PRMANAPI_VERSION_MAJOR_ >= 27,
+    // but the token is defined unconditionally because MSVC does not support
+    // preprocessor directives (#if/#endif) inside a macro argument list.
+    ((riEnergyFilters, "ri:energyFilters"))
     // Legacy terminal connections. Remove in a future USD version.
     ((outputsRiIntegrator, "outputs:ri:integrator"))
     ((outputsRiSampleFilters, "outputs:ri:sampleFilters"))
@@ -125,6 +129,9 @@ _GenerateParamList(VtDictionary const &settings)
         if (tokenName == _renderTerminalTokens->riIntegrator ||
             tokenName == _renderTerminalTokens->riSampleFilters ||
             tokenName == _renderTerminalTokens->riDisplayFilters ||
+#if _PRMANAPI_VERSION_MAJOR_ >= 27
+            tokenName == _renderTerminalTokens->riEnergyFilters ||
+#endif
             // Legacy terminal connections. Remove in a future USD version.
             tokenName == _renderTerminalTokens->outputsRiIntegrator ||
             tokenName == _renderTerminalTokens->outputsRiSampleFilters ||
@@ -805,6 +812,20 @@ HdPrman_RenderSettings::_ProcessRenderTerminals(
 
         param->SetDisplayFilterPaths(sceneDelegate, paths);
     }
+
+#if _PRMANAPI_VERSION_MAJOR_ >= 27
+    // Set the EnergyFilters on this Render Settings prim
+    {
+        SdfPathVector paths;
+        if (rsSchemaHasRelationships) {
+            paths = VtDictionaryGet<SdfPathVector>(
+                namespacedSettings,
+                _renderTerminalTokens->riEnergyFilters.GetString(),
+                VtDefault = SdfPathVector());
+        }
+        param->SetEnergyFilterPaths(sceneDelegate, paths);
+    }
+#endif // _PRMANAPI_VERSION_MAJOR_ >= 27
 }
 
 void
