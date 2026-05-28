@@ -197,7 +197,7 @@ class "IrXformable" (
     """
     inherits = </Typed>
     customData = {
-        string className = "Transformable"
+        string className = "Xformable"
     }
 )
 {
