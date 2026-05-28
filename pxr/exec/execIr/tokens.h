@@ -80,14 +80,10 @@ TF_DECLARE_PUBLIC_TOKENS(
                                                                                 \
     ((switchToken, "switch"))                                                   \
                                                                                 \
-    ((rig1Joint1Space, "rig1:joint1:space"))                                    \
-    ((rig1Joint2Space, "rig1:joint2:space"))                                    \
+    ((rig1Space, "rig1:space"))                                                 \
+    ((rig2Space, "rig2:space"))                                                 \
                                                                                 \
-    ((rig2Joint1Space, "rig2:joint1:space"))                                    \
-    ((rig2Joint2Space, "rig2:joint2:space"))                                    \
-                                                                                \
-    ((outJoint1Space, "out:joint1:space"))                                      \
-    ((outJoint2Space, "out:joint2:space"))                                      \
+    ((outSpace, "out:space"))
 
 TF_DECLARE_PUBLIC_TOKENS(
     ExecIrSwitchControllerTokens, EXECIR_API, EXEC_IR_SWITCH_CONTROLLER_TOKENS);

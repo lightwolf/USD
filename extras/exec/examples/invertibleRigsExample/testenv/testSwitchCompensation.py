@@ -65,7 +65,7 @@ class TestSwitchCompensation(unittest.TestCase):
         layer = Sdf.Layer.FindOrOpen("shot.usda")
         stage = Usd.Stage.Open(layer)
 
-        switch = stage.GetAttributeAtPath('/Root/Control/Switch.switch')
+        switch = stage.GetAttributeAtPath('/Root/Anim.switch')
         assert switch
 
         joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')
@@ -155,7 +155,7 @@ class TestSwitchCompensation(unittest.TestCase):
         layer = Sdf.Layer.FindOrOpen("shot.usda")
         stage = Usd.Stage.Open(layer)
 
-        switch = stage.GetAttributeAtPath('/Root/Control/Switch.switch')
+        switch = stage.GetAttributeAtPath('/Root/Anim.switch')
         assert switch
 
         joint1 = stage.GetPrimAtPath('/Root/Anim/Joint1')

@@ -45,34 +45,33 @@ PXR_NAMESPACE_USING_DIRECTIVE
 static const std::string waddlerRigLayerContents = R"usda(#usda 1.0
     def Scope "Rig" {
         def Scope "Anim" {
+            token switch = "rig1"
+
             def IrJointScope "Joint1" {
                 matrix4d posed:space.connect = [
-                    </Rig/Control/Switch.out:joint1:space>
+                    </Rig/Control/Switch1.out:space>
                 ]
 
                 def IrJointScope "Joint2" {
                     double rest:tz = 10.0
                     matrix4d posed:space.connect = [
-                        </Rig/Control/Switch.out:joint2:space>
+                        </Rig/Control/Switch2.out:space>
                     ]
                 }
             }
         }
 
         def Scope "Control" {
-            def IrSwitchController "Switch" {
-                matrix4d rig1:joint1:space.connect = [
-                    </Rig/Control/Rig1/FK1.out:space>
-                ]
-                matrix4d rig1:joint2:space.connect = [
-                    </Rig/Control/Rig1/FK2.out:space>
-                ]
-                matrix4d rig2:joint1:space.connect = [
-                    </Rig/Control/Rig2/FK1.out:space>
-                ]
-                matrix4d rig2:joint2:space.connect = [
-                    </Rig/Control/Rig2/FK2.out:space>
-                ]
+            def IrSwitchController "Switch1" {
+                token switch.connect = </Rig/Anim.switch>
+                matrix4d rig1:space.connect = </Rig/Control/Rig1/FK1.out:space>
+                matrix4d rig2:space.connect = </Rig/Control/Rig2/FK1.out:space>
+            }
+
+            def IrSwitchController "Switch2" {
+                token switch.connect = </Rig/Anim.switch>
+                matrix4d rig1:space.connect = </Rig/Control/Rig1/FK2.out:space>
+                matrix4d rig2:space.connect = </Rig/Control/Rig2/FK2.out:space>
             }
 
             def Scope "Rig1" {
@@ -340,7 +339,7 @@ Test_WaddlerRigBasic()
     TF_AXIOM(outputRequest.IsValid());
 
     const UsdAttribute switchAttr =
-        usdStage->GetAttributeAtPath(SdfPath("/Rig/Control/Switch.switch"));
+        usdStage->GetAttributeAtPath(SdfPath("/Rig/Anim.switch"));
     TF_AXIOM(switchAttr);
 
     // Set the switch to Rig2 and test inverse computation with an override that
@@ -621,7 +620,7 @@ Test_WaddlerRigSwitchCompensation()
     TF_AXIOM(usdStage);
 
     UsdAttribute switchAttr =
-        usdStage->GetAttributeAtPath(SdfPath("/Root/Control/Switch.switch"));
+        usdStage->GetAttributeAtPath(SdfPath("/Root/Anim.switch"));
     TF_AXIOM(switchAttr);
 
     const UsdPrim joint1 =

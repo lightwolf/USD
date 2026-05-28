@@ -176,6 +176,8 @@ Test_BasicSwitch()
         #usda 1.0
 
         def Scope "Root" {
+            token switch = "rig1"
+
             def Scope "Rig1" {
                 def IrFkController "FK1" {
                     double in:tx = 1.0
@@ -194,11 +196,16 @@ Test_BasicSwitch()
                 }
             }
 
-            def IrSwitchController "Switch" {
-                matrix4d rig1:joint1:space.connect = </Root/Rig1/FK1.out:space>
-                matrix4d rig1:joint2:space.connect = </Root/Rig1/FK2.out:space>
-                matrix4d rig2:joint1:space.connect = </Root/Rig2/FK1.out:space>
-                matrix4d rig2:joint2:space.connect = </Root/Rig2/FK2.out:space>
+            def IrSwitchController "Switch1" {
+                token switch.connect = </Root.switch>
+                matrix4d rig1:space.connect = </Root/Rig1/FK1.out:space>
+                matrix4d rig2:space.connect = </Root/Rig2/FK1.out:space>
+            }
+
+            def IrSwitchController "Switch2" {
+                token switch.connect = </Root.switch>
+                matrix4d rig1:space.connect = </Root/Rig1/FK2.out:space>
+                matrix4d rig2:space.connect = </Root/Rig2/FK2.out:space>
             }
         }
         )usda");
@@ -206,9 +213,9 @@ Test_BasicSwitch()
     TF_AXIOM(usdStage);
 
     const UsdAttribute joint1Space =
-        usdStage->GetAttributeAtPath(SdfPath("/Root/Switch.out:joint1:space"));
+        usdStage->GetAttributeAtPath(SdfPath("/Root/Switch1.out:space"));
     const UsdAttribute joint2Space =
-        usdStage->GetAttributeAtPath(SdfPath("/Root/Switch.out:joint2:space"));
+        usdStage->GetAttributeAtPath(SdfPath("/Root/Switch2.out:space"));
     TF_AXIOM(joint1Space && joint2Space);
 
     ExecUsdSystem execSystem(usdStage);
@@ -219,7 +226,7 @@ Test_BasicSwitch()
     TF_AXIOM(outputRequest.IsValid());
 
     const UsdAttribute switchAttr =
-        usdStage->GetAttributeAtPath(SdfPath("/Root/Switch.switch"));
+        usdStage->GetAttributeAtPath(SdfPath("/Root.switch"));
     TF_AXIOM(switchAttr);
 
     // With Rig1 active ('rig1' is the fallback value for the 'switch' avar),
