@@ -90,7 +90,7 @@ _SetSplineKnot(
     // If the attribute doesn't already have a spline, author an empty spline
     // onto it.
     if (!attr.HasSpline()) {
-        UsdAttribute(attr).SetSpline(TsSpline(valueType));
+        attr.SetSpline(TsSpline(valueType));
     }
     TsSpline spline = attr.GetSpline();
 
@@ -107,7 +107,7 @@ _SetSplineKnot(
 
     // Set the knot on the spline and author the spline onto the attribute.
     spline.SetKnot(knot);
-    UsdAttribute(attr).SetSpline(spline);
+    attr.SetSpline(spline);
 }
 
 // Breaks down the given attribute's spline and copies all broken down values
@@ -156,7 +156,7 @@ _BreakdownPreTime(
         return;
     }
 
-    UsdAttribute(attr).SetSpline(spline);
+    attr.SetSpline(spline);
 }
 
 void
@@ -171,7 +171,7 @@ InvertibleRigsExample_Authoring::BreakdownInputAvars(
             // given time, but we don't need to break down if that's the case.
             if (spline.CanBreakdown(time.GetValue())) {
                 spline.Breakdown(time.GetValue());
-                UsdAttribute(attr).SetSpline(spline);
+                attr.SetSpline(spline);
             }
         }
 

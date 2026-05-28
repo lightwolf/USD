@@ -410,7 +410,7 @@ _SetSplineKnot(
     // If the attribute doesn't already have a spline, author an empty spline
     // onto it.
     if (!attr.HasSpline()) {
-        UsdAttribute(attr).SetSpline(TsSpline(valueType));
+        attr.SetSpline(TsSpline(valueType));
     }
     TsSpline spline = attr.GetSpline();
 
@@ -427,7 +427,7 @@ _SetSplineKnot(
 
     // Set the knot on the spline and author the spline onto the attribute.
     spline.SetKnot(knot);
-    UsdAttribute(attr).SetSpline(spline);
+    attr.SetSpline(spline);
 }
 
 // Convenience template function that wraps the new knot value in a VtValue.
@@ -466,7 +466,7 @@ _BreakdownPreTime(
         }
     }
 
-    UsdAttribute(attr).SetSpline(spline);
+    attr.SetSpline(spline);
 }
 
 // Author a value to a switch attribute with compensation that authors input
