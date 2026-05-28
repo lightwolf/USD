@@ -126,9 +126,8 @@ _BreakdownPreTime(
     if (!attr.HasSpline()) {
         VtValue value;
         if (!attr.Get(&value)) {
-            TF_CODING_ERROR(
-                "Can't get value for <%s> at time %s",
-                attr.GetPath().GetText(), TfStringify(time).c_str());
+            TF_CODING_ERROR("Can't get default value for <%s>", 
+                            attr.GetPath().GetText());
             return;
         }
 
@@ -167,7 +166,7 @@ InvertibleRigsExample_Authoring::BreakdownInputAvars(
 {
     // Author a time sample that breaks down the switch avar value.
     VtValue value;
-    if (!switchAttribute.Get(&value)) {
+    if (!switchAttribute.Get(&value, time)) {
         TF_CODING_ERROR(
             "Can't get value for switch attribute <%s> at time %s",
             switchAttribute.GetPath().GetText(), TfStringify(time).c_str());
@@ -192,9 +191,8 @@ InvertibleRigsExample_Authoring::BreakdownInputAvars(
         else {
             VtValue value;
             if (!attr.Get(&value)) {
-                TF_CODING_ERROR(
-                    "Can't get value for <%s> at time %s",
-                    attr.GetPath().GetText(), TfStringify(time).c_str());
+                TF_CODING_ERROR("Can't get default value for <%s>",
+                                attr.GetPath().GetText());
                 continue;
             }
 
