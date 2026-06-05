@@ -24,7 +24,7 @@ class "IrController" (
     """
     inherits = </Typed>
     customData = {
-        string className = "IrController"
+        string className = "Controller"
     }
 )
 {

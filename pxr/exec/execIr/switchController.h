@@ -11,7 +11,7 @@
 
 #include "pxr/pxr.h"
 #include "pxr/exec/execIr/api.h"
-#include "pxr/exec/execIr/irController.h"
+#include "pxr/exec/execIr/controller.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/exec/execIr/tokens.h"
@@ -47,7 +47,7 @@ class SdfAssetPath;
 /// switch among more than two rigs with arbitrary names.
 /// 
 ///
-class ExecIrSwitchController : public ExecIrIrController
+class ExecIrSwitchController : public ExecIrController
 {
 public:
     /// Compile time constant representing what kind of schema this class is.
@@ -60,7 +60,7 @@ public:
     /// for a \em valid \p prim, but will not immediately throw an error for
     /// an invalid \p prim
     explicit ExecIrSwitchController(const UsdPrim& prim=UsdPrim())
-        : ExecIrIrController(prim)
+        : ExecIrController(prim)
     {
     }
 
@@ -68,7 +68,7 @@ public:
     /// Should be preferred over ExecIrSwitchController(schemaObj.GetPrim()),
     /// as it preserves SchemaBase state.
     explicit ExecIrSwitchController(const UsdSchemaBase& schemaObj)
-        : ExecIrIrController(schemaObj)
+        : ExecIrController(schemaObj)
     {
     }
 
