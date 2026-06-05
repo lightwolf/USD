@@ -37,8 +37,14 @@ class SdfAssetPath;
 /// 
 /// An abstract schema that represents an invertible controller.
 /// 
-/// Note: The functionality provided by this schema is extremely limited,
-/// subject to change, and not yet ready for production use.
+/// @warning
+/// The functionality provided by this schema is very limited, subject to
+/// change, and not yet ready for production use.
+/// 
+/// Controllers have explicit input and output attributes, a forward computation
+/// that produces output values from input values and an inverse computation
+/// that computes the input values that satisfy a given set of desired output
+/// values.
 /// 
 ///
 class ExecIrController : public UsdTyped

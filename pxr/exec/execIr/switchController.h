@@ -39,12 +39,18 @@ class SdfAssetPath;
 /// An invertible controller that can determine which of several rigs are active
 /// at a given time, depending on the value of a switch attribute.
 /// 
-/// Note: The functionality provided by this schema is extremely limited,
-/// subject to change, and not yet ready for production use. In particular, this
-/// schema is hard coded to support two rigs, named "rig1" and "rig2". In the
-/// future, a general switch controller schema will likely be configurable via
-/// application of multi-apply schemas. This will allow switch controllers to
-/// switch among more than two rigs with arbitrary names.
+/// @warning
+/// The functionality provided by this schema is very limited, subject to
+/// change, and not yet ready for production use. In particular, this schema is
+/// hard coded to support two rigs, named "rig1" and "rig2". In the future, a
+/// general switch controller schema will likely be configurable via application
+/// of multi-apply schemas. This will allow switch controllers to switch among
+/// more than two rigs with arbitrary names.
+/// 
+/// The ExecIrSwitchController has two input attributes and one output
+/// attribute, which provides the value of one of the two inputs attributes,
+/// depending on the value of the 'switch' attribute. Multiple switch
+/// controllers can be ganged together to switch between two different rigs.    
 /// 
 ///
 class ExecIrSwitchController : public ExecIrController
@@ -146,6 +152,8 @@ public:
     // RIG1SPACE 
     // --------------------------------------------------------------------- //
     /// 
+    /// Takes as input the value of rig1's 'out:posed' space.
+    /// 
     ///
     /// | ||
     /// | -- | -- |
@@ -168,6 +176,8 @@ public:
     // RIG2SPACE 
     // --------------------------------------------------------------------- //
     /// 
+    /// Takes as input the value of rig2's 'out:posed' space.
+    /// 
     ///
     /// | ||
     /// | -- | -- |
@@ -189,6 +199,9 @@ public:
     // --------------------------------------------------------------------- //
     // OUTSPACE 
     // --------------------------------------------------------------------- //
+    /// 
+    /// Produces either the value of 'rig1:space' or 'rig2:space' depending on
+    /// the value of the 'switch' attribute.
     /// 
     ///
     /// | ||
