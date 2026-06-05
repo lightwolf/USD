@@ -106,6 +106,14 @@ pxr_build_test(testUsdImagingGLPickAndHighlight
         testenv/testUsdImagingGLPickAndHighlight.cpp
 )
 
+pxr_build_test(testUsdImagingGLInstancePicking
+    LIBRARIES
+        ${TEST_LIBS}
+    CPPFILES
+        unitTestGLDrawing.cpp
+        testenv/testUsdImagingGLInstancePicking.cpp
+)
+
 pxr_build_test(testUsdImagingGLPopOut
     LIBRARIES
         ${TEST_LIBS}
@@ -1198,6 +1206,28 @@ pxr_register_test(testUsdImagingGLPickAndHighlight_SceneIndex
     TESTENV testenv/testUsdImagingGLPickAndHighlight
     ENV
         USD_IMAGING_GL_PICK_TEST_SKIP_INSTANCER_DETAILS=true
+)
+
+pxr_register_test(testUsdImagingGLInstancePicking_scene0
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene0.usda -write testUsdImagingGLInstancePicking_scene0.png > pickhits_scene0.txt"
+    IMAGE_DIFF_COMPARE
+        testUsdImagingGLInstancePicking_scene0_000.png
+    FAIL_PERCENT 0.01
+    FAIL 0.01
+    DIFF_COMPARE
+        pickhits_scene0.txt
+    TESTENV testenv/testUsdImagingGLInstancePicking
+)
+
+pxr_register_test(testUsdImagingGLInstancePicking_scene1
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene1.usda -write testUsdImagingGLInstancePicking_scene1.png > pickhits_scene1.txt"
+    IMAGE_DIFF_COMPARE
+        testUsdImagingGLInstancePicking_scene1_000.png
+    FAIL_PERCENT 0.01
+    FAIL 0.01
+    DIFF_COMPARE
+        pickhits_scene1.txt
+    TESTENV testenv/testUsdImagingGLInstancePicking
 )
 
 # XXX 
