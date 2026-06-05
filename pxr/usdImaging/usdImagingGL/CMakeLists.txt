@@ -1187,7 +1187,8 @@ pxr_register_test(testUsdImagingGLPickAndHighlight_SceneIndex
 )
 
 pxr_register_test(testUsdImagingGLInstancePicking_scene0
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene0.usda -write testUsdImagingGLInstancePicking_scene0.png > pickhits_scene0.txt"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene0.usda -write testUsdImagingGLInstancePicking_scene0.png"
+    STDOUT_REDIRECT pickhits_scene0.txt
     IMAGE_DIFF_COMPARE
         testUsdImagingGLInstancePicking_scene0_000.png
     FAIL_PERCENT 0.01
@@ -1198,7 +1199,8 @@ pxr_register_test(testUsdImagingGLInstancePicking_scene0
 )
 
 pxr_register_test(testUsdImagingGLInstancePicking_scene1
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene1.usda -write testUsdImagingGLInstancePicking_scene1.png > pickhits_scene1.txt"
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLInstancePicking -offscreen -camera /main_cam -pickCamera /pick_cam -skipTestPlugins -stage scene1.usda -write testUsdImagingGLInstancePicking_scene1.png"
+    STDOUT_REDIRECT pickhits_scene1.txt
     IMAGE_DIFF_COMPARE
         testUsdImagingGLInstancePicking_scene1_000.png
     FAIL_PERCENT 0.01
