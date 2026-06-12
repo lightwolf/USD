@@ -558,7 +558,7 @@ Usd_Clip::IsBlocked(const SdfPath& path, ExternalTime time) const
 {
     SdfAbstractDataTypedValue<SdfValueBlock> blockValue(nullptr);
     if (_GetLayerForClip()->QueryTimeSample(
-            path, _TranslateTimeToInternal(time), 
+            _TranslatePathToClip(path), _TranslateTimeToInternal(time), 
             (SdfAbstractDataValue*)&blockValue)
         && blockValue.isValueBlock) {
         return true;
