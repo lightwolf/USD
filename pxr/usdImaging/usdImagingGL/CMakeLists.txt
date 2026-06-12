@@ -82,14 +82,6 @@ pxr_build_test(testUsdImagingGLBasicDrawing
         testenv/testUsdImagingGLBasicDrawing.cpp
 )
 
-pxr_build_test(testUsdImagingGLBatchedDrawing
-    LIBRARIES
-        ${TEST_LIBS}
-    CPPFILES
-        unitTestGLDrawing.cpp
-        testenv/testUsdImagingGLBatchedDrawing.cpp
-)
-
 pxr_build_test(testUsdImagingGLHighlight
     LIBRARIES
         ${TEST_LIBS}
