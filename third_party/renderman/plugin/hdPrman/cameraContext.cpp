@@ -551,12 +551,14 @@ HdPrman_CameraContext::_UpdateRileyCamera(
     // If any duplicates, the ones in customParamsOverride win
     params.Update(customParamsOverride);
 
-    riley::ShadingNode node = { riley::ShadingNode::Type::k_Invalid };
-    if (!_projectionNameOverride) {
-        node = camera->GetProjectionNode();
-    }
+    // Favor ri:projection over _projectionNameOverride
+    riley::ShadingNode node = camera->GetProjectionNode();
 
-    if (node.type == riley::ShadingNode::Type::k_Invalid) {
+    if (node.type != riley::ShadingNode::Type::k_Invalid) {
+        RtParamList cameraNodeParams = _ComputeNodeParams(camera, _disableDepthOfField, node.name);
+        node.params.Inherit(cameraNodeParams);
+    }
+    else {
         node = {
             riley::ShadingNode::Type::k_Projection,
             _ComputeProjectionShader(camera->GetProjection(),
@@ -566,7 +568,7 @@ HdPrman_CameraContext::_UpdateRileyCamera(
         };
         static const RtUString us_PxrPerspective("PxrPerspective");
         static const RtUString us_PxrCamera("PxrCamera");
-        if(!_projectionNameOverride.Empty() && (_projectionNameOverride == us_PxrPerspective || _projectionNameOverride == us_PxrCamera)) {
+        if (!_projectionNameOverride.Empty() && (_projectionNameOverride == us_PxrPerspective || _projectionNameOverride == us_PxrCamera)) {
             node.params.Inherit(customNodeParams);
         }
         node.params.Update(_projectionParamsOverride);
