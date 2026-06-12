@@ -336,8 +336,14 @@ _ComputeOrthographicNodeParams(const HdPrmanCamera * const camera)
 // Compute parameters for the camera riley::ShadingNode
 static
 RtParamList
-_ComputeNodeParams(const HdPrmanCamera * const camera, bool disableDepthOfField)
+_ComputeNodeParams(const HdPrmanCamera * const camera, bool disableDepthOfField, const RtUString& projectionOverride)
 {
+    static const RtUString us_PxrPerspective("PxrPerspective");
+    static const RtUString us_PxrCamera("PxrCamera");
+    if(!projectionOverride.Empty() && (projectionOverride != us_PxrPerspective && projectionOverride != us_PxrCamera)) {
+        return {};
+    }
+
     switch(camera->GetProjection()) {
     case HdCamera::Perspective:
         return _ComputePerspectiveNodeParams(camera, disableDepthOfField);
@@ -556,9 +562,13 @@ HdPrman_CameraContext::_UpdateRileyCamera(
             _ComputeProjectionShader(camera->GetProjection(),
                                      _projectionNameOverride),
             s_projectionNodeName,
-            _ComputeNodeParams(camera, _disableDepthOfField)
+            _ComputeNodeParams(camera, _disableDepthOfField, _projectionNameOverride)
         };
-        node.params.Inherit(customNodeParams);
+        static const RtUString us_PxrPerspective("PxrPerspective");
+        static const RtUString us_PxrCamera("PxrCamera");
+        if(!_projectionNameOverride.Empty() && (_projectionNameOverride == us_PxrPerspective || _projectionNameOverride == us_PxrCamera)) {
+            node.params.Inherit(customNodeParams);
+        }
         node.params.Update(_projectionParamsOverride);
     }
 
@@ -824,7 +834,7 @@ HdPrman_CameraContext::CreateRileyCamera(
     riley::Riley * const riley,
     const RtUString &cameraName)
 {
-    const static RtUString us_PxrPerspective("PxrPerspective");
+    static const RtUString us_PxrPerspective("PxrPerspective");
 
     _cameraName = cameraName;
 
@@ -894,7 +904,7 @@ HdPrman_CameraContext::GetFraming() const
 RtUString
 HdPrman_CameraContext::GetDefaultReferenceCameraName()
 {
-    const static RtUString name("main_cam");
+    static const RtUString name("main_cam");
     return name;
 }
 
