@@ -311,14 +311,23 @@ def Run(cmd, logCommandOutput = True, env = None):
             p = subprocess.Popen(shlex.split(cmd), env=env)
             p.wait()
 
+        logfile.write("\n")
+        logfile.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        logfile.write("\n")
+        logfile.write("{cmd} exited with returncode {returncode}"
+                      .format(cmd=cmd, returncode=p.returncode))
+        logfile.write("\n\n")
+            
     if p.returncode != 0:
         # If verbosity >= 3, we'll have already been printing out command output
         # so no reason to print the log file again.
         if verbosity < 3:
             with open("log.txt", "r") as logfile:
                 Print(logfile.read())
-        raise RuntimeError("Failed to run '{cmd}' in {path}.\nSee {log} for more details."
-                           .format(cmd=cmd, path=os.getcwd(), log=os.path.abspath("log.txt")))
+        raise RuntimeError(
+            f"Failed to run '{cmd}' in {os.getcwd()} "
+            f"(exited with returncode {p.returncode}).\n\n"
+            f"See {os.path.abspath('log.txt')} for more details.")
 
 @contextlib.contextmanager
 def CurrentWorkingDirectory(dir):
