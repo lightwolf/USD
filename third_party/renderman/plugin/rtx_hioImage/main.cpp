@@ -181,6 +181,15 @@ RtxHioImagePlugin::Open(TextureCtx& tCtx)
     std::string flipped;
     HioImage::SourceColorSpace sourceColorSpace = HioImage::Auto;
     for (unsigned int i = 0; i < tCtx.argc; i += 2) {
+        // Expect parameters as key/value pairs only.
+        if (i+1 >= tCtx.argc) {
+            if (m_msgHandler) {
+                m_msgHandler->ErrorAlways(
+                    "RtxHioImagePlugin: Unexpected parameter without value",
+                    this);
+            }
+            return 1;
+        }
         if (strcmp(tCtx.argv[i], "filename") == 0) {
             filename = tCtx.argv[i + 1];
         } else if (strcmp(tCtx.argv[i], "wrapS") == 0) {
@@ -195,6 +204,12 @@ RtxHioImagePlugin::Open(TextureCtx& tCtx)
             } else if (strcmp(tCtx.argv[i + 1], "raw") == 0) {
                 sourceColorSpace = HioImage::Raw;
             }
+        } else {
+            if (m_msgHandler) {
+                m_msgHandler->ErrorAlways(
+                    "RtxHioImagePlugin: Unexpected parameter", this);
+            }
+            return 1;
         }
     }
 
@@ -330,7 +345,7 @@ RtxHioImagePlugin::Fill(TextureCtx& tCtx, FillRequest& fillReq)
             // Allocate a new MIP level.
             level.width = fillReq.imgRes.X;
             level.height = fillReq.imgRes.Y;
-            level.depth = image->GetBytesPerPixel();
+            level.depth = 0;
             level.format = image->GetFormat();
 
             if (tCtx.dataType != TextureCtx::k_Byte &&
@@ -342,7 +357,8 @@ RtxHioImagePlugin::Fill(TextureCtx& tCtx, FillRequest& fillReq)
                 return 1;
             }
 
-            const int numBytes = level.width * level.height * level.depth;
+            const int numBytes = level.width * level.height *
+                image->GetBytesPerPixel();
             level.data = new char[numBytes];
 
             // Find the smallest mip whose dimensions are greater or equal to
@@ -401,7 +417,7 @@ RtxHioImagePlugin::Fill(TextureCtx& tCtx, FillRequest& fillReq)
         const int bytesPerChannel = HioGetDataSizeOfType(channelType);
 
         // Copy out tile data, one row at a time.
-        const int bytesPerImagePixel = level.depth;
+        const int bytesPerImagePixel = image->GetBytesPerPixel();
         const int bytesPerImageRow = bytesPerImagePixel * level.width;
         const int bytesPerTilePixel = bytesPerChannel * fillReq.numChannels;
         const int bytesPerTileRow = bytesPerTilePixel * fillReq.tile.size.X;
