@@ -329,16 +329,15 @@ private:
         // (like connection and relationship targets) in order to keep them 
         // referring to the same object after applying this processed edit.
         struct PathBearingFieldEdit {
-            // Property spec to author the new value to. Note that we
-            // store the spec handle for the property as the property spec's
-            // path could change if the property is moved or deleted by the 
-            // primary namespace edit.
-            SdfPropertySpecHandle propertySpec;
+            // Prim or property spec to author the new value to. Note that we
+            // store the spec handle for the object as the object's path could 
+            // change if it is moved or deleted by the primary namespace edit.
+            SdfSpecHandle spec;
 
             // Name of the path-bearing field.  
             TfToken fieldName;
 
-            // Updated field value to set for the property spec.
+            // Updated field value to set.
             VtValue newFieldValue;
         };
         std::vector<PathBearingFieldEdit> pathBearingFieldEdits;
