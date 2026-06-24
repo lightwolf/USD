@@ -30,8 +30,6 @@ pxr_library(usdLod
 
     DOXYGEN_FILES
         overview.dox
-
-    DISABLE_PRECOMPILED_HEADERS
 )
 
 pxr_build_test(testUsdLodGetLod
