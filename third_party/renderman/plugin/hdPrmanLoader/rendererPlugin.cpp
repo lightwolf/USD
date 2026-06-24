@@ -139,7 +139,8 @@ HdPrmanLoaderRendererPlugin::HdPrmanLoaderRendererPlugin()
             : std::filesystem::directory_iterator(usdLibPath)) {
             const std::string filename = entry.path().filename().string();
             if ((TfStringStartsWith(filename, "libMaterialX") 
-            || filename.find("hdMtlx") != std::string::npos)
+            || filename.find("hdMtlx") != std::string::npos
+            || filename.find("hdsi") != std::string::npos)
                 && TfStringEndsWith(filename, ARCH_LIBRARY_SUFFIX)) {
                 ArchLibraryOpen(
                     entry.path().string(), 
