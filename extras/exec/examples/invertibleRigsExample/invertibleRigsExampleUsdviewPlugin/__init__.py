@@ -1,0 +1,45 @@
+#
+# Copyright 2026 Pixar
+#
+# Licensed under the terms set forth in the LICENSE.txt file available at
+# https://openusd.org/license.
+#
+import os
+
+from pxr import Tf
+from pxr.Usdviewq.plugin import PluginContainer
+
+class OpenExecContainer(PluginContainer):
+    """Usdview plugin container for OpenExec plugin."""
+
+    def __init__(self):
+        self._openExecPluginEnabled = (
+            os.getenv('USDVIEW_ENABLE_OPENEXEC_DEMO_PLUGIN') == '1')
+        
+        if self._openExecPluginEnabled and \
+            os.getenv('USDIMAGINGGL_ENGINE_ENABLE_EXEC_SCENE_INDEX') != '1':
+            Tf.Warn(
+                'Environment variable '
+                'USDIMAGINGGL_ENGINE_ENABLE_EXEC_SCENE_INDEX not set to 1. '
+                'OpenExec related imaging features may not function properly.')
+
+    def registerPlugins(self, plugRegistry, plugCtx):
+        if self._openExecPluginEnabled:
+            openExec = self.deferredImport(".openExec")
+            self._openExecInvertibleRigDemo = \
+                plugRegistry.registerCommandPlugin(
+                    "OpenExecContainer.openExecInvertibleRigDemo",
+                    "Invertible Rig Demo", openExec.invertibleRigDemo,
+                    description="Open controls for posing an invertible rig.")
+
+    def configureView(self, plugRegistry, plugUIBuilder):
+        self._addOpenExecMenu(plugUIBuilder)
+
+    def _addOpenExecMenu(self, plugUIBuilder):
+        openExecMenu = plugUIBuilder.findOrCreateMenu("OpenExec")
+        
+        if self._openExecPluginEnabled:
+            openExecMenu.addItem(self._openExecInvertibleRigDemo)
+
+# Define OpenExecContainer as a Tf.Type so libplug can pick it up.
+Tf.Type.Define(OpenExecContainer)
