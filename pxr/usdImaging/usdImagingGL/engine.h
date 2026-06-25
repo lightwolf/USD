@@ -764,9 +764,6 @@ protected:
                           TfTokenVector *renderTags);
 
     USDIMAGINGGL_API
-    void _InitializeHgiIfNecessary();
-
-    USDIMAGINGGL_API
     SdfPath _ComputeControllerPath(const TfToken &pluginId);
 
     USDIMAGINGGL_API
@@ -784,19 +781,39 @@ protected:
     USDIMAGINGGL_API
     HdSelectionSharedPtr _GetSelection() const;
 
+    USDIMAGINGGL_API
+    HdContainerDataSourceHandle
+    _GetSceneIndexCreateArgs(
+        HdRendererPluginHandle const &plugin);
+
+    USDIMAGINGGL_API
+    HdContainerDataSourceHandle
+    _GetSceneIndexCreateArgsFromLegacyRenderControl();
+
     // Create UsdImagingStageSceneIndex and subsequent scene indices.
-    void
+    USDIMAGINGGL_API
+    HdSceneIndexBaseRefPtr
     _CreateUsdImagingSceneIndices(HdContainerDataSourceHandle const &inputArgs);
 
+    // Create the merging scene index and all subsequent filtering scene index
+    // and the renderer fed by those.
+    USDIMAGINGGL_API
+    void
+    _CreateSceneIndexChainAndRenderer(
+        HdContainerDataSourceHandle const &sceneIndexCreateArgs,
+        HdRendererPluginHandle const &plugin,
+        const HdRendererCreateArgsSchema &rendererCreateArgs);
+
+    Hgi *
+    _GetOrCreateHgi();
+
 protected:
+    // The Hgi used by the renderer.
+    // It is either provided by the user or the Hgi::CreatePlatformDefaultHgi().
+    Hgi * _hgi;
 
-    // Note that any of the fields below might become private
-    // in the future and subclasses should use the above getters
-    // to access them instead.
-
-    HgiUniquePtr _hgi;
-    // Similar for HdDriver.
-    HdDriver _hgiDriver;
+    // Result of Hgi::CreatePlatformDefaultHgi() if needed.
+    HgiUniquePtr _defaultHgi;
 
     VtValue _userFramebuffer;
 
@@ -837,9 +854,7 @@ private:
 
     bool _CreateSceneIndicesAndRenderer(
         HdRendererPluginHandle const &plugin,
-        const HdRendererCreateArgsSchema &rendererCreateArgs,
-        HdContainerDataSourceHandle const &sceneIndexInputArgs,
-        bool hasRendererPluginSceneIndexInputArgs);
+        const HdRendererCreateArgsSchema &rendererCreateArgs);
 
     void _DestroyHydraObjects();
 
@@ -857,7 +872,6 @@ private:
     bool _lightPruningSceneIndexEnableSceneLights;
 
     UsdImagingSceneIndexRefPtr _usdImagingSceneIndex;
-    HdSceneIndexBaseRefPtr _usdImagingFinalSceneIndex;
 
     HdMergingSceneIndexRefPtr _mergingSceneIndex;
     HdCachingSceneIndexRefPtr _cachingSceneIndex;

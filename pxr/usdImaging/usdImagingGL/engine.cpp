@@ -41,6 +41,7 @@
 #include "pxr/imaging/hd/rendererPlugin.h"
 #include "pxr/imaging/hd/rendererPluginRegistry.h"
 #include "pxr/imaging/hd/retainedDataSource.h"
+#include "pxr/imaging/hd/sceneIndexCreateArgsSchema.h"
 #include "pxr/imaging/hd/sceneIndexPluginRegistry.h"
 #include "pxr/imaging/hd/systemMessages.h"
 #include "pxr/imaging/hd/utils.h"
@@ -366,8 +367,7 @@ UsdImagingGLEngine::UsdImagingGLEngine(
     const bool displayUnloadedPrimsWithBounds,
     const bool allowAsynchronousSceneProcessing,
     const bool enableUsdDrawModes)
-    : _hgi()
-    , _hgiDriver(driver)
+    : _hgi(nullptr)
     , _displayUnloadedPrimsWithBounds(displayUnloadedPrimsWithBounds)
     , _gpuEnabled(gpuEnabled)
     , _sceneDelegateId(sceneDelegateID)
@@ -381,16 +381,20 @@ UsdImagingGLEngine::UsdImagingGLEngine(
     , _allowAsynchronousSceneProcessing(allowAsynchronousSceneProcessing)
     , _enableUsdDrawModes(enableUsdDrawModes)
 {
-    if (!_gpuEnabled && _hgiDriver.name == HgiTokens->renderDriver &&
-        _hgiDriver.driver.IsHolding<Hgi*>()) {
-        TF_WARN("Trying to share GPU resources while disabling the GPU.");
-        _gpuEnabled = true;
+    if (driver.name == HgiTokens->renderDriver) {
+        _hgi = driver.driver.GetWithDefault<Hgi*>(nullptr);
+        if (_hgi && !_gpuEnabled) {
+            TF_WARN("Trying to share GPU resources while disabling the GPU.");
+            _gpuEnabled = true;
+        }
     }
 
     // The renderer, task controller scene index, and
     // _sceneDelegate/_sceneIndex are initialized by the plugin system.
-    if (!SetRendererPlugin(!rendererPluginId.IsEmpty() ?
-            rendererPluginId : _GetDefaultRendererPluginId())) {
+    if (!SetRendererPlugin(
+            !rendererPluginId.IsEmpty()
+                ? rendererPluginId
+                : _GetDefaultRendererPluginId())) {
         TF_CODING_ERROR("No renderer plugins found!");
     }
 }
@@ -428,7 +432,6 @@ UsdImagingGLEngine::_DestroyHydraObjects()
     {
         TRACE_SCOPE("Destroy UsdImaging scene indices");
 
-        _usdImagingFinalSceneIndex = nullptr;
         _usdImagingSceneIndex = nullptr;
         _displayStyleSceneIndex = nullptr;
         _legacyRenderSettingsSceneIndex = nullptr;
@@ -443,6 +446,8 @@ UsdImagingGLEngine::_DestroyHydraObjects()
 
         _taskControllerSceneIndex = TfNullPtr;
     }
+
+    _isPopulated = false;
 }
 
 UsdImagingGLEngine::~UsdImagingGLEngine()
@@ -1448,37 +1453,9 @@ UsdImagingGLEngine::GetCurrentRendererId() const
     return _renderer.GetPluginId();
 }
 
-void
-UsdImagingGLEngine::_InitializeHgiIfNecessary()
-{
-    // If the client of UsdImagingGLEngine does not provide a HdDriver, we
-    // construct a default one that is owned by UsdImagingGLEngine.
-    // The cleanest pattern is for the client app to provide this since you
-    // may have multiple UsdImagingGLEngines in one app that ideally all use
-    // the same HdDriver and Hgi to share GPU resources.
-    if (_gpuEnabled && _hgiDriver.driver.IsEmpty()) {
-        _hgi = Hgi::CreatePlatformDefaultHgi();
-        _hgiDriver.name = HgiTokens->renderDriver;
-        _hgiDriver.driver = VtValue(_hgi.get());
-    }
-}
-
 bool
 UsdImagingGLEngine::SetRendererPlugin(TfToken const &id)
 {
-    _InitializeHgiIfNecessary();
-
-    HdRendererPluginRegistry &registry =
-        HdRendererPluginRegistry::GetInstance();
-
-    Hgi * hgi = nullptr;
-    if (_hgiDriver.name == HgiTokens->renderDriver) {
-        hgi = _hgiDriver.driver.GetWithDefault<Hgi*>(nullptr);
-    }
-    if (!hgi) {
-        hgi = _hgi.get();
-    }
-
     const HdRendererCreateArgsSchema rendererCreateArgs(
         HdRendererCreateArgsSchema::Builder()
             .SetGpuEnabled(
@@ -1486,8 +1463,12 @@ UsdImagingGLEngine::SetRendererPlugin(TfToken const &id)
             .SetDrivers(
                 HdRetainedContainerDataSource::New(
                     HdRendererCreateArgsSchemaTokens->hgi,
-                    HdRetainedTypedSampledDataSource<Hgi*>::New(hgi)))
+                    HdRetainedTypedSampledDataSource<Hgi*>::New(
+                        _GetOrCreateHgi())))
             .Build());
+
+    HdRendererPluginRegistry &registry =
+        HdRendererPluginRegistry::GetInstance();
 
     const TfToken resolvedId =
         id.IsEmpty()
@@ -1512,33 +1493,12 @@ UsdImagingGLEngine::SetRendererPlugin(TfToken const &id)
         return false;
     }
 
-    HdContainerDataSourceHandle const rendererPluginSceneIndexCreateArgs =
-        plugin->GetSceneIndexCreateArgs();
-
-    HdContainerDataSourceHandle const sceneIndexCreateArgs =
-        HdOverlayContainerDataSource::OverlayedContainerDataSources(
-            rendererPluginSceneIndexCreateArgs,
-            HdRetainedContainerDataSource::New(
-                UsdImagingSceneIndexCreateArgsSchema::GetSchemaToken(),
-                UsdImagingSceneIndexCreateArgsSchema::Builder()
-                    .SetAddDrawModeSceneIndex(
-                        HdRetainedTypedSampledDataSource<bool>::New(
-                            _enableUsdDrawModes))
-                    .SetDisplayUnloadedPrimsWithBounds(
-                        HdRetainedTypedSampledDataSource<bool>::New(
-                            _displayUnloadedPrimsWithBounds))
-                    .Build()));
-
     TF_PY_ALLOW_THREADS_IN_SCOPE();
 
-    const bool hasRendererPluginSceneIndexCreateArgs(
-        rendererPluginSceneIndexCreateArgs);
-
-    if (!_CreateSceneIndicesAndRenderer(
-            plugin,
-            rendererCreateArgs,
-            sceneIndexCreateArgs,
-            hasRendererPluginSceneIndexCreateArgs)) {
+    // Create all scene indices (usd imaging scene indices, task controller
+    // scene index, filtering scene indices) that eventually feed into the
+    // renderer which we create.
+    if (!_CreateSceneIndicesAndRenderer(plugin, rendererCreateArgs)) {
         return false;
     }
 
@@ -1554,95 +1514,50 @@ UsdImagingGLEngine::SetRendererPlugin(TfToken const &id)
 bool
 UsdImagingGLEngine::_CreateSceneIndicesAndRenderer(
     HdRendererPluginHandle const &plugin,
-    const HdRendererCreateArgsSchema &rendererCreateArgs,
-    HdContainerDataSourceHandle const &sceneIndexCreateArgs,
-    const bool hasRendererPluginSceneIndexCreateArgs)
+    const HdRendererCreateArgsSchema &rendererCreateArgs)
 {
     TRACE_FUNCTION();
 
+    // Remember root overrides.
     const _RootOverrides rootOverrides =
         UseUsdImagingSceneIndex()
             ? _GetRootOverrides(_rootOverridesSceneIndex)
             : _GetRootOverrides(_sceneDelegate);
 
+    // Destroy old structures.
     _DestroyHydraObjects();
 
-    _isPopulated = false;
+    // Arguments passed to the constructors of various scene indices.
+    HdContainerDataSourceHandle const sceneIndexCreateArgs =
+        _GetSceneIndexCreateArgs(plugin);
 
-    _mergingSceneIndex = HdMergingSceneIndex::New();
-
-    {
-        TRACE_SCOPE("Post-merging scene indices");
-
-        // Setup scene indices following HdMergingSceneIndex.
-
-        const std::string rendererDisplayName = plugin->GetDisplayName();
-
-        HdSceneIndexBaseRefPtr sceneIndex = _mergingSceneIndex;
-        if (!rendererDisplayName.empty()) {
-            // Use the render delegate ptr (rather than 'this' ptr) for generating
-            // the unique id.
-            const std::string renderInstanceId =
-                TfStringPrintf(
-                    "UsdImagingGLEngine_%s_%p",
-                    rendererDisplayName.c_str(), (void *) this);
-
-            _appSceneIndices =
-                UsdImagingGLEngine_Impl::_AppSceneIndices::New(
-                    TfToken(renderInstanceId));
-
-            sceneIndex =
-                HdSceneIndexPluginRegistry::GetInstance()
-                    .AppendSceneIndicesForRenderer(
-                        rendererDisplayName, sceneIndex, renderInstanceId);
-        }
-
-        if (_IsEnabledTerminalCachingSceneIndex()) {
-            sceneIndex =
-                _cachingSceneIndex =
-                    HdCachingSceneIndex::New(sceneIndex);
-        }
-        _terminalSceneIndex = sceneIndex;
-    }
-
-    _renderer =
-        plugin->CreateRenderer(
-            _terminalSceneIndex, rendererCreateArgs);
-
+    // Create the merging scene index, all subsequent scene indices
+    // and the renderer.
+    _CreateSceneIndexChainAndRenderer(
+        sceneIndexCreateArgs, plugin, rendererCreateArgs);
+    
     if (!_renderer) {
         return false;
     }
 
+    // Create the usd imaging scene indices.
     if (UseUsdImagingSceneIndex()) {
         TRACE_SCOPE("UsdImaging scene indices");
 
         // Setup Usd imaging scene indices.
-
-        _CreateUsdImagingSceneIndices(sceneIndexCreateArgs);
+        HdSceneIndexBaseRefPtr sceneIndex =
+            _CreateUsdImagingSceneIndices(sceneIndexCreateArgs);
         _SetRootOverrides(rootOverrides, _rootOverridesSceneIndex);
 
-        if (!_sceneDelegateId.IsAbsoluteRootPath()) {
-            _usdImagingFinalSceneIndex = HdPrefixingSceneIndex::New(
-                _usdImagingFinalSceneIndex, _sceneDelegateId);
-        }
-        _mergingSceneIndex->InsertInputScenes(
-            {{ _usdImagingFinalSceneIndex, _sceneDelegateId }});
+        _mergingSceneIndex->InsertInputScenes({{sceneIndex , _sceneDelegateId }});
     } else {
         TRACE_SCOPE("UsdImaging scene delegate");
 
-        HdRenderIndexAdapterSceneIndexRefPtr adapter;
-
-        if (hasRendererPluginSceneIndexCreateArgs) {
-            adapter = HdRenderIndexAdapterSceneIndex::New(
-                sceneIndexCreateArgs);
-        } else {
-            HdRenderDelegateInfo info;
-            if (HdLegacyRenderControlInterface * const renderControl =
-                    _GetLegacyRenderControl()) {
-                info = renderControl->GetRenderDelegateInfo();
-            }
-            adapter = HdRenderIndexAdapterSceneIndex::New(info);
-        }
+        HdRenderIndexAdapterSceneIndexRefPtr const adapter =
+            HdRenderIndexAdapterSceneIndex::New(
+                HdOverlayContainerDataSource::OverlayedContainerDataSources(
+                    sceneIndexCreateArgs,
+                    _GetSceneIndexCreateArgsFromLegacyRenderControl()));
 
         _mergingSceneIndex->InsertInputScenes(
             {{adapter, SdfPath::AbsoluteRootPath()}});
@@ -1767,22 +1682,123 @@ UsdImagingGLEngine::_AppendOverridesSceneIndices(
     return sceneIndex;
 }
 
-void
+HdSceneIndexBaseRefPtr
 UsdImagingGLEngine::_CreateUsdImagingSceneIndices(
     HdContainerDataSourceHandle const &sceneIndexCreateArgs)
 {
-    _usdImagingSceneIndex =
-        UsdImagingSceneIndex::New(
-            sceneIndexCreateArgs,
-            std::bind(
-                &UsdImagingGLEngine::_AppendOverridesSceneIndices,
-                this, std::placeholders::_1));
+    HdSceneIndexBaseRefPtr sceneIndex;
 
-    HdSceneIndexBaseRefPtr sceneIndex = _usdImagingSceneIndex;
-    sceneIndex = _displayStyleSceneIndex =
-        HdsiLegacyDisplayStyleOverrideSceneIndex::New(sceneIndex);
+    sceneIndex =
+        _usdImagingSceneIndex =
+            UsdImagingSceneIndex::New(
+                sceneIndexCreateArgs,
+                std::bind(
+                    &UsdImagingGLEngine::_AppendOverridesSceneIndices,
+                    this, std::placeholders::_1));
 
-    _usdImagingFinalSceneIndex = sceneIndex;
+    sceneIndex =
+        _displayStyleSceneIndex =
+             HdsiLegacyDisplayStyleOverrideSceneIndex::New(sceneIndex);
+
+    if (!_sceneDelegateId.IsAbsoluteRootPath()) {
+        sceneIndex =
+            HdPrefixingSceneIndex::New(sceneIndex, _sceneDelegateId);
+    }
+    
+    return sceneIndex;
+}
+
+HdContainerDataSourceHandle
+UsdImagingGLEngine::_GetSceneIndexCreateArgs(
+    HdRendererPluginHandle const &plugin)
+{
+    HdContainerDataSourceHandle const rendererPluginArgs =
+        plugin->GetSceneIndexCreateArgs();
+
+    HdContainerDataSourceHandle const usdImagingArgs =
+        HdRetainedContainerDataSource::New(
+            UsdImagingSceneIndexCreateArgsSchema::GetSchemaToken(),
+            UsdImagingSceneIndexCreateArgsSchema::Builder()
+                .SetAddDrawModeSceneIndex(
+                    HdRetainedTypedSampledDataSource<bool>::New(
+                        _enableUsdDrawModes))
+                .SetDisplayUnloadedPrimsWithBounds(
+                    HdRetainedTypedSampledDataSource<bool>::New(
+                        _displayUnloadedPrimsWithBounds))
+                .Build());
+
+    return HdOverlayContainerDataSource::OverlayedContainerDataSources(
+        rendererPluginArgs,
+        usdImagingArgs);
+}
+
+HdContainerDataSourceHandle
+UsdImagingGLEngine::_GetSceneIndexCreateArgsFromLegacyRenderControl()
+{
+    if (!_renderer) {
+        TF_CODING_ERROR("Need renderer to access render control.");
+        return nullptr;
+    }
+    
+    HdLegacyRenderControlInterface * const renderControl =
+        _GetLegacyRenderControl();
+    if (!renderControl) {
+        return nullptr;
+    }
+    return
+        HdSceneIndexCreateArgsSchema::Builder()
+            .SetLegacyRenderDelegateInfo(
+                HdRetainedTypedSampledDataSource<HdRenderDelegateInfo>::New(
+                    renderControl->GetRenderDelegateInfo()))
+            .Build();
+}
+
+void
+UsdImagingGLEngine::_CreateSceneIndexChainAndRenderer(
+    HdContainerDataSourceHandle const &sceneIndexCreateArgs,
+    HdRendererPluginHandle const &plugin,
+    const HdRendererCreateArgsSchema &rendererCreateArgs)
+{
+    TRACE_FUNCTION();
+    
+    HdSceneIndexBaseRefPtr sceneIndex =
+        _mergingSceneIndex =
+             HdMergingSceneIndex::New();
+
+    // Setup scene indices following HdMergingSceneIndex.
+
+    const std::string rendererDisplayName = plugin->GetDisplayName();
+
+    if (!rendererDisplayName.empty()) {
+        // Use the render delegate ptr (rather than 'this' ptr) for generating
+        // the unique id.
+        const std::string renderInstanceId =
+            TfStringPrintf(
+                "UsdImagingGLEngine_%s_%p",
+                rendererDisplayName.c_str(), (void *) this);
+
+        _appSceneIndices =
+            UsdImagingGLEngine_Impl::_AppSceneIndices::New(
+                TfToken(renderInstanceId));
+
+        sceneIndex =
+            HdSceneIndexPluginRegistry::GetInstance()
+                .AppendSceneIndicesForRenderer(
+                    rendererDisplayName, sceneIndex, renderInstanceId);
+    }
+
+    if (_IsEnabledTerminalCachingSceneIndex()) {
+        sceneIndex =
+            _cachingSceneIndex =
+            HdCachingSceneIndex::New(sceneIndex);
+    }
+
+    _terminalSceneIndex =
+        sceneIndex;
+
+    _renderer =
+        plugin->CreateRenderer(
+            _terminalSceneIndex, rendererCreateArgs);
 }
 
 //----------------------------------------------------------------------------
@@ -2251,14 +2267,21 @@ UsdImagingGLEngine::GetRenderStats() const
     return renderControl->GetRenderStats();
 }
 
+Hgi *
+UsdImagingGLEngine::_GetOrCreateHgi()
+{
+    if (_gpuEnabled && !_hgi) {
+        _defaultHgi = Hgi::CreatePlatformDefaultHgi();
+        _hgi = _defaultHgi.get();
+    }
+
+    return _hgi;
+}
+
 Hgi*
 UsdImagingGLEngine::GetHgi()
 {
-    if (ARCH_UNLIKELY(!_renderer)) {
-        return nullptr;
-    }
-
-    return _hgi.get();
+    return _GetOrCreateHgi();
 }
 
 //----------------------------------------------------------------------------
