@@ -4644,6 +4644,50 @@ pxr_register_test(testUsdImagingGLUsdRenderPass_visibility
     EXPECTED_RETURN_CODE 0
     TESTENV testenv/testUsdImagingGLUsdRenderPass)
 
+pxr_register_test(testUsdImagingGLUsdRenderPassWithInstances_default
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdrecord --renderer HdStormRendererPlugin --renderPassPrimPath /Render/Passes/default renderPassWithInstances.usda renderPassWithInstances_default.exr"
+    IMAGE_DIFF_COMPARE
+        renderPassWithInstances_default.exr
+    FAIL 1
+    FAIL_PERCENT 1
+    PERCEPTUAL
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLUsdRenderPass)
+
+pxr_register_test(testUsdImagingGLUsdRenderPassWithInstances_prune_test
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdrecord --renderer HdStormRendererPlugin --renderPassPrimPath /Render/Passes/prune_test renderPassWithInstances.usda renderPassWithInstances_prune_test.exr"
+    IMAGE_DIFF_COMPARE
+        renderPassWithInstances_prune_test.exr
+    FAIL 1
+    FAIL_PERCENT 1
+    PERCEPTUAL
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLUsdRenderPass)
+
+pxr_register_test(testUsdImagingGLUsdRenderPassWithInstances_renderVisibility_test
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdrecord --renderer HdStormRendererPlugin --renderPassPrimPath /Render/Passes/renderVisibility_test renderPassWithInstances.usda renderPassWithInstances_renderVisibility_test.exr"
+    IMAGE_DIFF_COMPARE
+        renderPassWithInstances_renderVisibility_test.exr
+    FAIL 1
+    FAIL_PERCENT 1
+    PERCEPTUAL
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLUsdRenderPass)
+
+pxr_register_test(testUsdImagingGLUsdRenderPassWithInstances_renderVisibility_test2
+    PYTHON
+    COMMAND "${CMAKE_INSTALL_PREFIX}/bin/usdrecord --renderer HdStormRendererPlugin --renderPassPrimPath /Render/Passes/renderVisibility_test2 renderPassWithInstances.usda renderPassWithInstances_renderVisibility_test2.exr"
+    IMAGE_DIFF_COMPARE
+        renderPassWithInstances_renderVisibility_test2.exr
+    FAIL 1
+    FAIL_PERCENT 1
+    PERCEPTUAL
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLUsdRenderPass)
+
 pxr_register_test(testUsdImagingGLTextureResync
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLTextureResync --stage testUsdImagingGLTextureResync.usda --deactivate /Scene/Looks/Material1/Texture --deactivate /Scene/Looks/Material2/Texture --write testUsdImagingGLTextureResync.png"
     IMAGE_DIFF_COMPARE
