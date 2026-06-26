@@ -1,7 +1,16 @@
 # OpenExec Invertible Rigs Example
 
-This directory contains code and assets that demonstrate how invertible rigs are
-used in the context of animation authoring workflows.
+This directory contains code and assets that demonstrate how invertible rigs can
+be used to pose model skeletons--and particularly how they are used in the
+context of animation authoring workflows, where invertibility is important. This
+document describes an example rig and a key authoring workflow that highlights
+the benefits of invertible rigs. For more additional information, see the
+[execIr library documentation](#page_ExecIr_readme).
+
+> [!warning]
+> The example code and assets in this library are built using schemas and APIs
+> that are limited in functionality, subject to change, and not yet ready for
+> production use.
 
 ## Example Invertible Rig
 
@@ -13,13 +22,13 @@ which sub-rig is active at any given time.
 
 ![Waddler Rig](docs/images/waddlerRig.drawio.svg)
 
-The above diagram shows the structure of the "waddler" (also known as a
-"rocker") rig. This is a toy version of a kind of rig that is used in production
-to animate the overall position and orientation of a model. The key feature of
-the waddler is that there are two pivots that it can rotate about, only one of
-which is active at a given time. To represent this in terms of invertible rigs,
-there are two sub-rigs and a **switch avar** that feeds switch controllers,
-which enable the selected rig based on the switch avar's value.
+The above diagram shows the structure of the "waddler" rig. This is a toy
+version of a kind of rig that is used in production to animate the overall
+position and orientation of a model. The key feature of the waddler is that
+there are two pivots that it can rotate about, only one of which is active at a
+given time. To represent this in terms of invertible rigs, there are two
+sub-rigs and a **switch avar** that feeds switch controllers, which enable the
+selected rig based on the switch avar's value.
 
 Note that the example rig isn't wired up to pose any geometry; its output is the
 space (i.e., the transform matrix) produced by the attribute `posed:space` on
@@ -36,10 +45,11 @@ discontinuous change in the pose produced by the rig. In order to generate
 continuous motion as we change from selecting rig A to selecting rig B, we need
 to find the set of input avar values for rig B that produce the same pose that
 is produced by rig A before the switch. This is where we take advantage of the
-fact that the rigs are invertible: By invoking **inversion**, we can compute the
-input avar values that satisfy this requirement (assuming that rig B can produce
-the desired pose). The process of computing and authoring values that produce
-continuous motion when changing the value of a switch avar is called **switch
+fact that the rigs are invertible: By invoking
+[inversion](#section_ExecIr_Inversion), we can compute the input avar values
+that satisfy this requirement (assuming that rig B can produce the desired
+pose). The process of computing and authoring values that produce continuous
+motion when changing the value of a switch avar is called **switch
 compensation**.
 
 Switch compensation works as follows:
@@ -71,12 +81,13 @@ InvertibleRigsExample_Authoring::BreakdownInputAvars().
 ## Example Files
 
 - The `testSwitchCompensation` test includes an input file
-  `testenv/testSwitchCompensation/waddlerRig.usda` that contains the example rig
-  discussed above.
+  `lib/testenv/testSwitchCompensation/waddlerRig.usda` that contains the example
+  rig discussed above.
 - The `testSwitchCompensation` test includes an input file
-  `testenv/testSwitchCompensation/shot.usda` that references the waddler rig
+  `lib/testenv/testSwitchCompensation/shot.usda` that references the waddler rig
   into a small scene.
-- The test code in `testenv/testSwitchCompensation.py` illustrates how swich
-  compensation can be used to programmatically produce continuous animation.
+- The test code in `lib/testenv/testSwitchCompensation.py` illustrates how
+  switch compensation can be used to programmatically produce continuous
+  animation.
 - When the test runs, it produces `result.usda`, which contains the resulting
   animation.
