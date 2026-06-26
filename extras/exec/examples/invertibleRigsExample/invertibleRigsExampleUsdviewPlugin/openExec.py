@@ -230,7 +230,10 @@ class AttributeValueWidget(QtWidgets.QLineEdit):
             currentTime = self._usdviewApi.dataModel.currentFrame
             value = self._usdAttribute.Get(currentTime)
 
-            # TODO: Investigate why we see 'None' values here.
+            # It is possible to receive 'None' values from UsdAttribute.Get(). 
+            # For example, if no value is authored and no fallback value is 
+            # provided by the schema for this attribute, or if the attribute is 
+            # initialized with an empty spline.
             if value == None:
                 return
 

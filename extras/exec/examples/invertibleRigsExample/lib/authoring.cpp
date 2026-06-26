@@ -88,12 +88,12 @@ _SetSplineKnot(
 {
     const TfType valueType = attr.GetTypeName().GetType();
 
-    // If the attribute doesn't already have a spline, author an empty spline
-    // onto it.
-    if (!attr.HasSpline()) {
-        attr.SetSpline(TsSpline(valueType));
+    // Start with the spline from the attribute if there is one, or an empty
+    // one otherwise.
+    TsSpline spline = TsSpline(valueType); 
+    if (attr.HasSpline()) {
+        spline = attr.GetSpline();
     }
-    TsSpline spline = attr.GetSpline();
 
     // Get or create a knot at the given time.
     TsKnot knot;
