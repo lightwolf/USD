@@ -14,6 +14,7 @@
 
 #include "pxr/imaging/hd/collectionExpressionEvaluator.h"
 #include "pxr/imaging/hd/collectionsSchema.h"
+#include "pxr/imaging/hd/instancedBySchema.h"
 #include "pxr/imaging/hd/instancerTopologySchema.h"
 #include "pxr/imaging/hd/containerDataSourceEditor.h"
 #include "pxr/imaging/hd/dataSourceLocator.h"
@@ -598,7 +599,15 @@ _RenderPassVisibilityAndMatteSceneIndex::GetPrim(
 {
     HdSceneIndexPrim prim = _GetInputSceneIndex()->GetPrim(primPath);
 
-    if (prim.dataSource) {
+    // Do not modify prototype prims (those with instancedBy schema).
+    // Prototypes are an internal detail of the system, not something
+    // meant to be user-facing, so there must be no way to point
+    // user-defined operations (such as render pass collections)
+    // at prototypes.
+    const HdInstancedBySchema instancedBy =
+        HdInstancedBySchema::GetFromParent(prim.dataSource);
+
+    if (prim.dataSource && !instancedBy.IsDefined()) {
         // Overrides happen in the prim-level data source.
         prim.dataSource = _RenderPassVisibilityAndMatteDataSource::New(
             TfCreateWeakPtr(this), primPath, prim);
