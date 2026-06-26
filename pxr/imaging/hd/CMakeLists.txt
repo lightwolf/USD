@@ -40,6 +40,7 @@ pxr_library(hd
         collectionSchema
         collectionsSchema
         command
+        concatenatedVectorDataSource
         coneSchema
         containerDataSourceEditor
         containerSchema
