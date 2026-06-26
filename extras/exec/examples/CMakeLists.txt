@@ -3,5 +3,5 @@ set(PXR_INSTALL_SUBDIR share/exec/examples)
 
 add_subdirectory(computingValues)
 add_subdirectory(definingComputations)
-add_subdirectory(invertibleRigsExample/lib)
+add_subdirectory(invertibleRigsExample/invertibleRigsExampleAuthoringCode)
 add_subdirectory(invertibleRigsExample/invertibleRigsExampleUsdviewPlugin)

@@ -1,5 +1,5 @@
 set(PXR_PREFIX pxr/exec)
-set(PXR_PACKAGE invertibleRigsExample)
+set(PXR_PACKAGE invertibleRigsExampleAuthoringCode)
 
 pxr_plugin(${PXR_PACKAGE}
     LIBRARIES

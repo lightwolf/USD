@@ -4,7 +4,7 @@
 # Licensed under the terms set forth in the LICENSE.txt file available at
 # https://openusd.org/license.
 #
-from pxr import Usd, Sdf, Tf, Ts, InvertibleRigsExample
+from pxr import Usd, Sdf, Tf, Ts, InvertibleRigsExampleAuthoringCode
 from pxr.Usdviewq.qt import QtCore, QtGui, QtWidgets
 
 def SetAtTime(attr, value, time):
@@ -368,7 +368,7 @@ class AttributeValueSelectWidgetWithCompensation(AttributeValueSelectWidget):
         super(AttributeValueSelectWidgetWithCompensation, self) \
             .__init__(usdAttribute, usdviewApi, parent)
         
-        self._authoring = InvertibleRigsExample.Authoring(
+        self._authoring = InvertibleRigsExampleAuthoringCode.Authoring(
             self._usdviewApi.dataModel.stage)
         self.switch = usdAttribute
 
@@ -538,7 +538,7 @@ class AuthoringWindow(QtWidgets.QWidget):
         For all avars that contribute to the pose, author spline knots or time 
         samples at the current time, with the current value of the avar.
         """
-        authoring = InvertibleRigsExample.Authoring(
+        authoring = InvertibleRigsExampleAuthoringCode.Authoring(
             self._usdviewApi.dataModel.stage)
         
         authoring.BreakdownInputAvars(self.switchAttribute,
