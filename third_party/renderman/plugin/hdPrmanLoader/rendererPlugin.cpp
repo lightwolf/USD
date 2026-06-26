@@ -208,9 +208,7 @@ HdPrmanLoaderRendererPlugin::HdPrmanLoaderRendererPlugin()
     _hdPrman.valid = true;
 }
 
-HdPrmanLoaderRendererPlugin::~HdPrmanLoaderRendererPlugin()
-{
-}
+HdPrmanLoaderRendererPlugin::~HdPrmanLoaderRendererPlugin() = default;
 
 #if HD_API_VERSION >= 90
 
@@ -381,31 +379,42 @@ HdPrmanLoaderRendererPlugin::DeleteRenderDelegate(
     }
 }
 
+static
 bool
-#if PXR_VERSION < 2305
-HdPrmanLoaderRendererPlugin::IsSupported() const
-#elif HD_API_VERSION < 83
-HdPrmanLoaderRendererPlugin::IsSupported(bool /* gpuEnabled */) const
-#else
-HdPrmanLoaderRendererPlugin::IsSupported(
-    HdRendererCreateArgs const & /* rendererCreateArgs */,
-    std::string *reasonWhyNot) const
-#endif
+_IsSupported(std::string * const reasonWhyNot = nullptr)
 {
     // TODO: Should we disable XPU gpus with gpuEnabled off?
     if (!_hdPrman.valid) {
         TF_DEBUG(HD_RENDERER_PLUGIN).Msg(
             "hdPrman renderer plugin unsupported: %s\n",
             _hdPrman.errorMsg.c_str());
-#if HD_API_VERSION >= 83
         if (reasonWhyNot) {
             *reasonWhyNot = "hdPrman renderer plugin unsupported: " +
                 _hdPrman.errorMsg;
         }
-#endif
     }
 
     return _hdPrman.valid;
+}
+
+bool
+HdPrmanLoaderRendererPlugin::IsSupported(
+#if HD_API_VERSION >= 103
+    const HdRendererCreateArgsSchema &rendererCreateArgs,
+    std::string * reasonWhyNot
+#elif HD_API_VERSION >= 83
+    HdRendererCreateArgs const &rendererCreateArgs,
+    std::string * reasonWhyNot
+#elif PXR_VERSION < 2305
+    bool gpuEnabled = true
+#endif
+    ) const
+{
+    return _IsSupported(
+#if HD_API_VERSION >= 83
+        reasonWhyNot
+#endif
+        );
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE
