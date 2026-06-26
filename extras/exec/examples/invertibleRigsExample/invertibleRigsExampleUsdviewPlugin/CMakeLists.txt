@@ -1,4 +1,3 @@
-set(PXR_PREFIX pxr/exec)
 set(PXR_PACKAGE invertibleRigsExampleUsdviewPlugin)
 
 pxr_plugin(${PXR_PACKAGE}
