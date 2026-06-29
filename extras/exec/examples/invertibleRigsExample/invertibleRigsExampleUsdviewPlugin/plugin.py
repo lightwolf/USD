@@ -179,7 +179,7 @@ class AttributeValueWidget(QtWidgets.QLineEdit):
         
         return newValue
 
-    def authorValue(self, newValue):
+    def _authorValue(self, newValue):
         """
         Authors newValue to the underlying UsdAttribute at the current time.
         """
@@ -218,7 +218,7 @@ class AttributeValueWidget(QtWidgets.QLineEdit):
         except TypeError as err:
             return
 
-        self.authorValue(newValue)
+        self._authorValue(newValue)
 
     def _onObjectsChanged(self, notice, stage):
         """
@@ -274,7 +274,7 @@ class AttributeValueWidget(QtWidgets.QLineEdit):
             delta = event.pos().x() - self._mungBaseMousePos.x()
             delta *= self.__mungSensitivity
             value = self._mungBaseValue + delta
-            self.authorValue(value)
+            self._authorValue(value)
             self.selectAll()
         else:
             super(AttributeValueWidget, self).mouseMoveEvent(event)
@@ -289,9 +289,10 @@ class AttributeValueSelectWidget(QtWidgets.QComboBox):
         super(AttributeValueSelectWidget, self).__init__(parent)
         
         self._usdviewApi = usdviewApi
-        
-        # Store the UsdAttribute in the widget.
         self._usdAttribute = usdAttribute
+
+        if self._usdAttribute is None:
+            return
 
         if self._usdAttribute.HasMetadata('allowedTokens'):
             # The items in the combo box are the allowed tokens for the
@@ -364,13 +365,13 @@ class AttributeValueSelectWidget(QtWidgets.QComboBox):
 
 class AttributeValueSelectWidgetWithCompensation(AttributeValueSelectWidget):
     
-    def __init__(self, usdAttribute, usdviewApi, parent=None):
+    def __init__(self, switchAttribute, usdviewApi, parent=None):
         super(AttributeValueSelectWidgetWithCompensation, self) \
-            .__init__(usdAttribute, usdviewApi, parent)
-        
+            .__init__(switchAttribute, usdviewApi, parent)
+
         self._authoring = InvertibleRigsExampleAuthoringCode.Authoring(
             self._usdviewApi.dataModel.stage)
-        self.switch = usdAttribute
+        self._switchAttribute = switchAttribute
 
     def _onSelectionChanged(self, index):
         """
@@ -381,7 +382,9 @@ class AttributeValueSelectWidgetWithCompensation(AttributeValueSelectWidget):
         currentTime = self._usdviewApi.dataModel.currentFrame
         
         try:
-            self._authoring.CompensateSwitch(self.switch, currentTime, newValue)
+            self._authoring.CompensateSwitch(self._switchAttribute, 
+                                             currentTime,
+                                             newValue)
         except Exception as err:
             Tf.Warn(f'Caught exception while calling CompensateSwitch(): {err}')
         
@@ -496,42 +499,58 @@ class AuthoringWindow(QtWidgets.QWidget):
 
     def _setupDemoControlsWidget(self):
 
-        # add a vertical box layout to the root layout
+        # Add a vertical box layout to the root layout
         self._vLayout = QtWidgets.QVBoxLayout()
         self._rootLayout.addLayout(self._vLayout)
 
-        # vertical box layout's first widget is a group box
-        self.groupDemoControls = QtWidgets.QGroupBox('Demo Controls')
-        self.groupDemoControls.setMinimumWidth(180)
-        self._vLayout.addWidget(self.groupDemoControls)
+        # The vertical box layout's first widget is an unnamed group box
+        self._groupBox = QtWidgets.QGroupBox('')
+        self._groupBox.setMinimumWidth(180)
+        self._vLayout.addWidget(self._groupBox)
 
+        # The group box contains a form layout that takes name:widget pairs.
+        # Align it right, allow it to grow with its surroundings, and give it 
+        # comfortable padding.
         self._formLayout = QtWidgets.QFormLayout()
-        self._formLayout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)   
+        self._formLayout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self._formLayout.setFieldGrowthPolicy(
             QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
-        self._formLayout.setContentsMargins(12, 12, 12, 12) # Comfortable padding
-        self.groupDemoControls.setLayout(self._formLayout)
+        self._formLayout.setContentsMargins(12, 12, 12, 12)
+        self._groupBox.setLayout(self._formLayout)
 
-        # use a AttributeValueSelectWidgetWithCompensation for rigSelection
+        # Set up the rig selector switch attribute, and use an
+        # AttributeValueSelectWidgetWithCompensation widget as a gui control
+        self._switchAttribute = None
+
         stage = self._usdviewApi.dataModel.stage
         query = InvertibleRigsExampleAuthoringCode.Query(stage)
         sources = query.FindSwitchAvars("switch")
-        if len(sources) == 1:
-            self.switchAttribute = sources[0]
+        foundSwitchAvar = len(sources) == 1
+        
+        if foundSwitchAvar:
+            self._switchAttribute = sources[0]
         else:
             Tf.Warn("Can't find switch attribute")
-        self.rigSelection = AttributeValueSelectWidgetWithCompensation(
-            self.switchAttribute, self._usdviewApi)
-                
-        # add it to the form layout
-        self._formLayout.addRow('Select rig:', self.rigSelection)
+        
+        # Note that self._switchAttribute will be None if the search failed. 
+        # We still build the widget but disable it below.
+        self._rigSelection = AttributeValueSelectWidgetWithCompensation(
+            self._switchAttribute, self._usdviewApi)
 
-        # add a QPushButton for breaking down relevant avars
+        # Add it to the form layout
+        self._formLayout.addRow('Select rig:', self._rigSelection)
+
+        # Add a QPushButton for breaking down relevant avars
         self._breakdownButton = QtWidgets.QPushButton('Breakdown')
         self._breakdownButton.clicked.connect(self._onBreakdownClicked)
         self._formLayout.addRow('', self._breakdownButton)
 
-        # add a QPushButton for clearing authoring
+        # Disable widgets that depend on the switch avar if the search failed
+        if not foundSwitchAvar:
+            self._rigSelection.setEnabled(False)
+            self._breakdownButton.setEnabled(False)
+
+        # Add a QPushButton for clearing authoring
         self._clearButton = QtWidgets.QPushButton('Clear authoring')
         self._clearButton.clicked.connect(self._onClearButtonClicked)
         self._formLayout.addRow('', self._clearButton)
@@ -544,8 +563,11 @@ class AuthoringWindow(QtWidgets.QWidget):
         authoring = InvertibleRigsExampleAuthoringCode.Authoring(
             self._usdviewApi.dataModel.stage)
         
-        authoring.BreakdownInputAvars(self.switchAttribute,
-                                      self._usdviewApi.dataModel.currentFrame)
+        try:
+            authoring.BreakdownInputAvars(self._switchAttribute,
+                self._usdviewApi.dataModel.currentFrame)
+        except Exception as err:
+            Tf.Warn(f'Exception while calling BreakdownInputAvars: {err}')
 
     def _onClearButtonClicked(self):
         """
