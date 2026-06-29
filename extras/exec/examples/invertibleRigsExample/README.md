@@ -80,14 +80,11 @@ InvertibleRigsExample_Authoring::BreakdownInputAvars().
 
 ## Example Files
 
-- The `testSwitchCompensation` test includes an input file
-  `lib/testenv/testSwitchCompensation/waddlerRig.usda` that contains the example
-  rig discussed above.
-- The `testSwitchCompensation` test includes an input file
-  `lib/testenv/testSwitchCompensation/shot.usda` that references the waddler rig
-  into a small scene.
-- The test code in `lib/testenv/testSwitchCompensation.py` illustrates how
-  switch compensation can be used to programmatically produce continuous
-  animation.
+- The file `assets/waddlerRig.usda` contains the example rig discussed above.
+- The file `assets/shot.usda` references the waddler rig into a small scene.
+- The test code in
+  `invertibleRigsExampleAuthoringCode/testenv/testSwitchCompensation.py` (which
+  contains copies of these same assets) illustrates how switch compensation can
+  be used to programmatically produce continuous animation.
 - When the test runs, it produces `result.usda`, which contains the resulting
   animation.
