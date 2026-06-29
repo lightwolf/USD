@@ -80,6 +80,7 @@ _IsGeometryType(const TfToken &primType)
         HdPrimTypeTokens->cylinder,
         HdPrimTypeTokens->sphere,
         HdPrmanTokens->meshLightSourceMesh,
+        HdPrmanTokens->meshLightSourcePoints,
         HdPrmanTokens->meshLightSourceVolume
     };
     return HdPrimTypeIsGprim(primType) ||

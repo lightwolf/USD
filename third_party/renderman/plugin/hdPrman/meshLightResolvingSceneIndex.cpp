@@ -183,6 +183,7 @@ _IsMeshLight(
     const HdSceneIndexPrim& prim)
 {
     if ((prim.primType == HdPrimTypeTokens->mesh) ||
+        (prim.primType == HdPrimTypeTokens->points) ||
         (prim.primType == HdPrimTypeTokens->volume)) {
         if (auto lightSchema = HdLightSchema::GetFromParent(prim.dataSource)) {
             if (auto dataSource = HdBoolDataSource::Cast(
@@ -1208,15 +1209,22 @@ HdPrmanMeshLightResolvingSceneIndex::GetPrim(
             };
         }
 
-        // The source mesh -> "meshLightSourceMesh" or "meshLightSourceVolume"
+        // The source mesh -> "meshLightSourceMesh", "meshLightSourcePoints",
+        // or "meshLightSourceVolume"
         if (primPath.GetNameToken() == _tokens->meshLightSourceName) {
+            TfToken sourceType;
+            if (parentPrim.primType == HdPrimTypeTokens->volume) {
+                sourceType = HdPrmanTokens->meshLightSourceVolume;
+            } else if (parentPrim.primType == HdPrimTypeTokens->points) {
+                sourceType = HdPrmanTokens->meshLightSourcePoints;
+            } else {
+                sourceType = HdPrmanTokens->meshLightSourceMesh;
+            }
             return {
-                parentPrim.primType == HdPrimTypeTokens->volume
-                  ? HdPrmanTokens->meshLightSourceVolume
-                  : HdPrmanTokens->meshLightSourceMesh,
+                sourceType,
                 _BuildSourceDataSource(
-                    parentPath, 
-                    parentPrim.dataSource, 
+                    parentPath,
+                    parentPrim.dataSource,
                     _disableDeformationMotionBlur
                 )
             };
@@ -1263,6 +1271,7 @@ HdPrmanMeshLightResolvingSceneIndex::_PrimsAdded(
         [&](const HdSceneIndexObserver::AddedPrimEntry &entry)
         {
             if ((entry.primType == HdPrimTypeTokens->mesh) ||
+                (entry.primType == HdPrimTypeTokens->points) ||
                 (entry.primType == HdPrimTypeTokens->volume)) {
                 HdSceneIndexPrim prim = _GetInputSceneIndex()->
                     GetPrim(entry.primPath);
@@ -1461,12 +1470,18 @@ HdPrmanMeshLightResolvingSceneIndex::_AddMeshLight(
         HdPrimTypeTokens->meshLight);
 #endif
 
-    // The source mesh (for the light prim)
+    // The source geometry (for the light prim)
+    TfToken sourceType;
+    if (prim.primType == HdPrimTypeTokens->volume) {
+        sourceType = HdPrmanTokens->meshLightSourceVolume;
+    } else if (prim.primType == HdPrimTypeTokens->points) {
+        sourceType = HdPrmanTokens->meshLightSourcePoints;
+    } else {
+        sourceType = HdPrmanTokens->meshLightSourceMesh;
+    }
     added->emplace_back(
         primPath.AppendChild(_tokens->meshLightSourceName),
-        prim.primType == HdPrimTypeTokens->volume
-          ? HdPrmanTokens->meshLightSourceVolume
-          : HdPrmanTokens->meshLightSourceMesh);
+        sourceType);
 
     // The stripped-down origin prim
     if (meshVisible) {
