@@ -320,6 +320,29 @@ _RenderPassVisibilityDataSource::Get(const TfToken &name)
 // Render Pass Visibility Scene Index (cont.) //
 ////////////////////////////////////////////////
 
+static bool
+_IsPrototype(HdSceneIndexPrim const& prim)
+{
+    if (HdInstancedBySchema instancedBySchema =
+        HdInstancedBySchema::GetFromParent(prim.dataSource)) {
+        // XXX The docs for the InstancedBy schema say it is
+        // "A schema marking a prim as instanced by another prim"
+        //
+        // However, experimentally we observe prims from Presto Mf
+        // have this schema regardless of being instanced.  So we
+        // must pull apart the schema to check for instance paths.
+        //
+        // It seems like it would be better to only emit the
+        // instancedBy schema for prims that are instanced.
+        if (HdPathArrayDataSourceHandle pathsDs =
+            instancedBySchema.GetPaths()) {
+            VtArray<SdfPath> paths = pathsDs->GetTypedValue(0.0);
+            return !paths.empty();
+        }
+    }
+    return false;
+}
+
 HdSceneIndexPrim 
 _RenderPassVisibilitySceneIndex::GetPrim(
     const SdfPath &primPath) const
@@ -334,7 +357,7 @@ _RenderPassVisibilitySceneIndex::GetPrim(
     const HdInstancedBySchema instancedBy =
         HdInstancedBySchema::GetFromParent(prim.dataSource);
 
-    if (prim.dataSource && !instancedBy.IsDefined()) {
+    if (prim.dataSource && !_IsPrototype(prim)) {
         // Overrides happen in the prim-level data source.
         prim.dataSource = _RenderPassVisibilityDataSource::New(
             TfCreateWeakPtr(this), primPath, prim);
