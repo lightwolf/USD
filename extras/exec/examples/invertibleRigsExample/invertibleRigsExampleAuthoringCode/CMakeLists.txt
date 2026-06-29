@@ -17,10 +17,12 @@ pxr_plugin(${PXR_PACKAGE}
 
     PUBLIC_CLASSES
         authoring
+        query
 
     PYMODULE_CPPFILES
         module.cpp
         wrapAuthoring.cpp
+        wrapQuery.cpp
 
     PYMODULE_FILES
         __init__.py

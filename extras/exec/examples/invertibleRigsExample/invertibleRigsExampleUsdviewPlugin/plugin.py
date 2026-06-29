@@ -514,8 +514,11 @@ class AuthoringWindow(QtWidgets.QWidget):
 
         # use a AttributeValueSelectWidgetWithCompensation for rigSelection
         stage = self._usdviewApi.dataModel.stage
-        self.switchAttribute = stage.GetAttributeAtPath('/Root/Anim.switch')
-        if not self.switchAttribute:
+        query = InvertibleRigsExampleAuthoringCode.Query(stage)
+        sources = query.FindSwitchAvars("switch")
+        if len(sources) == 1:
+            self.switchAttribute = sources[0]
+        else:
             Tf.Warn("Can't find switch attribute")
         self.rigSelection = AttributeValueSelectWidgetWithCompensation(
             self.switchAttribute, self._usdviewApi)
