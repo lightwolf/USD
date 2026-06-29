@@ -2268,6 +2268,18 @@ pxr_register_test(testUsdImagingGLCards_SceneIndex_basic
     TESTENV testenv/testUsdImagingGLCards
 )
 
+pxr_register_test(testUsdImagingGLCards_SceneIndex_visibility
+    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -lighting -shading smooth -frameAll -stage testCardsVisibility.usda -camera /MainCamera -write testCardsVisibility.png"
+    IMAGE_DIFF_COMPARE
+        testCardsVisibility.png
+    FAIL 0.1
+    FAIL_PERCENT 0.1
+    WARN 0.2
+    WARN_PERCENT 0.05
+    EXPECTED_RETURN_CODE 0
+    TESTENV testenv/testUsdImagingGLCards
+)
+
 pxr_register_test(testUsdImagingGLMeshQuadrangulation
     COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdImagingGLBasicDrawing -offscreen -shading wireOnSurface -frameAll -stage meshQuadrangulation.usda -write testUsdImagingGLMeshQuadrangulation_default.png"
     IMAGE_DIFF_COMPARE
