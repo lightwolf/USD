@@ -809,10 +809,173 @@ _BuildSourceDependenciesDataSource(
         names.size(), names.data(), sources.data());
 }
 
+// Geometry Lights don't support deformation blur in RIS.
+// This datasource removes deformation blur from our light
+// instances (not the geometry visible representation) so
+// that it renders consistently if the "disableDeformationBlur"
+// flag is set.
+// Remove this code once we deprecate RIS.
+class _MotionBlurBlockingDataSource : public HdVec3fArrayDataSource
+{
+public:
+    HD_DECLARE_DATASOURCE(_MotionBlurBlockingDataSource);
+
+    _MotionBlurBlockingDataSource(const HdVec3fArrayDataSourceHandle& input)
+    : _input(input)
+    {
+    }
+
+    VtValue GetValue(Time shutterOffset) override
+    {
+        return _input->GetValue(0.f);
+    }
+
+    VtArray<GfVec3f> GetTypedValue(Time shutterOffset) override
+    {
+        return _input->GetTypedValue(0.f);
+    }
+
+    bool GetContributingSampleTimesForInterval(
+        Time startTime, 
+        Time endTime,
+        std::vector<Time> * outSampleTimes) override
+    {
+        *outSampleTimes = { 0.0f };
+        return false;
+    }
+
+
+private:
+    HdVec3fArrayDataSourceHandle _input;
+};
+
+class _MotionBlurBlockingPrimvarDataSource : public HdContainerDataSource
+{
+public:
+    HD_DECLARE_DATASOURCE(_MotionBlurBlockingPrimvarDataSource);
+
+    _MotionBlurBlockingPrimvarDataSource(const HdContainerDataSourceHandle& input)
+    : _input(input)
+    {
+    }
+
+#if PXR_VERSION <= 2211
+    bool Has(const TfToken& name) override
+    {
+        return _input ? _input->Has(name) : false;
+    }
+#endif
+
+    TfTokenVector GetNames() override
+    {
+        return _input ? _input->GetNames() : TfTokenVector();
+    }
+
+    HdDataSourceBaseHandle Get(const TfToken& name) override
+    {
+        HdDataSourceBaseHandle dataSource = _input ? _input->Get(name) : nullptr;
+        if (name == HdPrimvarSchemaTokens->primvarValue) {
+            HdVec3fArrayDataSourceHandle typedDataSource = HdVec3fArrayDataSource::Cast(dataSource);
+            if (typedDataSource) {
+                return _MotionBlurBlockingDataSource::New(typedDataSource);
+            }
+        }
+        return dataSource;
+    }
+
+private:
+    HdContainerDataSourceHandle _input;
+};
+
+class _MotionBlurBlockingPrimvarsDataSource : public HdContainerDataSource
+{
+public:
+    HD_DECLARE_DATASOURCE(_MotionBlurBlockingPrimvarsDataSource);
+
+    _MotionBlurBlockingPrimvarsDataSource(const HdContainerDataSourceHandle& input)
+    : _input(input)
+    {
+    }
+
+#if PXR_VERSION <= 2211
+    bool Has(const TfToken& name) override
+    {
+        return _input ? _input->Has(name) : false;
+    }
+#endif
+
+    TfTokenVector GetNames() override
+    {
+        return _input ? _input->GetNames() : TfTokenVector();
+    }
+
+    HdDataSourceBaseHandle Get(const TfToken& name) override
+    {
+        HdDataSourceBaseHandle dataSource = _input ? _input->Get(name) : nullptr;
+        if (name == HdPrimvarsSchemaTokens->points) {
+            if (HdPrimvarSchema primvar = HdPrimvarSchema(HdContainerDataSource::Cast(dataSource))) {
+                return _MotionBlurBlockingPrimvarDataSource::New(primvar.GetContainer());
+            }
+        }
+        return dataSource;
+    }
+
+private:
+    HdContainerDataSourceHandle _input;
+};
+
+class _MotionBlurBlockingPrimDataSource : public HdContainerDataSource
+{
+    public:
+    HD_DECLARE_DATASOURCE(_MotionBlurBlockingPrimDataSource);
+
+    _MotionBlurBlockingPrimDataSource(const HdContainerDataSourceHandle& input)
+    : _input(input)
+    {
+    }
+
+#if PXR_VERSION <= 2211
+    bool Has(const TfToken& name) override
+    {
+        return _input ? _input->Has(name) : false;
+    }
+#endif
+
+    TfTokenVector GetNames() override
+    {
+        return _input ? _input->GetNames() : TfTokenVector();
+    }
+
+    HdDataSourceBaseHandle Get(const TfToken& name) override
+    {
+        HdDataSourceBaseHandle dataSource = _input ? _input->Get(name) : nullptr;
+        if (name == HdPrimvarsSchemaTokens->primvars) {
+            if (HdPrimvarsSchema primvars = HdPrimvarsSchema(HdContainerDataSource::Cast(dataSource))) {
+                return _MotionBlurBlockingPrimvarsDataSource::New(
+                    // Block velocities/acceleration so they aren't picked
+                    // up by our motion blur scene index.
+                    HdOverlayContainerDataSource::New(
+                        HdRetainedContainerDataSource::New(
+                            HdTokens->velocities, HdBlockDataSource::New(), 
+                            HdTokens->accelerations, HdBlockDataSource::New()
+                        ),
+                        primvars.GetContainer()
+                    )
+                );
+            }
+        }
+        return dataSource;
+    }
+
+private:
+    HdContainerDataSourceHandle _input;
+};
+
 HdContainerDataSourceHandle
 _BuildSourceDataSource(
     const SdfPath& originPath,
-    const HdContainerDataSourceHandle& originDS)
+    const HdContainerDataSourceHandle& originDS,
+    const bool disableDeformationMotionBlur)
 {
     std::vector<TfToken> names;
     std::vector<HdDataSourceBaseHandle> sources;
@@ -842,7 +1005,9 @@ _BuildSourceDataSource(
 
     HdContainerDataSourceHandle handles[2] = {
         HdRetainedContainerDataSource::New(names.size(), names.data(), sources.data()),
-        originDS
+        disableDeformationMotionBlur ? 
+            _MotionBlurBlockingPrimDataSource::New(originDS) :
+            originDS
     };
 #if PXR_VERSION <= 2305 && defined(ARCH_OS_WINDOWS)
     return HdContainerDataSourceHandle();
@@ -971,16 +1136,20 @@ _BuildMeshDependenciesDataSource(
 /* static */
 HdPrmanMeshLightResolvingSceneIndexRefPtr
 HdPrmanMeshLightResolvingSceneIndex::New(
-    const HdSceneIndexBaseRefPtr& inputSceneIndex)
+    const HdSceneIndexBaseRefPtr& inputSceneIndex,
+    const bool disableDeformationMotionBlur)
 {
     return TfCreateRefPtr(
         new HdPrmanMeshLightResolvingSceneIndex(
-            inputSceneIndex));
+            inputSceneIndex,
+            disableDeformationMotionBlur));
 }
 
 HdPrmanMeshLightResolvingSceneIndex::HdPrmanMeshLightResolvingSceneIndex(
-    const HdSceneIndexBaseRefPtr &inputSceneIndex)
-    : HdSingleInputFilteringSceneIndexBase(inputSceneIndex)
+    const HdSceneIndexBaseRefPtr &inputSceneIndex,
+    const bool disableDeformationMotionBlur)
+    : HdSingleInputFilteringSceneIndexBase(inputSceneIndex),
+      _disableDeformationMotionBlur(disableDeformationMotionBlur)
 { }
 
 HdSceneIndexPrim
@@ -1045,7 +1214,11 @@ HdPrmanMeshLightResolvingSceneIndex::GetPrim(
                 parentPrim.primType == HdPrimTypeTokens->volume
                   ? HdPrmanTokens->meshLightSourceVolume
                   : HdPrmanTokens->meshLightSourceMesh,
-                _BuildSourceDataSource(parentPath, parentPrim.dataSource)
+                _BuildSourceDataSource(
+                    parentPath, 
+                    parentPrim.dataSource, 
+                    _disableDeformationMotionBlur
+                )
             };
         }
     }
