@@ -295,6 +295,14 @@ private:
 
             // Get any prim fields that might need to be updated.
             for (const TfToken &fieldName : layer->ListFields(primSpecPath)) {
+                // Skip composition fields that are SdfPathListOp-valued 
+                // (inherits, specializes): these are already tracked in 
+                // PcpDependentNamespaceEdits::compositionFieldEdits.
+                if (fieldName == SdfFieldKeys->InheritPaths ||
+                    fieldName == SdfFieldKeys->Specializes) {
+                    continue;
+                }
+
                 // Get the field's value.
                 VtValue val;
                 TF_VERIFY(layer->HasField(primSpecPath, fieldName, &val));
@@ -849,6 +857,12 @@ private:
 
     void _GatherPathBearingFieldEdits();
 
+    void _GatherPathBearingFieldEditsForStage(
+        const UsdStageRefPtr &stage,
+        const SdfPath &oldPath,
+        const SdfPath &newPath,
+        bool willAuthorRelocates);
+
     void _GatherDependentStageEdits();
 
     const UsdStageRefPtr & _stage;
@@ -1092,6 +1106,8 @@ UsdNamespaceEditor::_EditProcessor::_EditProcessor(
 
     // Gather all the edits that need to be made to path-bearing fields in 
     // order to "fix up" paths that refer to the namespace edited object.
+    // This must run after _GatherDependentStageEdits() as it relies on 
+    // processed data gathered by that function.
     _GatherPathBearingFieldEdits();
 }
 
@@ -1343,9 +1359,50 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
 {
     TRACE_FUNCTION();
 
+    // dependentCachePathChanges holds the composed prim/property path changes 
+    // in each cache's stage namespace caused by the primary edit. 
+    const auto &dependentCachePathChanges =
+        _processedEdit->dependentStageNamespaceEdits.dependentCachePathChanges;
+
+    // Gather edits for the primary stage.
+    const auto primaryIt =
+        dependentCachePathChanges.find(_stage->_GetPcpCache());
+    if (primaryIt != dependentCachePathChanges.end()) {
+        for (const auto &edit : primaryIt->second) {
+            _GatherPathBearingFieldEditsForStage(
+                _stage, edit.oldPath, edit.newPath,
+                _processedEdit->willAuthorRelocates);
+        }
+    }
+
+    // Gather edits for all dependent stages.
+    for (const UsdStageRefPtr &stage : _dependentStages) {
+        const auto it = dependentCachePathChanges.find(stage->_GetPcpCache());
+        if (it == dependentCachePathChanges.end()) {
+            continue;
+        }
+        // Relocates are only authored on the primary edit's stage, so 
+        // willAuthorRelocates must be false for dependent stages so that paths 
+        // that would need relocates produce warnings for the dependent stage.
+        for (const auto &edit : it->second) {
+            _GatherPathBearingFieldEditsForStage(
+                stage, edit.oldPath, edit.newPath,
+                /*willAuthorRelocates=*/ false);
+        }
+    }
+}
+
+void
+UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEditsForStage(
+    const UsdStageRefPtr &stage,
+    const SdfPath &oldPath,
+    const SdfPath &newPath,
+    bool willAuthorRelocates)
+{
+    TRACE_FUNCTION();
     // Gather all the dependencies from stage namespace path to prims or 
     // properties with path-bearing fields that include that namespace path.
-    _Dependencies deps = _DependencyCollector::GetDependencies(_stage);
+    _Dependencies deps = _DependencyCollector::GetDependencies(stage);
 
     // With all the dependencies we need to determine which fields are 
     // affected by this particular edit. If the edit was to a prim, the 
@@ -1354,8 +1411,7 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
     // changed path.
     SdfPathSet objectPathsWithAffectedFields;
     const auto range = 
-        deps.targetedPathToTargetingSpecPathsTable.FindSubtreeRange(
-            _editDesc.oldPath);
+        deps.targetedPathToTargetingSpecPathsTable.FindSubtreeRange(oldPath);
     for (auto it = range.first; it != range.second; ++it) {
         const SdfPathVector &paths = it->second;
         objectPathsWithAffectedFields.insert(paths.begin(), paths.end());
@@ -1383,27 +1439,44 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
                 break;
             }
 
-            // Get the current value of the field and try to modify any 
-            // paths that need to change because of the edited namespace path.
-            VtValue fieldValue = specInfo.GetFieldValue();
-            VtValue modifiedValue = VtValueTryTransform(
-                fieldValue, _NamespaceEditXf {
-                    _editDesc.oldPath, _editDesc.newPath });
+            // Look for an existing in-progress edit for this spec and field name.
+            SdfSpecHandle spec =
+                specInfo.layer->GetObjectAtPath(specInfo.path);
+            auto existingIt = std::find_if(
+                _processedEdit->pathBearingFieldEdits.begin(),
+                _processedEdit->pathBearingFieldEdits.end(),
+                [&](const _ProcessedEdit::PathBearingFieldEdit &e) {
+                    return e.spec == spec &&
+                           e.fieldName == specInfo.fieldName;
+                });
 
-            // If the path expression was modified, add the edit we need
-            // to perform for this spec in the processed edit.
-            if (fieldValue != modifiedValue) {
-                _processedEdit->pathBearingFieldEdits.push_back(
-                    {specInfo.layer->GetObjectAtPath(specInfo.path),
-                    specInfo.fieldName, 
-                    std::move(modifiedValue)});
+            // If there is an existing in-progress edit, use its newFieldValue 
+            // as the base for transformation.
+            const VtValue &baseValue =
+                existingIt != _processedEdit->pathBearingFieldEdits.end() ?
+                    existingIt->newFieldValue : specInfo.GetFieldValue();
+
+            // Try to update the field's value.
+            VtValue modifiedValue = VtValueTryTransform(
+                baseValue, _NamespaceEditXf {
+                    oldPath, newPath });
+
+            // If the field was modified, save its new value.
+            if (baseValue != modifiedValue) {
+                if (existingIt != _processedEdit->pathBearingFieldEdits.end()) {
+                    existingIt->newFieldValue = std::move(modifiedValue);
+                } else {
+                    _processedEdit->pathBearingFieldEdits.push_back(
+                        {std::move(spec), specInfo.fieldName,
+                         std::move(modifiedValue)});
+                }
             }
         }
 
         // If the edit will author relocates for the primary edit, then the 
         // fields authored across composition arcs will also be mapped by the
         // relocation. 
-        if (_processedEdit->willAuthorRelocates) {
+        if (willAuthorRelocates) {
             continue;
         }
 
@@ -1437,7 +1510,7 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
             // the composition arc or its ancestors, that edit will not 
             // affect any paths coming from the target of the arc since they are 
             // outside the scope of that arc. If so, we can skip this spec.
-            if (translatedPathAtIntroduction.HasPrefix(_editDesc.oldPath)) {
+            if (translatedPathAtIntroduction.HasPrefix(oldPath)) {
                 continue;
             } 
 
@@ -1459,7 +1532,7 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
                 // affected by the namespace edit; we don't care about these 
                 // either.
                 if (translatedPath.IsEmpty() ||
-                    !translatedPath.HasPrefix(_editDesc.oldPath)) {
+                    !translatedPath.HasPrefix(oldPath)) {
                     continue;
                 }
                 fieldsRequireRelocates[specInfo.fieldName].push_back(translatedPath);
@@ -1476,8 +1549,8 @@ UsdNamespaceEditor::_EditProcessor::_GatherPathBearingFieldEdits()
                 TfStringify(it.second).c_str(),
                 it.first.GetText(),
                 path.GetText(),
-                _editDesc.oldPath.GetText(),
-                _editDesc.IsPropertyEdit() ? 
+                oldPath.GetText(),
+                oldPath.IsPrimPropertyPath() ?
                     "properties ever" :
                     "prims that do not have opinions across composition arcs"
                 ));
