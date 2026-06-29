@@ -34,12 +34,8 @@ class OpenExecContainer(PluginContainer):
                     description="Open controls for posing an invertible rig.")
 
     def configureView(self, plugRegistry, plugUIBuilder):
-        self._addOpenExecMenu(plugUIBuilder)
-
-    def _addOpenExecMenu(self, plugUIBuilder):
-        openExecMenu = plugUIBuilder.findOrCreateMenu("OpenExec")
-        
         if self._openExecPluginEnabled:
+            openExecMenu = plugUIBuilder.findOrCreateMenu("OpenExec")
             openExecMenu.addItem(self._openExecInvertibleRigDemo)
 
 # Define OpenExecContainer as a Tf.Type so libplug can pick it up.
