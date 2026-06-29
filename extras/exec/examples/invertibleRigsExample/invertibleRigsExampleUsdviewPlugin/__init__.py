@@ -25,11 +25,12 @@ class OpenExecContainer(PluginContainer):
 
     def registerPlugins(self, plugRegistry, plugCtx):
         if self._openExecPluginEnabled:
-            openExec = self.deferredImport(".openExec")
+            deferredImport_plugin = self.deferredImport(".plugin")
             self._openExecInvertibleRigDemo = \
                 plugRegistry.registerCommandPlugin(
                     "OpenExecContainer.openExecInvertibleRigDemo",
-                    "Invertible Rig Demo", openExec.invertibleRigDemo,
+                    "Invertible Rig Demo", 
+                    deferredImport_plugin.invertibleRigDemo,
                     description="Open controls for posing an invertible rig.")
 
     def configureView(self, plugRegistry, plugUIBuilder):
