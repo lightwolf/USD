@@ -95,6 +95,16 @@ _ShouldApplyPassVisibility(const TfToken &primType)
         primType == HdPrimTypeTokens->lightFilter;
 }
 
+// Returns true if the matte rules apply to this prim type.
+bool
+_ShouldApplyPassMatte(const TfToken &primType)
+{
+    // We need to also include instancers, so that matte'ing can apply
+    // to point-instancers.
+    return _IsGeometryType(primType) ||
+        primType == HdPrimTypeTokens->instancer;
+}
+
 bool
 _IsVisible(const HdContainerDataSourceHandle& primSource)
 {
@@ -204,7 +214,7 @@ struct _RenderPassVisibilityAndMatteState {
         HdSceneIndexPrim const& prim) const
     {
         return matteEval
-            && _IsGeometryType(prim.primType)
+            && _ShouldApplyPassMatte(prim.primType)
             && matteEval->Match(primPath);
     }
 
