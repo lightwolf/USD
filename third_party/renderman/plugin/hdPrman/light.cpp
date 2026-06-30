@@ -296,10 +296,15 @@ _PopulateLightFilterNodes(
         // and query it for the existence of this parameter.
         filter->params.SetString(RtUString("coordsys"), filterPathAsString);
 
-        // Only certain light filters require a __lightFilterParentShader,
-        // but we do not know which, here, so we provide it in all cases.
-        filter->params.SetString(RtUString("__lightFilterParentShader"),
-            lightShaderType);
+        static const RtUString us_PxrBarnLightFilter("PxrBarnLightFilter");
+        static const RtUString us_PxrCookieLightFilter("PxrCookieLightFilter");
+        static const RtUString us_PxrGoboLightFilter("PxrGoboLightFilter");
+        if (filter->name == us_PxrBarnLightFilter ||
+            filter->name == us_PxrCookieLightFilter ||
+            filter->name == us_PxrGoboLightFilter) {
+            filter->params.SetString(RtUString("__lightFilterParentShader"),
+                lightShaderType);
+        }
 
         // Light filter linking
         VtValue val = sceneDelegate->GetLightParamValue(filterPath,
