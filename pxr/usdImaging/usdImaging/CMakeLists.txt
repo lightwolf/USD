@@ -74,6 +74,7 @@ pxr_library(usdImaging
         selectionSceneIndex
         tokens
         apiSchemaAdapter
+        backPlateAPIAdapter
         basisCurvesAdapter
         capsuleAdapter
         cameraAdapter
