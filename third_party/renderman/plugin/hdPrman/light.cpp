@@ -238,6 +238,7 @@ _AddLightFilterCombiner(std::vector<riley::ShadingNode>* lightFilterNodes)
 static void
 _PopulateLightFilterNodes(
         const SdfPath &lightId,
+        const RtUString &lightShaderType,
         const SdfPathVector &lightFilterPaths,
         HdSceneDelegate *sceneDelegate,
         HdRenderParam *renderParam,
@@ -294,6 +295,11 @@ _PopulateLightFilterNodes(
         // TODO: We should be able to look up the SdrShaderNode entry
         // and query it for the existence of this parameter.
         filter->params.SetString(RtUString("coordsys"), filterPathAsString);
+
+        // Only certain light filters require a __lightFilterParentShader,
+        // but we do not know which, here, so we provide it in all cases.
+        filter->params.SetString(RtUString("__lightFilterParentShader"),
+            lightShaderType);
 
         // Light filter linking
         VtValue val = sceneDelegate->GetLightParamValue(filterPath,
@@ -819,7 +825,7 @@ HdPrmanLight::Sync(HdSceneDelegate *sceneDelegate,
         // dirty shader *and* dirty instance; the coordinate systems are why,
         // and are the only piece of derived state that needs to be shared by
         // both the shader and instance update branches.
-        _PopulateLightFilterNodes(id, filters, sceneDelegate, renderParam,
+        _PopulateLightFilterNodes(id, _lightShaderType, filters, sceneDelegate, renderParam,
             riley, &filterNodes, &coordSysIds, &_lightFilterLinks);
 
         const riley::ShadingNetwork light {
