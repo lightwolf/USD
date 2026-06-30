@@ -4214,7 +4214,9 @@ HdPrman_RenderParam::CreateRenderViewFromLegacyProducts(
             } else if (TfStringStartsWith(settingName.GetText(),
                                           "driver:parameters:") ||
                        TfStringStartsWith(settingName.GetText(),
-                                          "ri:driver:parameters:")) {
+                                          "ri:driver:parameters:") ||
+                       TfStringStartsWith(settingName.GetText(),
+                                          "ri:displayDriver:")) {
                 driverParameters.push_back(settingName);
             }
         }
