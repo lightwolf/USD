@@ -940,20 +940,24 @@ HdPrmanLight::Sync(HdSceneDelegate *sceneDelegate,
             }
             _lightLink = lightLink;
         }
-        if (!_lightLink.IsEmpty()) {
-            // For lights to link geometry, the lights must be assigned a
-            // grouping membership and the geometry must subscribe to that
-            // grouping.
-            attrs.SetString(RixStr.k_grouping_membership,
-                RtUString(_lightLink.GetText()));
-            TF_DEBUG(HDPRMAN_LIGHT_LINKING).Msg("HdPrman: Light <%s> grouping "
-                "membership '%s'\n", id.GetText(), _lightLink.GetText());
-        } else {
-            // Default light group
-            attrs.SetString(RixStr.k_grouping_membership, us_default);
-            TF_DEBUG(HDPRMAN_LIGHT_LINKING).Msg("HdPrman: Light <%s> grouping "
-                "membership 'default'\n", id.GetText());
+
+        // For lights to link geometry, the lights must be assigned a
+        // grouping membership and the geometry must subscribe to that
+        // grouping.
+        std::string membership = us_default.CStr();
+        if(!_lightLink.IsEmpty()) {
+            membership = _lightLink.GetText();
         }
+        // Fetch incoming grouping:membership and append to membership
+        RtUString inputGrouping("");
+        attrs.GetString(RixStr.k_grouping_membership, inputGrouping);
+        if (inputGrouping != RtUString("")) {
+            membership += std::string(" ") + inputGrouping.CStr();
+        }
+        attrs.SetString(RixStr.k_grouping_membership,
+            RtUString(membership.c_str()));
+        TF_DEBUG(HDPRMAN_LIGHT_LINKING).Msg("HdPrman: Light <%s> grouping "
+            "membership '%s'\n", id.GetText(), membership.c_str());
 
         // Convert coordinate system ids to list
         const riley::CoordinateSystemList coordSysList = {
