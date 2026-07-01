@@ -113,23 +113,29 @@ def _ReadCrateVersionFromView(view) -> Optional[Version]:
 # (path, '') for non-package inputs, so callers check the inner with
 # truthiness rather than `is not None`.
 
+_USDZ_BOUNDARY_RE = re.compile(r'\.usdz/', re.IGNORECASE)
+
 def _ArcnameToBracket(arcname: str) -> str:
     """Convert UsdzScanIterator's slash-joined nested-package arcname
-    to Ar's bracket form.
+    to Ar's bracket form.  The '.usdz' boundary is matched case-
+    insensitively (ZIP arcnames preserve whatever case the packager
+    wrote); the original case is preserved in the emitted parts.
 
     Examples:
         'bar.usdc'                  -> 'bar.usdc'
         'mid.usdz/deep.usdc'        -> 'mid.usdz[deep.usdc]'
         'a.usdz/b.usdz/c.usdc'      -> 'a.usdz[b.usdz[c.usdc]]'
+        'Mid.USDZ/deep.usdc'        -> 'Mid.USDZ[deep.usdc]'
     """
     parts = []
     rest = arcname
     while True:
-        idx = rest.find('.usdz/')
-        if idx < 0:
+        m = _USDZ_BOUNDARY_RE.search(rest)
+        if m is None:
             parts.append(rest)
             break
-        parts.append(rest[:idx + 5])   # include '.usdz'
+        idx = m.start()
+        parts.append(rest[:idx + 5])   # include '.usdz' (original case)
         rest = rest[idx + 6:]          # skip past '.usdz/'
     if len(parts) == 1:
         return parts[0]
@@ -154,7 +160,8 @@ def _ArcnameToBracket(arcname: str) -> str:
 # usdzUtils.UsdzUpdateIterator with a different tag.
 
 _STALE_TEMP_RE = re.compile(
-    r'\.usdupdatecrate\.\d+\.tmp\.(usd|usdc|usdz)$'
+    r'\.usdupdatecrate\.\d+\.tmp\.(usd|usdc|usdz)$',
+    re.IGNORECASE,
 )
 
 _STALE_EXTRACT_DIR_RE = re.compile(
