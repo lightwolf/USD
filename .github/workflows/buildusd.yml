@@ -308,7 +308,7 @@ jobs:
           call set PATH=${{ github.workspace }}\USDinst\bin;${{ github.workspace }}\USDinst\lib;${{ github.workspace }}\USDinst\share\usd\examples\plugin;${{ github.workspace }}\USDinst\plugin\usd;%PATH%
           call set PYTHONPATH=${{ github.workspace }}\USDinst\lib\python;%PYTHONPATH%
           :: Internal ticket USD-8035
-          ctest --output-on-failure -j4 -C Release --exclude-regex "TfPathUtils|testExecGeomXformable_Perf_Large" \
+          ctest --output-on-failure -j4 -C Release --exclude-regex "TfPathUtils|testExecGeomXformable_Perf_Large" ^
                 -LE flaky --no-tests=error
         shell: cmd
       - name: Test USD (flaky)
@@ -317,7 +317,7 @@ jobs:
           call set PATH=${{ github.workspace }}\USDinst\bin;${{ github.workspace }}\USDinst\lib;${{ github.workspace }}\USDinst\share\usd\examples\plugin;${{ github.workspace }}\USDinst\plugin\usd;%PATH%
           call set PYTHONPATH=${{ github.workspace }}\USDinst\lib\python;%PYTHONPATH%
           :: Internal ticket USD-8035
-          ctest --output-on-failure -j4 -C Release --exclude-regex "TfPathUtils|testExecGeomXformable_Perf_Large" \
+          ctest --output-on-failure -j4 -C Release --exclude-regex "TfPathUtils|testExecGeomXformable_Perf_Large" ^
                 -L flaky --repeat until-pass:3
         shell: cmd
 
