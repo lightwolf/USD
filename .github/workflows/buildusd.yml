@@ -310,6 +310,7 @@ jobs:
           :: Internal ticket USD-8035
           ctest --output-on-failure -j4 -C Release --exclude-regex "TfPathUtils|testExecGeomXformable_Perf_Large" \
                 -LE flaky --no-tests=error
+        shell: cmd
       - name: Test USD (flaky)
         working-directory: ./USDgen/build/OpenUSD
         run: |
