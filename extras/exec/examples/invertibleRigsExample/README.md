@@ -74,9 +74,9 @@ Switch compensation works as follows:
    switch time.
 
 The authoring code in this library provides an initial implementation of switch
-compensation in `InvertibleRigsExample_Authoring::CompensateSwitch()`. This code
+compensation in InvertibleRigsExample_Authoring::CompensateSwitch(). This code
 also includes an initial implementation of the breakdown operation in
-`InvertibleRigsExample_Authoring::BreakdownInputAvars()`.
+InvertibleRigsExample_Authoring::BreakdownInputAvars().
 
 ## Example Files
 
