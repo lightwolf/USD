@@ -752,10 +752,12 @@ HdPrman_RenderSettings::_ProcessRenderTerminals(
                 _renderTerminalTokens->outputsRiIntegrator.GetString(),
                 VtDefault = SdfPathVector());
 
+#if PXR_VERSION >= 2505
             if (!paths.empty() && rsSchemaHasRelationships && terminalsWarn) {
                 TF_WARN("outputs:ri:integrator on RenderSettings is "
                         "deprecated in favor of ri:integrator.");
             }
+#endif
         }
 
         param->SetRenderSettingsIntegratorPath(sceneDelegate,
@@ -780,10 +782,12 @@ HdPrman_RenderSettings::_ProcessRenderTerminals(
                 _renderTerminalTokens->outputsRiSampleFilters.GetString(),
                 VtDefault = SdfPathVector());
 
+#if PXR_VERSION >= 2505
             if (!paths.empty() && rsSchemaHasRelationships && terminalsWarn) {
                 TF_WARN("outputs:ri:sampleFilters on RenderSettings is "
                         "deprecated in favor of ri:sampleFilters.");
             }
+#endif
         }
 
         param->SetSampleFilterPaths(sceneDelegate, paths);
@@ -807,10 +811,12 @@ HdPrman_RenderSettings::_ProcessRenderTerminals(
                 _renderTerminalTokens->outputsRiDisplayFilters.GetString(),
                 VtDefault = SdfPathVector());
 
+#if PXR_VERSION >= 2505
             if (!paths.empty() && rsSchemaHasRelationships && terminalsWarn) {
                 TF_WARN("outputs:ri:displayFilters on RenderSettings is "
                         "deprecated in favor of ri:displayFilters.");
             }
+#endif
         }
 
         param->SetDisplayFilterPaths(sceneDelegate, paths);
