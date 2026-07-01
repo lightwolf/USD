@@ -5017,6 +5017,25 @@ HdPrman_RenderParam::GetInstancer(const SdfPath& id)
     return nullptr;
 }
 
+void
+HdPrman_RenderParam::FinalizeMeshLightSprim(const SdfPath& sourceGeomPath)
+{
+    static const TfToken k_meshLightLightName("__meshLight_light");
+    const SdfPath lightPath = sourceGeomPath.GetParentPath().AppendChild(k_meshLightLightName);
+
+    if (HdRenderIndex* index = _renderDelegate->GetRenderIndex()) {
+        if (HdSprim* sprim = index->GetSprim(
+#if PXR_VERSION <= 2305
+            HdPrmanTokens->meshLight,
+#else
+            HdPrimTypeTokens->meshLight,
+#endif
+            lightPath)) {
+            sprim->Finalize(this);
+        }
+    }
+}
+
 bool
 HdPrman_RenderParam::IsInteractive() const
 {
