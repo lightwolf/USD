@@ -1170,9 +1170,9 @@ HdPrmanLight::Sync(HdSceneDelegate *sceneDelegate,
                 // require a lot more state. So we will set DirtyTransform
                 // as a token value to signal to the instancer to update the
                 // instances.
-                HdDirtyBits instanceDirtyBits(DirtyTransform
+                HdDirtyBits instanceDirtyBits(((*dirtyBits) & HdLight::DirtyTransform ? HdChangeTracker::DirtyTransform : 0)
 #if HD_API_VERSION >= 49
-                    |(*dirtyBits & DirtyInstancer)
+                    |((*dirtyBits) & HdLight::DirtyInstancer ? HdChangeTracker::DirtyInstancer : 0)
 #endif
                 );
                 instancer->Populate(
