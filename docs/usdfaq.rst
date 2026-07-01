@@ -824,3 +824,50 @@ single monolithic USD DLL using the :code:`PXR_BUILD_MONOLITHIC` cmake flag. See
 <https://github.com/PixarAnimationStudios/OpenUSD/blob/release/BUILDING.md>`_ for
 more information. Note that you will still need to install the USD plugins 
 directory along with the monolithic USD DLL.
+
+How Do I Update Deprecated and Obsolete USD Assets?
+###################################################
+
+OpenUSD binary files carry a crate-file version. Older-but-supported versions
+produce a **warning** when opened and can be updated with current tools.
+Versions no longer supported at all produce an **error** and fail to open --
+these require older OpenUSD software to bridge them forward.
+
+**Deprecated Versions** -- If you get a warning like:
+
+.. code-block:: text
+
+   Warning: Asset @foo.usd@ has deprecated version 'X.Y.Z'
+
+You can update an individual binary ``.usd`` or ``.usdc`` file to a current
+supported version by re-exporting it over itself, e.g. ``usdcat foo.usd -o
+foo.usd``.
+
+For ``.usdz`` archives, or for bulk updates across many files, use the
+``usdupdatecrate`` tool included in the OpenUSD software distribution. It
+searches for and identifies binary crate files whose version is older than a
+threshold, including those packaged inside ``.usdz`` archives. By default it
+reports matches. Pass ``--update`` to update them in place.
+
+**Obsolete Versions** -- If you get an error like:
+
+.. code-block:: text
+
+   ERROR: Cannot read asset @foo.usd@ with obsolete version 'X.Y.Z'
+
+The file's crate version is no longer supported by your current OpenUSD
+software.  To bring it forward, use an older OpenUSD release that still supports
+the obsolete version and update the file via ``usdcat`` or ``usdupdatecrate
+--update``.
+
+The table below lists the last OpenUSD release supporting each obsolete crate
+version.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30
+
+   * - Obsolete Crate File Version
+     - Last Supporting OpenUSD Release
+   * - (none yet)
+     - --
