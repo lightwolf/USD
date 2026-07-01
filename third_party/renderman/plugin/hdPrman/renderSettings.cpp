@@ -628,6 +628,11 @@ void HdPrman_RenderSettings::_Sync(
 #if PXR_VERSION >= 2407
     if (*dirtyBits & HdRenderSettings::DirtyFrameNumber ||
         *dirtyBits & HdRenderSettings::DirtyNamespacedSettings) {
+        // Remove Ri:Frame from _settingsOptions unless ri:Ri:Frame is authored,
+        // otherwise _UpdateFrame exits early before the scene globals can update Ri:Frame.
+        if (namespacedSettings.find("ri:Ri:Frame") == namespacedSettings.end()) {
+            _settingsOptions.Remove(RixStr.k_Ri_Frame);
+        }
         _UpdateFrame(terminalSi, &_settingsOptions);
     }
 #else
