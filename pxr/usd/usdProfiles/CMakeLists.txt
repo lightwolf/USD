@@ -120,10 +120,15 @@ pxr_build_test(testUsdProfilesFileFormatImplication
         testenv/testUsdProfilesFileFormatImplication.cpp
 )
 
-pxr_register_test(testUsdProfilesFileFormatImplication
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdProfilesFileFormatImplication"
-    TESTENV testenv/testUsdProfilesFileFormatImplication
-)
+# This test relies on a plugin built specifically for this test.
+# The build system currently doesn't support this for static library
+# builds, so we only enable this test on shared library builds.
+if (BUILD_SHARED_LIBS)
+    pxr_register_test(testUsdProfilesFileFormatImplication
+        COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testUsdProfilesFileFormatImplication"
+        TESTENV testenv/testUsdProfilesFileFormatImplication
+    )
+endif()
 
 pxr_test_scripts(
     testenv/testUsdProfilesRegistryPy.py
