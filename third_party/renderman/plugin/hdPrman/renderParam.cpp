@@ -3348,7 +3348,9 @@ HdPrman_RenderParam::SetRileyOptions()
 
         RtParamList composedParams = HdPrman_Utils::Compose(
             _envOptions,
+#if PXR_VERSION > 2505
             _rileySceneIndexObserverOptions,
+#endif
 #if PXR_VERSION >= 2311 // causes issues for houdini 20, eg. bad shutter interval
             _renderSettingsPrimOptions,
 #endif
@@ -3380,6 +3382,14 @@ HdPrman_RenderParam::SetRileyOptions()
         );
         prunedOptions.SetFloatArray(RixStr.k_trace_worldoffset, worldOffset.GetArray(), 3);
         prunedOptions.SetString(RixStr.k_trace_worldorigin, RixStr.k_worldoffset);
+#endif
+
+#if PXR_VERSION < 2407
+        uint32_t paramId;
+        if (!prunedOptions.GetParamId(RixStr.k_Ri_Frame, paramId))
+        {
+            prunedOptions.SetInteger(RixStr.k_Ri_Frame, frame);
+        }
 #endif
 
         for(const auto& cb: *_rileyOptionsCallbacks) {

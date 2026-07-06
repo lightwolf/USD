@@ -270,6 +270,11 @@ _UpdateFrame(
     const HdSceneIndexBaseRefPtr &terminalSi,
     RtParamList *options)
 {
+    uint32_t paramId;
+    if (options->GetParamId(RixStr.k_Ri_Frame, paramId)) {
+        return;
+    }
+
     // Get the Frame from the Terminal Scene Index
     double frame;
     if (!HdUtils::GetCurrentFrame(terminalSi, &frame)) {
