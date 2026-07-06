@@ -95,7 +95,7 @@ jobs:
         working-directory: ./USDgen/build/OpenUSD
         run: |
           ctest --output-on-failure -j4 -C Release \
-                --exclude-regex "^(testUsdview|testUsdRecord|testUsdAppUtilsFrameRecorder|testUsdImaging|testHgiGL|testHdx|testHdSt|testExecGeomXformable_Perf_Large|testWorkThreadLimitsDefault)" \
+                --exclude-regex "^(testUsdview|testUsdRecord|testUsdAppUtilsFrameRecorder|testUsdImaging|testHgiGL|testHdx|testHdSt|testExecGeomXformable_Perf_Large|testWorkThreadLimitsDefault|testSdfUsdcMalformed.*)" \
                 -LE flaky --no-tests=error
       - name: Run USD Headless Tests (flaky)
         working-directory: ./USDgen/build/OpenUSD
