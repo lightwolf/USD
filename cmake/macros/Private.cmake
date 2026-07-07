@@ -721,7 +721,7 @@ endfunction()
 function(_pxr_install_rpath rpathRef NAME)
     if (PXR_BUILD_APPLE_FRAMEWORK)
         # Apple Frameworks already fix the install path at the end
-        # so this maks things faster and reduces duplication errors
+        # so this makes things faster and reduces duplication errors
         return()
     endif()
     # Get and remove the origin.
