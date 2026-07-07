@@ -1514,6 +1514,11 @@ def InstallOpenImageIO(context, force, buildArgs):
         # we reset it back to its old value.
         extraArgs.append('-DCMAKE_DEBUG_POSTFIX=""')
 
+        # Homebrew-installed dependencies of OpenImageIO can cause build
+        # and link issues when building for USD, so avoid using them.
+        if MacOS():
+            extraArgs.append('-DIGNORE_HOMEBREWED_DEPS=ON')
+
         # Add on any user-specified extra arguments.
         extraArgs += buildArgs
 
