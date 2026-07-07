@@ -87,6 +87,13 @@ pxr_library(usdMtlx
         overview.dox
 )
 
+if(NOT "${PXR_APPLE_FRAMEWORK_RELATIVE_RESOURCES}" STREQUAL "")
+    target_compile_definitions(usdMtlx
+        PRIVATE
+        PXR_APPLE_FRAMEWORK_RELATIVE_RESOURCES="${PXR_APPLE_FRAMEWORK_RELATIVE_RESOURCES}"
+    )
+endif()
+
 pxr_build_test(testUsdMtlxFileFormatImplication
     LIBRARIES
         tf
