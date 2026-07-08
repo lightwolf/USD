@@ -2779,8 +2779,8 @@ if which("cmake"):
         # visionOS support was added in CMake 3.28
         cmake_required_version = (3, 28)
     else:
-        # OpenUSD requires CMake 3.26+
-        cmake_required_version = (3, 26)
+        # OpenUSD requires CMake 3.27+
+        cmake_required_version = (3, 27)
 
     cmake_version = GetCMakeVersion()
     if not cmake_version:
