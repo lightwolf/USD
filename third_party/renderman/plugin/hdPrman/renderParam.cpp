@@ -1048,10 +1048,14 @@ HdPrman_RenderParam::ConvertAttributes(HdSceneDelegate *sceneDelegate,
         // Integer primvars do not exist in prman, which is why we do this on
         // the attributes instead. Furthermore, all custom attributes like this
         // must be in the "user:" namespace to be accessible from the shader.
-        attrs.SetInteger(
-            RtUString("user:hydra:doubleSided"),
-            sceneDelegate->GetDoubleSided(id) ? 1 : 0
-        );
+        //
+        // Only set this when it varies from the default, in order to minimize
+        // attribute cost.  See UsdPreviewSurfaceParameters.osl for
+        // more details on its use.
+        if (sceneDelegate->GetDoubleSided(id)) {
+            attrs.SetInteger(
+                RtUString("user:hydra:doubleSided"), 1);
+        }
     }
 
     return attrs;
