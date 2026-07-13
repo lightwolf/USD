@@ -168,6 +168,9 @@ pxr_library(usdImaging
 
     PRIVATE_HEADERS
         dataSourceImplicits-Impl.h
+    
+    CPPFILES
+        renderPassPruneSceneIndexPlugin.cpp
 
     RESOURCE_FILES
         plugInfo.json
