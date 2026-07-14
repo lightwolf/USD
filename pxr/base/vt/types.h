@@ -234,7 +234,7 @@ constexpr int
 GetIndexImpl(TfMetaList<Ts...>, std::index_sequence<Is...>)
 {
     int index = -1;
-    ((std::is_same_v<T, Ts> ? (index = Is, false) : true) && ...);
+    TF_UNUSED(((std::is_same_v<T, Ts> ? (index = Is, false) : true) && ...));
     return index;
 }
 
