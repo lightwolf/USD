@@ -477,6 +477,10 @@ OpenUSD.
   from source color spaces into the rendering color space, and the rendering 
   color space into the display color space.
 
+- Added UsdTransformColor OSL shader to support color space conversion.
+
+- Added support to nano color for the G24Rec709 color space.
+
 ### OpenExec
 
 - OpenExec invertible rigs support.
@@ -551,14 +555,13 @@ OpenUSD.
 
 - Updated default MaterialX version to 1.39.5.
 
-- Refactored MaterialXShaderGen with generics.
+- Refactored HdStMaterialXShaderGen to reduce code duplication.
   (PR: [#3898](https://github.com/PixarAnimationStudios/OpenUSD/pull/3898))
 
-- Added support for MaterialX UsdPrimvarReader in Storm.
+- Improved support for UsdPrimvarReader with MaterialX in Storm.
   (PR: [4091](https://github.com/PixarAnimationStudios/OpenUSD/pull/4091))
 
-- Fixed MaterialX spot light support and added point/spot light support to
-  MaterialX in Storm.
+- Fixed handling of MaterialX Spotlights and light attenuation in Storm.
 
 ### Documentation
 
@@ -573,7 +576,7 @@ OpenUSD.
 - Various small updates to Namespace Editing user guide.
 
 - Updated the [Preview Surface Spec](https://openusd.org/release/spec_usdpreviewsurface.html) 
-  language around opacityMode. 
+  clarify handling of opacity and opacityMode. 
 
 - Various broken link fixes and updates for using doxygen 1.12.
 
