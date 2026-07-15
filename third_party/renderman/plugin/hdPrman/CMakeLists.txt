@@ -171,6 +171,7 @@ pxr_plugin(${PXR_PACKAGE}
         renderDelegate
         renderSettings
         renderTerminalOutputInvalidatingSceneIndexPlugin
+        renderTerminalTimeSamplingSceneIndexPlugin
         renderingColorSpaceSceneIndexPlugin
         rixStrings
         sampleFilter
