@@ -102,12 +102,16 @@ PtDspyError DspyImageActiveRegion(
 
 // Transform NDC space (-1, 1) depth to window space (0, 1).
 static float _ConvertAovDepth(const GfMatrix4d &m, const float depth) {
+#ifdef HDPRMAN_USE_LINEAR_DEPTH
+    return depth;
+#else
     if (std::isfinite(depth)) {
         return GfClamp(
             (m.Transform(GfVec3f(0, 0, -depth))[2] * 0.5) + 0.5, 0, 1); 
     } else {
         return 0.f;
     }
+#endif
 }
 
 extern "C" DISPLAYEXPORT
