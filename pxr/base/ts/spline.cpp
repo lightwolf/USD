@@ -109,21 +109,9 @@ TfType TsSpline::GetValueType() const
     return _GetData()->GetValueType();
 }
 
-void TsSpline::SetTimeValued(const bool timeValued)
-{
-    if (GetValueType() == Ts_GetType<GfTimeCode>()) {
-        TF_CODING_ERROR("SetTimeValued is deprecated and cannot be invoked "
-                        "when this spline's value type is GfTimeCode.");
-        return;
-    }
-    _PrepareForWrite();
-    _data->timeValued = timeValued;
-}
-
 bool TsSpline::IsTimeValued() const
 {
-    return _GetData()->valueType == Ts_GetType<GfTimeCode>() ||
-           _GetData()->timeValued;
+    return _GetData()->valueType == Ts_GetType<GfTimeCode>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
