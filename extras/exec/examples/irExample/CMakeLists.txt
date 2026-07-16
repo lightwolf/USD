@@ -7,4 +7,4 @@ pxr_docs_only_dir(${PXR_PACKAGE}
 )
 
 add_subdirectory(irExampleAuthoringCode)
-add_subdirectory(invertibleRigsExampleUsdviewPlugin)
+add_subdirectory(irExampleUsdviewPlugin)
