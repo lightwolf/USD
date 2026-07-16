@@ -10,8 +10,6 @@ OpenUSD.
 
 - Deprecated support for Python 3.9 and 3.10
 
-- Deprecated support for legacy TBB (all versions prior to oneTBB 2021.1)
-
 - Increased minimum CMake version to 3.27
   (PR: [#4111](https://github.com/PixarAnimationStudios/OpenUSD/pull/4111))
 
