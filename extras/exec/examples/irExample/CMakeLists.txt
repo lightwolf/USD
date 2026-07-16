@@ -6,5 +6,5 @@ pxr_docs_only_dir(${PXR_PACKAGE}
         docs/images/waddlerRig.drawio.svg
 )
 
-add_subdirectory(invertibleRigsExampleAuthoringCode)
+add_subdirectory(irExampleAuthoringCode)
 add_subdirectory(invertibleRigsExampleUsdviewPlugin)

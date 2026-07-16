@@ -1,4 +1,4 @@
-set(PXR_PACKAGE invertibleRigsExampleAuthoringCode)
+set(PXR_PACKAGE irExampleAuthoringCode)
 
 pxr_plugin(${PXR_PACKAGE}
     LIBRARIES
