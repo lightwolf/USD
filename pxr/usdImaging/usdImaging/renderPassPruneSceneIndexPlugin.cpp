@@ -8,6 +8,7 @@
 #include "pxr/imaging/hd/sceneIndexPlugin.h"
 #include "pxr/imaging/hd/sceneIndexPluginRegistry.h"
 #include "pxr/imaging/hdsi/renderPassPruneSceneIndex.h"
+#include "pxr/usdImaging/usdImaging/collectionPredicateLibrary.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -35,7 +36,12 @@ protected:
         const HdSceneIndexBaseRefPtr &inputScene,
         const HdContainerDataSourceHandle &inputArgs) override {
 
-        return HdsiRenderPassPruneSceneIndex::New(inputScene);
+        // Only support USD predicates when evaluating expressions on
+        // render pass collections that use UsdCollectionAPI.
+        // Hydra predicates are not supported because USD does not know of them.
+        // 
+        return HdsiRenderPassPruneSceneIndex::New(
+            inputScene, UsdImagingGetCollectionPredicateLibrary());
     }
 };
 

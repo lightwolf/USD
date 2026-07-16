@@ -12,6 +12,17 @@
 
 #include "pxr/imaging/hd/version.h"
 
+// There was no hdsi/version.h before this HD_API_VERSION.
+#if HD_API_VERSION >= 58 
+#include "pxr/imaging/hdsi/version.h"
+
+#if HDSI_API_VERSION >= 21
+#define HDPRMAN_CONFIGURE_PREDICATE_LIBRARY
+#include "pxr/usdImaging/usdImaging/collectionPredicateLibrary.h"
+#endif
+
+#endif // HD_API_VERSION >= 58
+
 #include "pxr/imaging/hd/collectionExpressionEvaluator.h"
 #include "pxr/imaging/hd/collectionsSchema.h"
 #include "pxr/imaging/hd/instancedBySchema.h"
@@ -776,19 +787,44 @@ _RenderPassVisibilityAndMatteSceneIndex::_UpdateActiveRenderPassState(
             inputSceneIndex->GetPrim(state.renderPassPath);
         if (HdCollectionsSchema collections =
             HdCollectionsSchema::GetFromParent(passPrim.dataSource)) {
+
+            // Only support USD predicates when evaluating expressions on
+            // render pass collections. Assumption here is that render pass
+            // scene index prims are backed by UsdRenderPass prims, which use
+            // UsdCollectionAPI and are thus limited to the set of USD
+            // predicate expressions.
+            //
+
             // Prepare evaluators for render pass collections.
-            HdsiUtilsCompileCollection(collections, _tokens->matte,
-                                       inputSceneIndex,
-                                       &state.matteExpr,
-                                       &state.matteEval);
-            HdsiUtilsCompileCollection(collections, _tokens->renderVisibility,
-                                       inputSceneIndex,
-                                       &state.renderVisExpr,
-                                       &state.renderVisEval);
-            HdsiUtilsCompileCollection(collections, _tokens->cameraVisibility,
-                                       inputSceneIndex,
-                                       &state.cameraVisExpr,
-                                       &state.cameraVisEval);
+            HdsiUtilsCompileCollection(
+                collections,
+                _tokens->matte,
+                inputSceneIndex,
+#ifdef HDPRMAN_CONFIGURE_PREDICATE_LIBRARY
+                UsdImagingGetCollectionPredicateLibrary(),
+#endif
+                &state.matteExpr,
+                &state.matteEval);
+
+            HdsiUtilsCompileCollection(
+                collections,
+                _tokens->renderVisibility,
+                inputSceneIndex,
+#ifdef HDPRMAN_CONFIGURE_PREDICATE_LIBRARY
+                UsdImagingGetCollectionPredicateLibrary(),
+#endif
+                &state.renderVisExpr,
+                &state.renderVisEval);
+
+            HdsiUtilsCompileCollection(
+                collections,
+                _tokens->cameraVisibility,
+                inputSceneIndex,
+#ifdef HDPRMAN_CONFIGURE_PREDICATE_LIBRARY
+                UsdImagingGetCollectionPredicateLibrary(),
+#endif
+                &state.cameraVisExpr,
+                &state.cameraVisEval);
         }
     }
 #endif
