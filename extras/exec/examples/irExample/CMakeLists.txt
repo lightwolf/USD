@@ -1,4 +1,4 @@
-set(PXR_PACKAGE invertibleRigsExample)
+set(PXR_PACKAGE irExample)
 
 pxr_docs_only_dir(${PXR_PACKAGE}
     DOXYGEN_FILES
