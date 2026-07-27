@@ -9,6 +9,7 @@
 #include "hdPrman/idMap.h"
 #include "hdPrman/rixStrings.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/imaging/hf/perfLog.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/tf.h"
@@ -380,6 +381,8 @@ HdPrmanFramebuffer::Resize(int width, int height,
                            int cropXMin, int cropYMin,
                            int cropWidth, int cropHeight)
 {
+    HF_MALLOC_TAG_FUNCTION();
+
     if (w != width || h != height ||
         cropOrigin[0] != cropXMin || cropOrigin[1] != cropYMin ||
         cropRes[0] != cropWidth || cropRes[1] != cropHeight) {
