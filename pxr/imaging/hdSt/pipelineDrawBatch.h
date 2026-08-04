@@ -103,7 +103,7 @@ private:
             : _useDrawIndexed(true)
             , _useInstanceCulling(false)
             , _bufferArrayHash(0) { }
-        void Initialize(bool useDrawIndexed,
+        bool Initialize(bool useDrawIndexed,
                         bool useInstanceCulling,
                         size_t bufferArrayHash);
     protected:

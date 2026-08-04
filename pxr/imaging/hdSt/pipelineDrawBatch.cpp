@@ -132,8 +132,10 @@ HdSt_PipelineDrawBatch::_Init(HdStDrawItemInstance * drawItemInstance)
         _useGpuCulling && IsEnabledGPUInstanceFrustumCulling();
 
     if (_useGpuCulling) {
-        _cullingProgram.Initialize(
-            _useDrawIndexed, _useInstanceCulling, _bufferArraysHash);
+        if (_cullingProgram.Initialize(
+                _useDrawIndexed, _useInstanceCulling, _bufferArraysHash)) {
+            _dirtyCullingProgram = true;
+        }
     }
 
     TF_DEBUG(HDST_DRAW_BATCH).Msg(
@@ -1996,22 +1998,22 @@ HdSt_PipelineDrawBatch::_CreateCullingProgram(
     }
 }
 
-void
+bool
 HdSt_PipelineDrawBatch::_CullingProgram::Initialize(
     bool useDrawIndexed,
     bool useInstanceCulling,
     size_t bufferArrayHash)
 {
-    if (useDrawIndexed     != _useDrawIndexed     ||
-        useInstanceCulling != _useInstanceCulling ||
-        bufferArrayHash    != _bufferArrayHash) {
-        // reset shader
-        Reset();
+    if (useDrawIndexed     == _useDrawIndexed     &&
+        useInstanceCulling == _useInstanceCulling &&
+        bufferArrayHash    == _bufferArrayHash) {
+        return false;
     }
 
     _useDrawIndexed = useDrawIndexed;
     _useInstanceCulling = useInstanceCulling;
     _bufferArrayHash = bufferArrayHash;
+    return true;
 }
 
 /* virtual */
