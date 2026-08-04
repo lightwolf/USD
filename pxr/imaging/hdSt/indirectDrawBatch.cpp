@@ -79,6 +79,7 @@ HdSt_IndirectDrawBatch::HdSt_IndirectDrawBatch(
     , _bufferArraysHash(0)
     , _barElementOffsetsHash(0)
     , _numVisibleItems(0)
+    , _numVisibleItemsPostCull(0)
     , _numTotalVertices(0)
     , _numTotalElements(0)
     /* The following two values are set before draw by
@@ -574,6 +575,7 @@ HdSt_IndirectDrawBatch::_CompileBatch(
     // Count the number of visible items. We may actually draw fewer
     // items than this when GPU frustum culling is active.
     _numVisibleItems = 0;
+    _numVisibleItemsPostCull = 0;
     _numTotalElements = 0;
     _numTotalVertices = 0;
 
@@ -907,7 +909,8 @@ bool
 HdSt_IndirectDrawBatch::_HasNothingToDraw() const
 {
     return ( _useDrawIndexed && _numTotalElements == 0) ||
-           (!_useDrawIndexed && _numTotalVertices == 0);
+           (!_useDrawIndexed && _numTotalVertices == 0) ||
+           (_numVisibleItems == 0);
 }
 
 void
@@ -940,6 +943,8 @@ HdSt_IndirectDrawBatch::PrepareDraw(
         // may still require multiple command buffer submissions.
         _ExecuteFrustumCull(updateBufferData,
                             renderPassState, resourceRegistry);
+    } else {
+        _numVisibleItemsPostCull = _numVisibleItems;
     }
 }
 
@@ -1206,7 +1211,7 @@ HdSt_IndirectDrawBatch::_ExecuteDraw(
     state.UnbindResourcesForDrawing(renderPassState, *capabilities);
 
     HD_PERF_COUNTER_INCR(HdPerfTokens->drawCalls);
-    HD_PERF_COUNTER_ADD(HdTokens->itemsDrawn, _numVisibleItems);
+    HD_PERF_COUNTER_ADD(HdTokens->itemsDrawn, _numVisibleItemsPostCull);
 }
 
 void
@@ -1553,7 +1558,10 @@ HdSt_IndirectDrawBatch::_ExecuteFrustumCull(
 
     if (IsEnabledGPUCountVisibleInstances()) {
         state.binder.UnbindBuffer(_tokens->drawIndirectResult, _resultBuffer);
-        _EndGPUCountVisibleInstances(resourceRegistry, &_numVisibleItems);
+        _EndGPUCountVisibleInstances(resourceRegistry,
+            &_numVisibleItemsPostCull);
+    } else {
+        _numVisibleItemsPostCull = _numVisibleItems;
     }
 }
 
